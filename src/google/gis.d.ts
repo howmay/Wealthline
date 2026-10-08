@@ -18,6 +18,7 @@ interface GisOAuth2 {
     client_id: string
     scope: string
     prompt?: string
+    login_hint?: string
     callback: (res: GisTokenResponse) => void
     error_callback?: (err: { type: string; message?: string }) => void
   }): GisTokenClient

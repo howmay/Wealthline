@@ -48,13 +48,18 @@ function clientId(): string {
 
 // prompt '' reuses an existing grant without showing the consent screen again;
 // 'consent' forces the account chooser and consent screen.
-export async function requestAccessToken(prompt: '' | 'consent' | 'select_account' = ''): Promise<AccessToken> {
+// loginHint (an email) lets Google skip the account chooser for a returning user.
+export async function requestAccessToken(
+  prompt: '' | 'consent' | 'select_account' = '',
+  loginHint?: string,
+): Promise<AccessToken> {
   await loadGis()
   return new Promise((resolve, reject) => {
     const client = window.google!.accounts.oauth2.initTokenClient({
       client_id: clientId(),
       scope: SCOPES,
       prompt,
+      login_hint: loginHint,
       callback: (res) => {
         if (res.error || !res.access_token) {
           reject(new Error(res.error_description || res.error || '登入失敗'))
@@ -84,3 +89,40 @@ export async function fetchProfile(token: AccessToken): Promise<UserProfile> {
   if (!res.ok) throw new Error(`讀取使用者資料失敗 (${res.status})`)
   return res.json()
 }
+
+// The session is kept in this browser's localStorage so a reload does not ask the
+// user to sign in again. The access token expires after about an hour; after that
+// the stored email lets the user continue with one click.
+const SESSION_KEY = 'we-wealth.session'
+
+export interface StoredSession {
+  token: AccessToken
+  profile: UserProfile
+}
+
+export function loadSession(): StoredSession | null {
+  try {
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null') as StoredSession | null
+    return s?.profile?.email && s.token?.value ? s : null
+  } catch {
+    return null
+  }
+}
+
+export function storeSession(session: StoredSession): void {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  } catch {
+    // Storage blocked (private mode): the user simply signs in again next time.
+  }
+}
+
+export function clearSession(): void {
+  try {
+    localStorage.removeItem(SESSION_KEY)
+  } catch {
+    // Nothing stored.
+  }
+}
+
+export const isFresh = (t: AccessToken) => t.expiresAt - Date.now() > 60_000

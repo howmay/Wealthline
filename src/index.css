@@ -420,3 +420,9 @@ button.danger {
 .breakdown td:first-child {
   white-space: nowrap;
 }
+
+.signin button.secondary {
+  background: transparent;
+  border-color: var(--border);
+  color: inherit;
+}

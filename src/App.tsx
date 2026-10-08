@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { fetchProfile, requestAccessToken, revokeAccessToken, type AccessToken, type UserProfile } from './google/auth'
+import {
+  clearSession,
+  fetchProfile,
+  isFresh,
+  loadSession,
+  requestAccessToken,
+  revokeAccessToken,
+  storeSession,
+  type AccessToken,
+  type UserProfile,
+} from './google/auth'
 import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData } from './google/drive'
 import { emptyData, parseWealthData, type WealthData } from './model'
 import { Accounts } from './views/Accounts'
@@ -19,6 +29,8 @@ export default function App() {
   const [dirty, setDirty] = useState(false)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [tab, setTab] = useState<Tab>('overview')
+  // A previous session whose token has expired: offer one-click resume as this account.
+  const [returning, setReturning] = useState<UserProfile | null>(() => loadSession()?.profile ?? null)
 
   // Warn before closing the tab with unsaved edits.
   useEffect(() => {
@@ -28,10 +40,11 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
 
-  // Access tokens last about an hour; refresh silently a minute before expiry.
+  // Access tokens last about an hour; get a new one silently a minute before expiry.
   async function validToken(): Promise<AccessToken> {
-    if (!token.current || token.current.expiresAt - Date.now() < 60_000) {
-      token.current = await requestAccessToken('')
+    if (!token.current || !isFresh(token.current)) {
+      token.current = await requestAccessToken('', user?.email)
+      if (user) storeSession({ token: token.current, profile: user })
     }
     return token.current
   }
@@ -46,21 +59,57 @@ export default function App() {
     }
   }
 
+  async function openSession(t: AccessToken, profile?: UserProfile) {
+    token.current = t
+    const p = profile ?? (await fetchProfile(t))
+    storeSession({ token: t, profile: p })
+    setUser(p)
+    const file = await loadData(t, parseWealthData)
+    fileId.current = file?.fileId
+    setData(file?.data ?? emptyData())
+    setDirty(false)
+  }
+
+  // Restore the last session on load while its token is still valid.
+  const restored = useRef(false)
+  useEffect(() => {
+    if (restored.current) return
+    restored.current = true
+    const s = loadSession()
+    if (!s || !isFresh(s.token)) return
+    void run('載入中…', async () => {
+      try {
+        await openSession(s.token, s.profile)
+      } catch {
+        // Token revoked or rejected: fall back to the one-click resume button.
+        token.current = null
+        setUser(null)
+        setData(null)
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const signIn = () =>
     run('登入中…', async () => {
-      token.current = await requestAccessToken('select_account')
-      setUser(await fetchProfile(token.current))
-      const file = await loadData(token.current, parseWealthData)
-      fileId.current = file?.fileId
-      setData(file?.data ?? emptyData())
-      setDirty(false)
+      await openSession(await requestAccessToken('select_account'))
+    })
+
+  const resume = () =>
+    run('登入中…', async () => {
+      if (!returning) return
+      const t = await requestAccessToken('', returning.email)
+      // The user may have picked a different account in Google's dialog.
+      await openSession(t)
     })
 
   const signOut = () =>
     run('登出中…', async () => {
       if (token.current) await revokeAccessToken(token.current)
+      clearSession()
       token.current = null
       fileId.current = undefined
+      setReturning(null)
       setUser(null)
       setData(null)
     })
@@ -102,9 +151,20 @@ export default function App() {
       {!user ? (
         <section className="signin">
           <p>使用 Google 帳號登入。所有資料只存放在你自己的 Google Drive 中。</p>
-          <button onClick={signIn} disabled={busy}>
-            使用 Google 登入
-          </button>
+          {returning ? (
+            <div className="row">
+              <button onClick={resume} disabled={busy}>
+                以 {returning.email} 繼續
+              </button>
+              <button className="secondary" onClick={signIn} disabled={busy}>
+                使用其他帳號
+              </button>
+            </div>
+          ) : (
+            <button onClick={signIn} disabled={busy}>
+              使用 Google 登入
+            </button>
+          )}
         </section>
       ) : (
         data && (
