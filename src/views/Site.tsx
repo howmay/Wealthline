@@ -1,0 +1,71 @@
+// Site-wide components shared by the signed-out pages and the app: links, the logo and the footer.
+
+import { useId, type AnchorHTMLAttributes, type MouseEvent } from 'react'
+import { AUTHOR, AUTHOR_URL, LICENSE_ZH_URL, PAGES, REPO_URL, navigate, type PageKey } from '../site'
+
+// An in-app link: a real <a href> (so it can be opened in a new tab) that navigates without a reload.
+export function Link({ to, onClick, ...rest }: { to: string } & AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const click = (e: MouseEvent<HTMLAnchorElement>) => {
+    onClick?.(e)
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+    e.preventDefault()
+    navigate(to)
+  }
+  return <a href={to} onClick={click} {...rest} />
+}
+
+export function Logo({ size = 28 }: { size?: number }) {
+  const id = useId()
+  return (
+    <svg className="logo" width={size} height={size} viewBox="0 0 64 64" aria-hidden>
+      <defs>
+        <linearGradient id={`${id}bg`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#3a8ef0" />
+          <stop offset="1" stopColor="#4a3aa7" />
+        </linearGradient>
+        <linearGradient id={`${id}area`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity=".28" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="15" fill={`url(#${id}bg)`} />
+      <path d="M13 22 22.5 43 32 29 41.5 43 49.5 19.5V50H13Z" fill={`url(#${id}area)`} />
+      <path d="M13 22 22.5 43 32 29 41.5 43 49.5 19.5" fill="none" stroke="#fff" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="49.5" cy="19.5" r="4.5" fill="#ffd166" stroke="#fff" strokeWidth="2" />
+    </svg>
+  )
+}
+
+export function GitHubMark({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+    </svg>
+  )
+}
+
+export function SiteFooter() {
+  return (
+    <footer className="site-footer">
+      <div className="site-footer-inner">
+        <div className="site-footer-brand">
+          <Logo size={20} />
+          <span>
+            © 2026 <a href={AUTHOR_URL}>{AUTHOR}</a> · 開放原始碼，非商業授權
+          </span>
+        </div>
+        <nav aria-label="網站資訊">
+          {(Object.keys(PAGES) as PageKey[]).map((k) => (
+            <Link key={k} to={PAGES[k].path}>
+              {PAGES[k].title}
+            </Link>
+          ))}
+          <a href={LICENSE_ZH_URL}>授權條款</a>
+          <a href={REPO_URL} className="gh">
+            <GitHubMark size={14} /> 原始碼
+          </a>
+        </nav>
+      </div>
+    </footer>
+  )
+}

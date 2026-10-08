@@ -20,6 +20,10 @@ import { HistoryView } from './views/History'
 import { Overview } from './views/Overview'
 import { Rates } from './views/Rates'
 import { SaveReview } from './views/SaveReview'
+import { Landing } from './views/Landing'
+import { LegalPage } from './views/Legal'
+import { usePage } from './site'
+import { Logo, SiteFooter } from './views/Site'
 
 const TABS = { overview: '總覽', accounts: '帳戶', history: '歷史', rates: '匯率' }
 type Tab = keyof typeof TABS
@@ -43,6 +47,8 @@ export default function App() {
   const [priceError, setPriceError] = useState('')
   // A previous session whose token has expired: offer one-click resume as this account.
   const [returning, setReturning] = useState<UserProfile | null>(() => loadSession()?.profile ?? null)
+  // The notice pages are open to everyone; the app's own state stays mounted behind them.
+  const page = usePage()
 
   // Warn before closing the tab with unsaved edits.
   useEffect(() => {
@@ -194,41 +200,17 @@ export default function App() {
     window.scrollTo({ top: 0 })
   }
 
+  if (page) return <LegalPage page={page} signedIn={!!user} />
+
   if (!user) {
     return (
-      <main className="signin-page">
-        <section className="signin-card">
-          <div className="brand big">
-            <span className="logo" aria-hidden>
-              W
-            </span>
-            We Wealth
-          </div>
-          <h1>你的資產，存在你自己的 Google Drive</h1>
-          <ul className="features">
-            <li>用帳戶整理銀行餘額、股票與加密貨幣</li>
-            <li>自動換算匯率，看清資產配置與幣別曝險</li>
-            <li>資料只在你的雲端硬碟，隨時可以查看或刪除</li>
-          </ul>
-          {returning ? (
-            <div className="stack">
-              <button className="google" onClick={resume} disabled={busy}>
-                <GoogleMark />以 {returning.email} 繼續
-              </button>
-              <button className="ghost" onClick={signIn} disabled={busy}>
-                使用其他帳號
-              </button>
-            </div>
-          ) : (
-            <button className="google" onClick={signIn} disabled={busy}>
-              <GoogleMark />
-              使用 Google 登入
-            </button>
-          )}
-          {status.kind === 'busy' && <p className="muted">{status.text}</p>}
-          {status.kind === 'error' && <p className="error">{status.text}</p>}
-        </section>
-      </main>
+      <Landing
+        returning={returning}
+        busy={busy}
+        message={status.kind === 'idle' ? null : status}
+        onSignIn={signIn}
+        onResume={resume}
+      />
     )
   }
 
@@ -237,9 +219,7 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
-            <span className="logo" aria-hidden>
-              W
-            </span>
+            <Logo />
             <span className="brand-name">We Wealth</span>
           </div>
           <nav className="tabs" aria-label="分頁">
@@ -335,17 +315,7 @@ export default function App() {
         )}
         {data && tab === 'rates' && <Rates data={data} onChange={update} onRefresh={() => refreshRates(data)} error={ratesError} />}
       </main>
+      <SiteFooter />
     </>
-  )
-}
-
-function GoogleMark() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
-      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
-      <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
-      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
-      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
-    </svg>
   )
 }
