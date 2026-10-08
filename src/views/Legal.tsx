@@ -3,7 +3,7 @@
 
 import type { ReactNode } from 'react'
 import { DATA_FILE_NAME, FOLDER_NAME } from '../google/drive'
-import { AUTHOR, AUTHOR_URL, ISSUES_URL, LICENSE_URL, LICENSE_ZH_URL, PAGES, REPO_URL, SECURITY_URL, type PageKey } from '../site'
+import { AUTHOR, AUTHOR_URL, ISSUES_URL, LICENSE_URL, LICENSE_ZH_URL, PAGES, REPO_URL, SECURITY_URL, SITE_HOST, SITE_URL, type PageKey } from '../site'
 import { Link, Logo, SiteFooter } from './Site'
 
 const EFFECTIVE = '2026 年 10 月 8 日'
@@ -15,7 +15,7 @@ export function LegalPage({ page, signedIn }: { page: PageKey; signedIn: boolean
       <header className="legal-top">
         <Link to="/" className="brand">
           <Logo />
-          <span>We Wealth</span>
+          <span>Wealthline</span>
         </Link>
         <Link to="/" className="legal-back">
           {signedIn ? '← 回到我的資產' : '← 回到首頁'}
@@ -59,7 +59,7 @@ function Privacy() {
   return (
     <>
       <p className="legal-lead">
-        We Wealth 是一個開放原始碼的個人資產統計工具。我們的設計原則很簡單：<strong>你的資產資料只存在你自己的 Google Drive</strong>，
+        Wealthline（<a href={SITE_URL}>{SITE_HOST}</a>）是一個開放原始碼的個人資產統計工具。我們的設計原則很簡單：<strong>你的資產資料只存在你自己的 Google Drive</strong>，
         作者沒有任何伺服器或資料庫保存它，也看不到它。
       </p>
 
@@ -116,7 +116,7 @@ function Privacy() {
 
       <Section title="五、Google API 使用者資料">
         <p>
-          We Wealth 對於從 Google API 取得之資訊的使用與傳輸，遵守{' '}
+          Wealthline 對於從 Google API 取得之資訊的使用與傳輸，遵守{' '}
           <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API 服務使用者資料政策</a>
           ，包括其中的「有限使用」（Limited Use）規定。從 Google 取得的資料只用於提供你在畫面上看到的功能。
         </p>
@@ -127,7 +127,7 @@ function Privacy() {
           <li>查看與匯出：直接在 Google Drive 開啟或下載資料檔。</li>
           <li>刪除：刪除雲端硬碟中的 {FOLDER_NAME} 資料夾即可完全移除資產資料。</li>
           <li>
-            撤銷授權：到 <a href="https://myaccount.google.com/connections">Google 帳戶的第三方連結</a> 移除 We Wealth 的存取權。
+            撤銷授權：到 <a href="https://myaccount.google.com/connections">Google 帳戶的第三方連結</a> 移除 Wealthline 的存取權。
           </li>
           <li>
             依中華民國《個人資料保護法》，你可以行使查詢、閱覽、更正、停止處理與刪除等權利。由於作者並未保存你的個人資料，這些權利大多可以直接透過上述方式自行完成；如仍有需要，請透過下方管道聯絡。
@@ -152,7 +152,7 @@ function Privacy() {
 function Terms() {
   return (
     <>
-      <p className="legal-lead">使用 We Wealth（以下稱「本服務」）即表示你同意以下條款。如果不同意，請勿使用本服務。</p>
+      <p className="legal-lead">使用 Wealthline（<a href={SITE_URL}>{SITE_HOST}</a>，以下稱「本服務」）即表示你同意以下條款。如果不同意，請勿使用本服務。</p>
 
       <Section title="一、服務內容">
         <p>
@@ -216,7 +216,7 @@ function Terms() {
 function Disclaimer() {
   return (
     <>
-      <p className="legal-lead">We Wealth 是記錄與統計個人資產的工具，不是投資、理財、稅務或法律顧問。</p>
+      <p className="legal-lead">Wealthline 是記錄與統計個人資產的工具，不是投資、理財、稅務或法律顧問。</p>
 
       <Section title="一、非投資建議">
         <p>

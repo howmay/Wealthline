@@ -1,11 +1,15 @@
 <p align="center">
-  <img src="public/favicon.svg" width="72" height="72" alt="We Wealth 圖示" />
+  <img src="public/favicon.svg" width="72" height="72" alt="Wealthline 圖示" />
 </p>
 
-<h1 align="center">We Wealth</h1>
+<h1 align="center">Wealthline</h1>
 
 <p align="center">
   開放原始碼的個人資產統計工具：以 Google 帳號登入，<b>所有資料只存在你自己的 Google Drive</b>，清楚呈現資產配置。
+</p>
+
+<p align="center">
+  🌐 <a href="https://wealthline.haomeh.com"><b>wealthline.haomeh.com</b></a>
 </p>
 
 <p align="center">
@@ -18,9 +22,17 @@
 
 ---
 
+## 立即使用
+
+打開 **<https://wealthline.haomeh.com>**，用 Google 帳號登入即可，不需要註冊或安裝。
+
+- 隱私權政策：<https://wealthline.haomeh.com/privacy>
+- 使用條款：<https://wealthline.haomeh.com/terms>
+- 免責聲明：<https://wealthline.haomeh.com/disclaimer>
+
 ## 為什麼做這個
 
-記錄資產的工具很多，但大多要把你的帳戶與金額交給別人的伺服器。We Wealth 的做法是：
+記錄資產的工具很多，但大多要把你的帳戶與金額交給別人的伺服器。Wealthline 的做法是：
 
 - **沒有後端資料庫**：App 是純前端網頁，作者看不到、也無法保存任何使用者資料。
 - **資料在你看得到的地方**：資料是你 Google Drive 裡的一個 JSON 檔（`我的雲端硬碟 / We Wealth / we-wealth-data.json`），可以隨時開啟、下載、備份或刪除。
@@ -116,6 +128,7 @@
 - 環境變數：`VITE_GOOGLE_CLIENT_ID`。
 - `functions/api/quote.ts` 會自動部署為 Pages Function。
 - 不要在 `dist` 中放 `404.html`，Cloudflare Pages 才會把 `/privacy` 等路徑交給 App 處理。
+- 正式網站為 `https://wealthline.haomeh.com`：在 Cloudflare Pages 專案的「自訂網域」加入 `wealthline.haomeh.com`。
 - 把正式網址加入 OAuth 用戶端的「已授權的 JavaScript 來源」，並在 OAuth 同意畫面填入首頁、隱私權政策（`/privacy`）與服務條款（`/terms`）網址。
 
 ## 程式結構

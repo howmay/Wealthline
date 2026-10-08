@@ -12,7 +12,7 @@
 1. 前往「API 和服務 → OAuth 同意畫面」（新版介面稱為 Google Auth Platform → 品牌）。
 2. 使用者類型選 **外部（External）**。
 3. 填入應用程式名稱、使用者支援電子郵件、開發人員聯絡資訊。應用程式標誌可以用 `public/icon-512.png`（Google 要求 120×120 以上的正方形圖片）。
-   「應用程式網域」填入正式網址的頁面：首頁 `https://<你的網域>/`、隱私權政策 `https://<你的網域>/privacy`、服務條款 `https://<你的網域>/terms`。這三頁不需登入即可瀏覽，發布應用程式時 Google 會檢查。
+   「應用程式網域」填入正式網址的頁面：首頁 `https://wealthline.haomeh.com/`、隱私權政策 `https://wealthline.haomeh.com/privacy`、服務條款 `https://wealthline.haomeh.com/terms`，授權網域填 `haomeh.com`。這三頁不需登入即可瀏覽，發布應用程式時 Google 會檢查。
 4. 在「資料存取（Scopes）」加入：
    - `openid`
    - `.../auth/userinfo.email`
@@ -29,7 +29,7 @@
 3. 「已授權的 JavaScript 來源」加入：
    - `http://localhost:5173`（本機開發）
    - `http://localhost:4173`（`npm run preview`）
-   - 正式部署的網址，例如 `https://we-wealth.pages.dev`
+   - 正式部署的網址，例如 `https://wealthline.haomeh.com`
 
    只填「協定 + 網域 + port」，結尾不要加 `/` 或路徑。`localhost` 和 `127.0.0.1` 算不同來源，要和瀏覽器網址列完全一致。存檔後通常要等 5 分鐘到幾小時才會生效。
 4. 「已授權的重新導向 URI」留空即可（使用 Google Identity Services 的 token 彈出視窗流程，不需要 redirect）。

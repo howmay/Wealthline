@@ -20,7 +20,7 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
       <header className="landing-top">
         <div className="brand">
           <Logo />
-          <span>We Wealth</span>
+          <span>Wealthline</span>
         </div>
         <a className="gh-link" href={REPO_URL}>
           <GitHubMark /> 原始碼

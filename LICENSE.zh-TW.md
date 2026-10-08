@@ -1,6 +1,7 @@
-# We Wealth 授權說明（繁體中文）
+# Wealthline 授權說明（繁體中文）
 
 Copyright (c) 2026 Harvey Chen（GitHub：[@zhChenOuO](https://github.com/zhChenOuO)）
+網站：<https://wealthline.haomeh.com>
 原始碼：<https://github.com/howmay/we-wealth>
 
 本專案以 **[PolyForm Noncommercial License 1.0.0](LICENSE)**（以下稱「英文授權條款」）公開授權，並由作者附加本文件第七節至第十節的補充約定。本文件說明英文授權條款的內容，以及作者依中華民國（臺灣）《著作權法》對授權範圍的理解。
