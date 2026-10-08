@@ -112,7 +112,7 @@ function Privacy() {
             <strong>Google 存取權杖</strong>：Google 發給本服務、約一小時後失效的權杖，用來代表你呼叫 Google Drive API。
           </li>
           <li>
-            <strong>你輸入的資產資料</strong>：帳戶名稱、類型、國家、各幣別餘額、持有標的代號與數量、匯率、每日資產快照與修改紀錄。用途：計算與呈現你的資產統計。
+            <strong>你輸入的資產資料</strong>：帳戶名稱、類型、國家、各幣別餘額、持有標的代號與數量、匯率、每日資產快照（含各標的當天的數量、價格與台幣價值）、標的加入日期與修改紀錄。用途：計算與呈現你的資產統計。
           </li>
         </ul>
         <p>本服務不蒐集你的銀行帳號、密碼、身分證字號、交易憑證或任何金融機構的登入資訊。</p>
@@ -256,7 +256,7 @@ function PrivacyEnglish() {
         <li>your Google account <strong>identifier, email address, name and profile picture URL</strong>; the identifier verifies the account on reauthorization;</li>
         <li>
           the <strong>single data file</strong> that Wealthline creates in your Google Drive (<code>My Drive / {FOLDER_NAME} / {DATA_FILE_NAME}</code>),
-          which holds the accounts, balances, holdings, exchange rates, daily snapshots and edit log that you enter;
+          which holds the accounts, balances, holdings, exchange rates, daily snapshots (including each holding's quantity, price and value that day), the date each holding was added, and the edit log that you enter;
         </li>
         <li>a short-lived <strong>OAuth access token</strong> (about one hour) used to call the Google Drive API on your behalf.</li>
       </ul>

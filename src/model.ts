@@ -55,6 +55,7 @@ export interface Position {
   name?: string // security name from the quote
   priceManual?: boolean // the user typed the price; automatic updates leave it alone
   priceUpdatedAt?: string
+  addedAt?: string // first save that included it; unknown for ones saved before this was kept
 }
 
 export interface Account {
@@ -193,6 +194,7 @@ export function parseWealthData(raw: unknown): WealthData {
             priceManual: p.priceManual === true || undefined,
             priceUpdatedAt: str(p.priceUpdatedAt) || undefined,
           }),
+          addedAt: str(p.addedAt) || undefined,
         }
       }),
     }
