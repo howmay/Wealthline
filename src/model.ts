@@ -61,7 +61,6 @@ export interface Account {
   kind: AccountKind
   country: string
   category: string
-  purpose: string
   positions: Position[]
 }
 
@@ -174,7 +173,6 @@ export function parseWealthData(raw: unknown): WealthData {
       kind: a.kind === 'bank' ? 'bank' : 'investment',
       country: str(a.country).toUpperCase(),
       category: str(a.category, '其他') || '其他',
-      purpose: str(a.purpose),
       positions: (a.positions as unknown[]).map((pi, j): Position => {
         const pw = `${where}（${str(a.name)}）的第 ${j + 1} 筆資料`
         const p = (typeof pi === 'object' && pi !== null ? pi : fail(`${pw}不是物件`)) as Record<string, unknown>

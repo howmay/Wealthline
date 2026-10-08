@@ -40,7 +40,6 @@ export function Overview({ data, onGoRates, onNewAccount, onImport, onOpenAccoun
 
   const missing = missingRates(data)
   const byCategory = breakdown(data, (a) => a.category)
-  const purposes = [...new Set(data.accounts.map((a) => a.purpose).filter(Boolean))]
 
   return (
     <div className="overview">
@@ -88,20 +87,6 @@ export function Overview({ data, onGoRates, onNewAccount, onImport, onOpenAccoun
               Object.values(COUNTRIES),
             )}
           />
-        </section>
-      )}
-
-      {purposes.length > 0 ? (
-        <section className="panel">
-          <h3>用途</h3>
-          <Allocation slices={colorize(breakdown(data, (a) => a.purpose).slices, purposes)} />
-        </section>
-      ) : (
-        <section className="panel hint-panel">
-          <h3>用途</h3>
-          <p className="muted small">
-            替帳戶標上用途（例如緊急備用金、長期投資、退休），這裡就會顯示每種用途各佔多少。到帳戶頁按「編輯帳戶設定」即可設定。
-          </p>
         </section>
       )}
     </div>

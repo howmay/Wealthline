@@ -46,7 +46,6 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack, onRe
             <span className="tag">{ACCOUNT_KINDS[a.kind]}</span>
             {a.country && <span className="tag">{countryLabel(a.country)}</span>}
             <span className="tag">{a.category}</span>
-            {a.purpose && <span className="tag">{a.purpose}</span>}
           </div>
         </div>
         <div className="total">

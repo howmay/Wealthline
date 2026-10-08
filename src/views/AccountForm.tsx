@@ -15,23 +15,19 @@ import {
 interface Props {
   // Undefined when creating a new account.
   account?: Account
-  purposes: string[]
   onSave: (a: Account) => void
   onCancel: () => void
   onDelete?: () => void
 }
 
-const PURPOSES = ['緊急備用金', '日常開銷', '短期目標', '長期投資', '退休']
-
 // Defines what an account is: type, where it is, which currencies it holds.
 // Balances and holdings are filled in afterwards on the account page.
-export function AccountForm({ account, purposes, onSave, onCancel, onDelete }: Props) {
+export function AccountForm({ account, onSave, onCancel, onDelete }: Props) {
   const [kind, setKind] = useState<AccountKind>(account?.kind ?? 'bank')
   const [name, setName] = useState(account?.name ?? '')
   const [country, setCountry] = useState(account?.country || 'TW')
   const [currencies, setCurrencies] = useState<string[]>(account ? cashCurrencies(account) : ['TWD'])
   const [category, setCategory] = useState(account?.category ?? defaultCategory('bank', 'TW'))
-  const [purpose, setPurpose] = useState(account?.purpose ?? '')
   const [extraCurrency, setExtraCurrency] = useState('')
   // Follow the defaults for type and country until the user picks a category themselves.
   const [categoryTouched, setCategoryTouched] = useState(!!account)
@@ -62,7 +58,6 @@ export function AccountForm({ account, purposes, onSave, onCancel, onDelete }: P
       kind,
       country,
       category: category.trim() || '其他',
-      purpose: purpose.trim(),
       positions: [...kept, ...added],
     })
   }
@@ -138,23 +133,6 @@ export function AccountForm({ account, purposes, onSave, onCancel, onDelete }: P
           ))}
         </select>
       </label>
-
-      <div className="field">
-        <span>用途（選填）：這筆錢是做什麼的，總覽會依用途統計</span>
-        <div className="choices">
-          {[...new Set([...PURPOSES, ...purposes])].map((p) => (
-            <button type="button" key={p} className={p === purpose ? 'chip on' : 'chip'} onClick={() => setPurpose(p === purpose ? '' : p)}>
-              {p}
-            </button>
-          ))}
-          <input
-            value={PURPOSES.includes(purpose) || purposes.includes(purpose) ? '' : purpose}
-            onChange={(e) => setPurpose(e.target.value)}
-            placeholder="其他用途"
-            size={12}
-          />
-        </div>
-      </div>
 
       <div className="row">
         <button type="submit" className="primary" disabled={!name.trim()}>

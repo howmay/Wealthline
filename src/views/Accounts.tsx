@@ -27,7 +27,6 @@ export function Accounts({ data, onChange, view, setView, onRefreshPrices, price
   const showImport = view.page === 'list' && !!view.importing
   const setShowImport = (importing: boolean) => setView({ page: 'list', importing })
 
-  const purposes = [...new Set(data.accounts.map((a) => a.purpose).filter(Boolean))]
   const saveAccount = (next: Account) => {
     const exists = data.accounts.some((a) => a.id === next.id)
     onChange({ ...data, accounts: exists ? data.accounts.map((a) => (a.id === next.id ? next : a)) : [...data.accounts, next] })
@@ -38,7 +37,6 @@ export function Accounts({ data, onChange, view, setView, onRefreshPrices, price
     return (
       <AccountForm
         account={current}
-        purposes={purposes}
         onSave={(a) => {
           saveAccount(a)
           setView({ page: 'detail', id: a.id })
@@ -150,7 +148,7 @@ function ImportPanel({ data, onChange, onDone }: Props & { onDone: () => void })
     <section className="panel">
       <h3>從試算表匯入</h3>
       <p className="muted small">
-        從 Google 試算表或 Excel 複製資料列後貼上（不含標題列）。欄位順序：機構、類別、子類別、幣別、數量、單價、原幣市值、匯率、台幣市值、佔比、用途。
+        從 Google 試算表或 Excel 複製資料列後貼上（不含標題列）。欄位順序：機構、類別、子類別、幣別、數量、單價、原幣市值、匯率、台幣市值、佔比。
         同名帳戶會被覆蓋，匯率會一併更新。
       </p>
       <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} placeholder="在這裡貼上…" />

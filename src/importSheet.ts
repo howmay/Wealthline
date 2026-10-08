@@ -63,7 +63,6 @@ export function importSheet(data: WealthData, text: string): ImportResult {
         kind: isCash ? 'bank' : 'investment',
         country: existing?.country || guessCountry(name, category ?? ''),
         category: category || existing?.category || '其他',
-        purpose: cells[10] || existing?.purpose || '',
         positions: [],
       }
       imported.set(name, account)
