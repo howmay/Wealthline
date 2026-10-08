@@ -17,6 +17,7 @@ export interface AccessToken {
 }
 
 export interface UserProfile {
+  sub: string
   email: string
   name: string
   picture?: string
@@ -87,39 +88,101 @@ export async function fetchProfile(token: AccessToken): Promise<UserProfile> {
     headers: { Authorization: `Bearer ${token.value}` },
   })
   if (!res.ok) throw new Error(`讀取使用者資料失敗 (${res.status})`)
-  return res.json()
+  const profile = await res.json() as UserProfile
+  if (typeof profile.sub !== 'string' || !profile.sub || typeof profile.email !== 'string' || !profile.email) {
+    throw new Error('Google 帳號資料不完整，請重新登入')
+  }
+  return { sub: profile.sub, email: profile.email, name: typeof profile.name === 'string' ? profile.name : profile.email,
+    picture: typeof profile.picture === 'string' ? profile.picture : undefined }
 }
 
-// The session is kept in this browser's localStorage so a reload does not ask the
-// user to sign in again. The access token expires after about an hour; after that
-// the stored email lets the user continue with one click.
+// A login hint is not proof of identity: Google may return another account.
+export async function renewAccessToken(profile: UserProfile): Promise<AccessToken> {
+  const next = await requestAccessToken('', profile.email)
+  const actual = await fetchProfile(next)
+  if (!profile.sub || actual.sub !== profile.sub) {
+    throw new Error('Google 帳號與目前資料不一致，請使用原帳號重新授權，或先登出再切換帳號。')
+  }
+  return next
+}
+
+// The profile (a login hint) lives in localStorage. The access token lives in sessionStorage
+// so a reload keeps the user signed in, but it is gone when the tab or browser is closed and
+// is never shared with other tabs. Neither is readable by other sites.
 const SESSION_KEY = 'we-wealth.session'
+const TOKEN_KEY = 'we-wealth.token'
 
 export interface StoredSession {
-  token: AccessToken
   profile: UserProfile
+  token?: AccessToken
+}
+
+function readProfile(value: unknown): UserProfile | null {
+  const p = (value as { profile?: Record<string, unknown> } | null)?.profile
+  if (typeof p?.email !== 'string' || !p.email) return null
+  return {
+    sub: typeof p.sub === 'string' ? p.sub : '',
+    email: p.email,
+    name: typeof p.name === 'string' ? p.name : p.email,
+    picture: typeof p.picture === 'string' ? p.picture : undefined,
+  }
 }
 
 export function loadSession(): StoredSession | null {
   try {
-    const s = JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null') as StoredSession | null
-    return s?.profile?.email && s.token?.value ? s : null
+    const raw = JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null')
+    // Remove a bearer token left in localStorage by an older version, even if the profile is malformed.
+    localStorage.removeItem(SESSION_KEY)
+    const profile = readProfile(raw)
+    if (!profile) return null
+    storeSession({ profile })
+    return { profile, token: loadToken(profile) }
   } catch {
+    clearSession()
     return null
   }
 }
 
+// Only a token that was stored for this very account and has not expired is returned.
+function loadToken(profile: UserProfile): AccessToken | undefined {
+  try {
+    const t = JSON.parse(sessionStorage.getItem(TOKEN_KEY) ?? 'null') as { token?: AccessToken; sub?: string } | null
+    if (typeof t?.token?.value === 'string' && typeof t.token.expiresAt === 'number' && profile.sub && t.sub === profile.sub && isFresh(t.token)) {
+      return { value: t.token.value, expiresAt: t.token.expiresAt }
+    }
+  } catch {
+    // Unreadable: fall through and drop it.
+  }
+  try {
+    sessionStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // Nothing stored.
+  }
+  return undefined
+}
+
 export function storeSession(session: StoredSession): void {
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    const { sub, email, name, picture } = session.profile
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ profile: { sub, email, name, picture } }))
   } catch {
     // Storage blocked (private mode): the user simply signs in again next time.
+  }
+  try {
+    if (session.token) sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ sub: session.profile.sub, token: session.token }))
+  } catch {
+    // Storage blocked: the token only lives in memory.
   }
 }
 
 export function clearSession(): void {
   try {
     localStorage.removeItem(SESSION_KEY)
+  } catch {
+    // Nothing stored.
+  }
+  try {
+    sessionStorage.removeItem(TOKEN_KEY)
   } catch {
     // Nothing stored.
   }

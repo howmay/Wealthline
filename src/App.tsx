@@ -5,6 +5,7 @@ import {
   isFresh,
   loadSession,
   requestAccessToken,
+  renewAccessToken,
   revokeAccessToken,
   storeSession,
   type AccessToken,
@@ -33,6 +34,7 @@ type Status = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'error
 export default function App() {
   const token = useRef<AccessToken | null>(null)
   const fileId = useRef<string | undefined>(undefined)
+  const sessionVersion = useRef(0)
   // The version last read from or written to Drive; each save records what changed since it.
   const saved = useRef<WealthData | null>(null)
   const [user, setUser] = useState<UserProfile | null>(null)
@@ -58,11 +60,12 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
 
-  // Access tokens last about an hour; get a new one silently a minute before expiry.
+  // Renew on save, verifying the account before any Drive write.
   async function validToken(): Promise<AccessToken> {
     if (!token.current || !isFresh(token.current)) {
-      token.current = await requestAccessToken('', user?.email)
-      if (user) storeSession({ token: token.current, profile: user })
+      if (!user) throw new Error('請先登入')
+      token.current = await renewAccessToken(user)
+      storeSession({ profile: user, token: token.current })
     }
     return token.current
   }
@@ -77,12 +80,13 @@ export default function App() {
     }
   }
 
-  async function openSession(t: AccessToken, profile?: UserProfile) {
-    token.current = t
-    const p = profile ?? (await fetchProfile(t))
-    storeSession({ token: t, profile: p })
-    setUser(p)
+  async function openSession(t: AccessToken) {
+    const p = await fetchProfile(t)
     const file = await loadData(t, parseWealthData)
+    sessionVersion.current++
+    token.current = t
+    storeSession({ profile: p, token: t })
+    setUser(p)
     fileId.current = file?.fileId
     saved.current = file?.data ?? null
     const loaded = file?.data ?? emptyData()
@@ -94,7 +98,9 @@ export default function App() {
   // Updates holding prices, then exchange rates (new quotes can bring new currencies).
   // Like rates, prices stay in memory until the next save.
   async function refreshMarket(from: WealthData) {
+    const version = sessionVersion.current
     const { quotes, failed } = await fetchHoldingQuotes(from)
+    if (version !== sessionVersion.current) return
     const at = new Date().toISOString()
     setData((d) => (d ? applyQuotes(d, quotes, at) : d))
     setPriceError(failed.length ? `找不到 ${failed.join('、')} 的報價，可以點價格手動輸入。` : '')
@@ -105,26 +111,29 @@ export default function App() {
   // Updates exchange rates in the background. The new rates are kept in memory and
   // written to Drive with the next save, so opening the app never leaves unsaved changes.
   async function refreshRates(from: WealthData) {
+    const version = sessionVersion.current
     setRatesError('')
     try {
       const r = await fetchRates(usedCurrencies(from))
+      if (version !== sessionVersion.current) return
       setData((d) => (d ? applyFetchedRates(d, r.rates, r.updatedAt) : d))
       if (r.unsupported.length) setRatesError(`找不到 ${r.unsupported.join('、')} 的匯率，請手動輸入。`)
     } catch (e) {
+      if (version !== sessionVersion.current) return
       setRatesError(e instanceof Error ? e.message : String(e))
     }
   }
 
-  // Restore the last session on load while its token is still valid.
+  // Restore the session after a reload while this tab's token is still valid.
   const restored = useRef(false)
   useEffect(() => {
     if (restored.current) return
     restored.current = true
-    const s = loadSession()
-    if (!s || !isFresh(s.token)) return
+    const stored = loadSession()?.token
+    if (!stored) return
     void run('載入中…', async () => {
       try {
-        await openSession(s.token, s.profile)
+        await openSession(stored)
       } catch {
         // Token revoked or rejected: fall back to the one-click resume button.
         token.current = null
@@ -150,7 +159,8 @@ export default function App() {
 
   const signOut = () =>
     run('登出中…', async () => {
-      if (token.current) await revokeAccessToken(token.current)
+      const previous = token.current
+      sessionVersion.current++
       clearSession()
       token.current = null
       fileId.current = undefined
@@ -158,6 +168,10 @@ export default function App() {
       setReturning(null)
       setUser(null)
       setData(null)
+      setDirty(false)
+      setReviewing(false)
+      // Local logout must finish even if Google's revoke request fails or hangs.
+      if (previous) void revokeAccessToken(previous).catch(() => {})
     })
 
   const save = () =>
@@ -216,6 +230,7 @@ export default function App() {
 
   return (
     <>
+      
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
