@@ -10,7 +10,8 @@
     "binding": "ASSETS",
     // /privacy serves dist/privacy.html; any other path falls back to index.html.
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    // Apply security headers to HTML, fallback routes and API responses alike.
+    "run_worker_first": true
   },
   // Lets Workers Builds create preview deployments for pull requests (`wrangler preview`).
   "previews": {}

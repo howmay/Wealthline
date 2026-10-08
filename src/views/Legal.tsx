@@ -6,7 +6,7 @@ import { DATA_FILE_NAME, FOLDER_NAME } from '../google/drive'
 import { AUTHOR, AUTHOR_URL, ISSUES_URL, LICENSE_URL, LICENSE_ZH_URL, PAGES, REPO_URL, SECURITY_URL, SITE_HOST, SITE_URL, type PageKey } from '../site'
 import { Link, Logo, SiteFooter } from './Site'
 
-const EFFECTIVE = '2026 年 10 月 8 日'
+const EFFECTIVE = '2026 年 10 月 9 日'
 const DATA_PATH = `我的雲端硬碟 / ${FOLDER_NAME} / ${DATA_FILE_NAME}`
 
 export function LegalPage({ page, signedIn }: { page: PageKey; signedIn: boolean }) {
@@ -106,7 +106,7 @@ function Privacy() {
       <Section title="三、我們存取與處理哪些資料">
         <ul>
           <li>
-            <strong>Google 帳號基本資料</strong>：電子郵件、名稱、大頭貼網址。用途：顯示登入身分、一鍵繼續登入。
+            <strong>Google 帳號基本資料</strong>：帳號識別碼、電子郵件、名稱、大頭貼網址。用途：核對重新授權的帳號、顯示登入身分、一鍵繼續登入。
           </li>
           <li>
             <strong>Google 存取權杖</strong>：Google 發給本服務、約一小時後失效的權杖，用來代表你呼叫 Google Drive API。
@@ -131,10 +131,10 @@ function Privacy() {
       <Section title="五、資料存放在哪裡、保存多久">
         <ul>
           <li>
-            <strong>資產資料</strong>：以 JSON 檔存放在你的 Google Drive：<code>{DATA_PATH}</code>。由你自己保管，直到你刪除它為止。
+            <strong>資產資料</strong>：以 JSON 檔存放在你的 Google Drive：<code>{DATA_PATH}</code>。可在帳號選單啟用密碼加密，啟用後檔案內容為密文。由你自己保管，直到你刪除它為止。
           </li>
           <li>
-            <strong>登入資訊</strong>：存放在你這台裝置瀏覽器的 localStorage，包括存取權杖（約一小時後失效）以及電子郵件、名稱、大頭貼網址。保存到你登出為止；登出時會向 Google 撤銷權杖並清除這些資料。
+            <strong>登入資訊</strong>：存取權杖只留在記憶體，重新整理或關閉頁面即失去。localStorage 只保存帳號識別碼、電子郵件、名稱與大頭貼網址，供下次繼續登入。登出立即清除本機登入資訊，並嘗試向 Google 撤銷權杖；若網路失敗，可至 Google 帳戶撤銷授權。
           </li>
           <li>
             <strong>作者的伺服器</strong>：沒有。本服務沒有後端資料庫，不會把你的資產資料或個人資料傳送、複製或保存到作者控制的任何地方。
@@ -192,7 +192,7 @@ function Privacy() {
 
       <Section title="十、安全">
         <p>
-          所有連線都使用 HTTPS。資料檔的保護由 Google Drive 的帳號安全機制負責，請為你的 Google 帳號啟用兩步驟驗證。本服務的程式碼完全公開在{' '}
+          正式網站連線使用 HTTPS。資料檔由 Google Drive 的帳號安全機制保護，請為你的 Google 帳號啟用兩步驟驗證。可選的密碼加密使用 AES-256-GCM，密碼不保存、不上傳，金鑰只留在記憶體；忘記密碼無法復原。加密不會清除既有 Drive 歷史版本、備份或分享權限，啟用前請關閉其他裝置與分頁中的舊工作階段。本服務的程式碼完全公開在{' '}
           <a href={REPO_URL}>GitHub</a>，任何人都可以檢查上述說明是否屬實。
         </p>
       </Section>
@@ -238,7 +238,7 @@ function PrivacyEnglish() {
   return (
     <section className="legal-en" lang="en" id="english">
       <h2>Wealthline Privacy Policy (English)</h2>
-      <p className="muted small">Effective date: October 8, 2026 · App: Wealthline · Website: {SITE_URL} · Developer: {AUTHOR}</p>
+      <p className="muted small">Effective date: October 9, 2026 · App: Wealthline · Website: {SITE_URL} · Developer: {AUTHOR}</p>
       <p>
         This privacy policy explains how <strong>Wealthline</strong> (<a href={SITE_URL}>{SITE_HOST}</a>), a free, open-source personal asset tracking web app,
         accesses, uses, stores, shares and deletes Google user data. Wealthline lets you record bank balances, stocks, funds and crypto holdings and shows your
@@ -251,7 +251,7 @@ function PrivacyEnglish() {
       <ScopeTable lang="en" />
       <p>From these scopes Wealthline accesses:</p>
       <ul>
-        <li>your Google account <strong>email address, name and profile picture URL</strong>;</li>
+        <li>your Google account <strong>identifier, email address, name and profile picture URL</strong>; the identifier verifies the account on reauthorization;</li>
         <li>
           the <strong>single data file</strong> that Wealthline creates in your Google Drive (<code>My Drive / {FOLDER_NAME} / {DATA_FILE_NAME}</code>),
           which holds the accounts, balances, holdings, exchange rates, daily snapshots and edit log that you enter;
@@ -284,9 +284,10 @@ function PrivacyEnglish() {
       <ul>
         <li>Your asset data is stored in your own Google Drive and protected by your Google account's security. Wealthline keeps no copy on any server.</li>
         <li>
-          Sign-in information (access token, email, name and picture URL) is stored only in your browser's localStorage on your device, never on a
-          server.
+          Access tokens stay only in memory and are lost on reload or closing the page. Only your account identifier, email, name and picture URL
+          are kept in localStorage as a hint for your next sign-in.
         </li>
+        <li>Optional password encryption uses AES-256-GCM in your browser before uploading. The password is never stored or uploaded; the key stays only in memory. A forgotten password cannot be recovered. Existing Drive revisions, backups and sharing permissions are not removed or changed. Close old sessions on other tabs and devices before enabling encryption.</li>
         <li>All traffic between your browser, Google and Wealthline uses HTTPS (TLS) encryption.</li>
         <li>Wealthline only requests the narrow drive.file scope, so it cannot reach your other files.</li>
         <li>
@@ -298,8 +299,8 @@ function PrivacyEnglish() {
       <ul>
         <li>The Drive data file stays in your Drive until you delete it. Delete the "{FOLDER_NAME}" folder and empty the trash to remove it completely.</li>
         <li>
-          Sign-in information stays in your browser until you sign out. Signing out revokes the access token with Google and clears it. Clearing your
-          browser's site data also removes it.
+          The account hint stays in your browser until you sign out. Signing out immediately clears local sign-in information and attempts to revoke
+          the token with Google. If that request fails, you can revoke access in your Google account. Clearing browser site data also removes the hint.
         </li>
         <li>
           You can revoke Wealthline's access at any time at{' '}

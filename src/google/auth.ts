@@ -17,6 +17,7 @@ export interface AccessToken {
 }
 
 export interface UserProfile {
+  sub: string
   email: string
   name: string
   picture?: string
@@ -87,31 +88,55 @@ export async function fetchProfile(token: AccessToken): Promise<UserProfile> {
     headers: { Authorization: `Bearer ${token.value}` },
   })
   if (!res.ok) throw new Error(`讀取使用者資料失敗 (${res.status})`)
-  return res.json()
+  const profile = await res.json() as UserProfile
+  if (typeof profile.sub !== 'string' || !profile.sub || typeof profile.email !== 'string' || !profile.email) {
+    throw new Error('Google 帳號資料不完整，請重新登入')
+  }
+  return { sub: profile.sub, email: profile.email, name: typeof profile.name === 'string' ? profile.name : profile.email,
+    picture: typeof profile.picture === 'string' ? profile.picture : undefined }
 }
 
-// The session is kept in this browser's localStorage so a reload does not ask the
-// user to sign in again. The access token expires after about an hour; after that
-// the stored email lets the user continue with one click.
+// A login hint is not proof of identity: Google may return another account.
+export async function renewAccessToken(profile: UserProfile): Promise<AccessToken> {
+  const next = await requestAccessToken('', profile.email)
+  const actual = await fetchProfile(next)
+  if (!profile.sub || actual.sub !== profile.sub) {
+    throw new Error('Google 帳號與目前資料不一致，請使用原帳號重新授權，或先登出再切換帳號。')
+  }
+  return next
+}
+
+// Persist only a display/login hint. Bearer tokens stay in memory, never web storage.
 const SESSION_KEY = 'we-wealth.session'
 
 export interface StoredSession {
-  token: AccessToken
   profile: UserProfile
 }
 
 export function loadSession(): StoredSession | null {
   try {
     const s = JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null') as StoredSession | null
-    return s?.profile?.email && s.token?.value ? s : null
+    // Remove legacy tokens even when the profile is malformed.
+    localStorage.removeItem(SESSION_KEY)
+    if (typeof s?.profile?.email !== 'string' || !s.profile.email) return null
+    const profile: UserProfile = {
+      sub: typeof s.profile.sub === 'string' ? s.profile.sub : '',
+      email: s.profile.email,
+      name: typeof s.profile.name === 'string' ? s.profile.name : s.profile.email,
+      picture: typeof s.profile.picture === 'string' ? s.profile.picture : undefined,
+    }
+    storeSession({ profile })
+    return { profile }
   } catch {
+    clearSession()
     return null
   }
 }
 
 export function storeSession(session: StoredSession): void {
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    const { sub, email, name, picture } = session.profile
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ profile: { sub, email, name, picture } }))
   } catch {
     // Storage blocked (private mode): the user simply signs in again next time.
   }

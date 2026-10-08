@@ -2,6 +2,7 @@
 // The file lives in a visible "We Wealth" folder so the user can see, download or delete it.
 
 import type { AccessToken } from './auth'
+import { encryptData, type EncryptionContext } from '../encryption'
 
 const API = 'https://www.googleapis.com/drive/v3/files'
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files'
@@ -60,7 +61,7 @@ export interface DriveFile<T> {
 }
 
 // Returns null when the user has no data file yet. `parse` validates the file's contents.
-export async function loadData<T>(token: AccessToken, parse: (raw: unknown) => T): Promise<DriveFile<T> | null> {
+export async function loadData<T>(token: AccessToken, parse: (raw: unknown) => T | Promise<T>): Promise<DriveFile<T> | null> {
   const fileId = await findFile(token, APP_PROP.data)
   if (!fileId) return null
   const res = await driveFetch(token, `${API}/${fileId}?alt=media`)
@@ -70,12 +71,12 @@ export async function loadData<T>(token: AccessToken, parse: (raw: unknown) => T
   } catch {
     throw new Error(`Drive 中的 ${DATA_FILE_NAME} 不是有效的 JSON，請修正或刪除該檔案後重新登入。`)
   }
-  return { fileId, data: parse(raw) }
+  return { fileId, data: await parse(raw) }
 }
 
 // Creates the file on first save; afterwards overwrites the same file.
-export async function saveData<T>(token: AccessToken, data: T, fileId?: string): Promise<string> {
-  const content = JSON.stringify(data, null, 2)
+export async function saveData<T>(token: AccessToken, data: T, fileId?: string, encryption?: EncryptionContext): Promise<string> {
+  const content = JSON.stringify(encryption ? await encryptData(data, encryption) : data, null, 2)
   if (fileId) {
     await driveFetch(token, `${UPLOAD}/${fileId}?uploadType=media&fields=id`, {
       method: 'PATCH',

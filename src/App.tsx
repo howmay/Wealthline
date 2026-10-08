@@ -5,6 +5,7 @@ import {
   isFresh,
   loadSession,
   requestAccessToken,
+  renewAccessToken,
   revokeAccessToken,
   storeSession,
   type AccessToken,
@@ -24,6 +25,8 @@ import { Landing } from './views/Landing'
 import { LegalPage } from './views/Legal'
 import { usePage } from './site'
 import { Logo, SiteFooter } from './views/Site'
+import { createEncryption, decryptData, isEncryptedData, type EncryptionContext } from './encryption'
+import { EncryptionDialog } from './views/EncryptionDialog'
 
 const TABS = { overview: '總覽', accounts: '帳戶', history: '歷史', rates: '匯率' }
 type Tab = keyof typeof TABS
@@ -33,6 +36,12 @@ type Status = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'error
 export default function App() {
   const token = useRef<AccessToken | null>(null)
   const fileId = useRef<string | undefined>(undefined)
+  const encryption = useRef<EncryptionContext | undefined>(undefined)
+  const [encryptionPending, setEncryptionPending] = useState(false)
+  const sessionVersion = useRef(0)
+  const [passwordRequest, setPasswordRequest] = useState<{
+    creating: boolean; resolve: (password: string) => void; reject: (error: Error) => void
+  } | null>(null)
   // The version last read from or written to Drive; each save records what changed since it.
   const saved = useRef<WealthData | null>(null)
   const [user, setUser] = useState<UserProfile | null>(null)
@@ -50,6 +59,13 @@ export default function App() {
   // The notice pages are open to everyone; the app's own state stays mounted behind them.
   const page = usePage()
 
+  const askPassword = (creating: boolean) => new Promise<string>((resolve, reject) => {
+    setPasswordRequest({ creating, resolve, reject })
+  })
+  const passwordDialog = passwordRequest && <EncryptionDialog creating={passwordRequest.creating}
+    onSubmit={(password) => { setPasswordRequest(null); passwordRequest.resolve(password) }}
+    onCancel={() => { setPasswordRequest(null); passwordRequest.reject(new Error('已取消，Drive 檔案未被修改。')) }} />
+
   // Warn before closing the tab with unsaved edits.
   useEffect(() => {
     if (!dirty) return
@@ -58,11 +74,11 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
 
-  // Access tokens last about an hour; get a new one silently a minute before expiry.
+  // Renew on save, verifying the account before any Drive write.
   async function validToken(): Promise<AccessToken> {
     if (!token.current || !isFresh(token.current)) {
-      token.current = await requestAccessToken('', user?.email)
-      if (user) storeSession({ token: token.current, profile: user })
+      if (!user) throw new Error('請先登入')
+      token.current = await renewAccessToken(user)
     }
     return token.current
   }
@@ -77,12 +93,21 @@ export default function App() {
     }
   }
 
-  async function openSession(t: AccessToken, profile?: UserProfile) {
+  async function openSession(t: AccessToken) {
+    const p = await fetchProfile(t)
+    let context: EncryptionContext | undefined
+    const file = await loadData(t, async (raw) => {
+      if (!isEncryptedData(raw)) return parseWealthData(raw)
+      const unlocked = await decryptData(raw, await askPassword(false))
+      context = unlocked.context
+      return parseWealthData(unlocked.data)
+    })
+    sessionVersion.current++
+    encryption.current = context
+    setEncryptionPending(false)
     token.current = t
-    const p = profile ?? (await fetchProfile(t))
-    storeSession({ token: t, profile: p })
+    storeSession({ profile: p })
     setUser(p)
-    const file = await loadData(t, parseWealthData)
     fileId.current = file?.fileId
     saved.current = file?.data ?? null
     const loaded = file?.data ?? emptyData()
@@ -94,7 +119,9 @@ export default function App() {
   // Updates holding prices, then exchange rates (new quotes can bring new currencies).
   // Like rates, prices stay in memory until the next save.
   async function refreshMarket(from: WealthData) {
+    const version = sessionVersion.current
     const { quotes, failed } = await fetchHoldingQuotes(from)
+    if (version !== sessionVersion.current) return
     const at = new Date().toISOString()
     setData((d) => (d ? applyQuotes(d, quotes, at) : d))
     setPriceError(failed.length ? `找不到 ${failed.join('、')} 的報價，可以點價格手動輸入。` : '')
@@ -105,35 +132,18 @@ export default function App() {
   // Updates exchange rates in the background. The new rates are kept in memory and
   // written to Drive with the next save, so opening the app never leaves unsaved changes.
   async function refreshRates(from: WealthData) {
+    const version = sessionVersion.current
     setRatesError('')
     try {
       const r = await fetchRates(usedCurrencies(from))
+      if (version !== sessionVersion.current) return
       setData((d) => (d ? applyFetchedRates(d, r.rates, r.updatedAt) : d))
       if (r.unsupported.length) setRatesError(`找不到 ${r.unsupported.join('、')} 的匯率，請手動輸入。`)
     } catch (e) {
+      if (version !== sessionVersion.current) return
       setRatesError(e instanceof Error ? e.message : String(e))
     }
   }
-
-  // Restore the last session on load while its token is still valid.
-  const restored = useRef(false)
-  useEffect(() => {
-    if (restored.current) return
-    restored.current = true
-    const s = loadSession()
-    if (!s || !isFresh(s.token)) return
-    void run('載入中…', async () => {
-      try {
-        await openSession(s.token, s.profile)
-      } catch {
-        // Token revoked or rejected: fall back to the one-click resume button.
-        token.current = null
-        setUser(null)
-        setData(null)
-      }
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const signIn = () =>
     run('登入中…', async () => {
@@ -150,7 +160,10 @@ export default function App() {
 
   const signOut = () =>
     run('登出中…', async () => {
-      if (token.current) await revokeAccessToken(token.current)
+      const previous = token.current
+      sessionVersion.current++
+      encryption.current = undefined
+      setEncryptionPending(false)
       clearSession()
       token.current = null
       fileId.current = undefined
@@ -158,18 +171,38 @@ export default function App() {
       setReturning(null)
       setUser(null)
       setData(null)
+      setDirty(false)
+      setReviewing(false)
+      // Local logout must finish even if Google's revoke request fails or hangs.
+      if (previous) void revokeAccessToken(previous).catch(() => {})
     })
 
   const save = () =>
     run('儲存到 Google Drive…', async () => {
       if (!data) return
       const next = recordSave(saved.current, { ...data, updatedAt: new Date().toISOString() })
-      fileId.current = await saveData(await validToken(), next, fileId.current)
+      fileId.current = await saveData(await validToken(), next, fileId.current, encryption.current)
       saved.current = next
       setData(next)
       setDirty(false)
       setReviewing(false)
+      setEncryptionPending(false)
     })
+
+  const enableEncryption = () => run('加密並儲存到 Google Drive…', async () => {
+    if (!data || dirty || encryption.current) return
+    const context = await createEncryption(await askPassword(true))
+    // A network failure can occur after Drive accepted ciphertext. Keep the key so
+    // retrying can never silently downgrade the file back to plaintext.
+    encryption.current = context
+    setEncryptionPending(true)
+    setDirty(true)
+    const id = await saveData(await validToken(), data, fileId.current, context)
+    fileId.current = id
+    saved.current = data
+    setEncryptionPending(false)
+    setDirty(false)
+  })
 
   const requestSave = () => {
     if (data && pendingChanges(saved.current, data).length) setReviewing(true)
@@ -200,22 +233,23 @@ export default function App() {
     window.scrollTo({ top: 0 })
   }
 
-  if (page) return <LegalPage page={page} signedIn={!!user} />
+  if (page) return <><LegalPage page={page} signedIn={!!user} />{passwordDialog}</>
 
   if (!user) {
     return (
-      <Landing
+      <><Landing
         returning={returning}
         busy={busy}
         message={status.kind === 'idle' ? null : status}
         onSignIn={signIn}
         onResume={resume}
-      />
+      />{passwordDialog}</>
     )
   }
 
   return (
     <>
+      {passwordDialog}
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
@@ -254,6 +288,10 @@ export default function App() {
                 <span className="muted small">
                   資料檔：我的雲端硬碟 / {FOLDER_NAME} / {DATA_FILE_NAME}
                 </span>
+                {encryption.current ? <span className="muted small">{encryptionPending ? '加密尚未同步，請重試儲存' : '已啟用密碼加密'}</span> : <>
+                  <button onClick={enableEncryption} disabled={busy || dirty || !data}>啟用資料加密</button>
+                  {dirty && <span className="muted small">請先確認並儲存變更，再啟用加密。</span>}
+                </>}
                 <button onClick={signOut} disabled={busy}>
                   登出
                 </button>
