@@ -36,7 +36,7 @@ export function LegalPage({ page, signedIn }: { page: PageKey; signedIn: boolean
               Wealthline {PAGES[page].en}
             </span>
           </h1>
-          <p className="muted small">生效日期：{EFFECTIVE}</p>
+          <p className="muted small">生效日期／最後更新：{EFFECTIVE}</p>
           {page === 'privacy' && <Privacy />}
           {page === 'terms' && <Terms />}
           {page === 'disclaimer' && <Disclaimer />}
@@ -202,7 +202,9 @@ function Privacy() {
       </Section>
 
       <Section title="十二、政策變更">
-        <p>本政策如有修改，會更新本頁的生效日期，並可在 GitHub 的版本紀錄中查到每一次的變更內容。</p>
+        <p>
+          本政策如有修改，會更新本頁的「最後更新日期」，並可在 GitHub 的版本紀錄中查到每一次的變更內容。若修改內容涉及 Google 使用者資料的存取、使用、存放或分享方式，登入後的 App 內會顯示通知並連到新版政策；以新的方式使用 Google 使用者資料前，會再次取得你的同意。
+        </p>
       </Section>
 
     </>
@@ -238,7 +240,7 @@ function PrivacyEnglish() {
   return (
     <section className="legal-en" lang="en" id="english">
       <h2>Wealthline Privacy Policy (English)</h2>
-      <p className="muted small">Effective date: October 8, 2026 · App: Wealthline · Website: {SITE_URL} · Developer: {AUTHOR}</p>
+      <p className="muted small">Effective date: October 8, 2026 · Last updated: October 8, 2026 · App: Wealthline · Website: {SITE_URL} · Developer: {AUTHOR}</p>
       <p>
         This privacy policy explains how <strong>Wealthline</strong> (<a href={SITE_URL}>{SITE_HOST}</a>), a free, open-source personal asset tracking web app,
         accesses, uses, stores, shares and deletes Google user data. Wealthline lets you record bank balances, stocks, funds and crypto holdings and shows your
@@ -325,7 +327,11 @@ function PrivacyEnglish() {
       <p>Wealthline is not directed at children under 13 and does not knowingly process their personal data.</p>
 
       <h3>9. Changes to this policy</h3>
-      <p>When this policy changes, the effective date above is updated, and every change is visible in the GitHub history.</p>
+      <p>
+        When this policy changes, we update the "Last updated" date above, and every change is visible in the public GitHub history. If a change affects how
+        Wealthline accesses, uses, stores or shares Google user data, signed-in users see a notice inside the app that links to the updated policy, and we
+        will ask for your consent again before using Google user data in a new way.
+      </p>
 
       <h3>10. Contact</h3>
       <p>

@@ -1,0 +1,20 @@
+# Cloudflare static asset headers. HTML must always be revalidated so a new
+# deploy (for example an updated privacy policy) is served right away.
+/
+  Cache-Control: public, max-age=0, must-revalidate
+  Cloudflare-CDN-Cache-Control: no-store
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+  Cloudflare-CDN-Cache-Control: no-store
+/privacy
+  Cache-Control: public, max-age=0, must-revalidate
+  Cloudflare-CDN-Cache-Control: no-store
+/terms
+  Cache-Control: public, max-age=0, must-revalidate
+  Cloudflare-CDN-Cache-Control: no-store
+/disclaimer
+  Cache-Control: public, max-age=0, must-revalidate
+  Cloudflare-CDN-Cache-Control: no-store
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+  Cloudflare-CDN-Cache-Control: no-store

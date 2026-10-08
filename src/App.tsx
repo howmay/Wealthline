@@ -22,8 +22,8 @@ import { Rates } from './views/Rates'
 import { SaveReview } from './views/SaveReview'
 import { Landing } from './views/Landing'
 import { LegalPage } from './views/Legal'
-import { usePage } from './site'
-import { Logo, SiteFooter } from './views/Site'
+import { PAGES, usePage } from './site'
+import { Link, Logo, PrivacyNotice, SiteFooter } from './views/Site'
 
 const TABS = { overview: '總覽', accounts: '帳戶', history: '歷史', rates: '匯率' }
 type Tab = keyof typeof TABS
@@ -254,6 +254,9 @@ export default function App() {
                 <span className="muted small">
                   資料檔：我的雲端硬碟 / {FOLDER_NAME} / {DATA_FILE_NAME}
                 </span>
+                <Link to={PAGES.privacy.path} className="small">
+                  隱私權政策 Privacy Policy
+                </Link>
                 <button onClick={signOut} disabled={busy}>
                   登出
                 </button>
@@ -278,6 +281,7 @@ export default function App() {
       )}
 
       <main className="content">
+        <PrivacyNotice />
         {status.kind === 'busy' && !data && <p className="muted">{status.text}</p>}
         {status.kind === 'error' && <p className="banner error">{status.text}</p>}
 

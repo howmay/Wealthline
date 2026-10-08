@@ -12,6 +12,10 @@ export const LICENSE_ZH_URL = `${REPO_URL}/blob/main/LICENSE.zh-TW.md`
 export const AUTHOR = 'Harvey Chen'
 export const AUTHOR_URL = 'https://github.com/zhChenOuO'
 
+// Bump when the privacy policy changes in a way that affects Google user data;
+// signed-in users then see a notice in the app (PrivacyNotice in views/Site.tsx).
+export const PRIVACY_UPDATED = '2026-10-08'
+
 export const PAGES = {
   privacy: { path: '/privacy', title: '隱私權政策', en: 'Privacy Policy' },
   terms: { path: '/terms', title: '使用條款', en: 'Terms of Service' },

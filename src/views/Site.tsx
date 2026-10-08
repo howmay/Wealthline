@@ -1,7 +1,7 @@
 // Site-wide components shared by the signed-out pages and the app: links, the logo and the footer.
 
-import { useId, type AnchorHTMLAttributes, type MouseEvent } from 'react'
-import { AUTHOR, AUTHOR_URL, LICENSE_ZH_URL, PAGES, REPO_URL, navigate, type PageKey } from '../site'
+import { useId, useState, type AnchorHTMLAttributes, type MouseEvent } from 'react'
+import { AUTHOR, AUTHOR_URL, LICENSE_ZH_URL, PAGES, PRIVACY_UPDATED, REPO_URL, navigate, type PageKey } from '../site'
 
 // An in-app link: a real <a href> (so it can be opened in a new tab) that navigates without a reload.
 export function Link({ to, onClick, ...rest }: { to: string } & AnchorHTMLAttributes<HTMLAnchorElement>) {
@@ -67,5 +67,40 @@ export function SiteFooter() {
         </nav>
       </div>
     </footer>
+  )
+}
+
+const PRIVACY_SEEN_KEY = 'wealthline.privacySeen'
+
+// Tells a returning user that the privacy policy changed since they last used the app.
+// A first visit just records the current version: the user agreed to it when signing in.
+export function PrivacyNotice() {
+  const [show, setShow] = useState(() => {
+    try {
+      const seen = localStorage.getItem(PRIVACY_SEEN_KEY)
+      if (!seen) localStorage.setItem(PRIVACY_SEEN_KEY, PRIVACY_UPDATED)
+      return !!seen && seen !== PRIVACY_UPDATED
+    } catch {
+      return false
+    }
+  })
+  if (!show) return null
+  const dismiss = () => {
+    try {
+      localStorage.setItem(PRIVACY_SEEN_KEY, PRIVACY_UPDATED)
+    } catch {
+      // Storage blocked: the notice simply shows again next time.
+    }
+    setShow(false)
+  }
+  return (
+    <div className="banner privacy-notice" role="status">
+      <span>
+        隱私權政策已於 {PRIVACY_UPDATED} 更新。<Link to={PAGES.privacy.path}>查看變更內容</Link>
+      </span>
+      <button className="small" onClick={dismiss}>
+        知道了
+      </button>
+    </div>
   )
 }
