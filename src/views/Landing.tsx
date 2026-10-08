@@ -30,16 +30,23 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
       <main>
         <section className="hero">
           <div className="hero-copy">
-            <p className="pill">開放原始碼 · 免費 · 資料自主</p>
-            <h1>
+            <h1 className="hero-name">
+              Wealthline
+              <span className="pill">個人資產統計 · Personal asset tracker</span>
+            </h1>
+            <p className="hero-tagline">
               你的資產，
               <br />
               存在你自己的
               <br />
               <span className="accent-text">Google Drive</span>
-            </h1>
+            </p>
             <p className="lead">
-              用帳戶整理銀行存款、股票、基金與加密貨幣，自動換算匯率與報價，一眼看清資產配置。沒有後端資料庫，作者也看不到你的資料。
+              Wealthline 是免費、開放原始碼的個人資產統計工具：用帳戶整理銀行存款、股票、基金與加密貨幣，自動換算匯率與報價，一眼看清資產配置。沒有後端資料庫，作者也看不到你的資料。
+            </p>
+            <p className="lead lead-en" lang="en">
+              Wealthline is a free, open-source web app that tracks your bank balances, stocks, funds and crypto in one place and shows your net worth and asset
+              allocation. Your data is saved only in your own Google Drive.
             </p>
             <div className="signin-box">
               {returning ? (

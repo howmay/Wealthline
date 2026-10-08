@@ -365,8 +365,27 @@ a.button.ghost {
   font-weight: 600;
 }
 
-.hero h1 {
+.hero-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+}
+
+.hero-name .pill {
+  font-size: 0.8rem;
+}
+
+.lead-en {
+  margin-top: 8px;
+  font-size: 0.95rem;
+}
+
+.hero-tagline {
   margin-top: 16px;
+  font-weight: 700;
   font-size: clamp(1.9rem, 4.2vw, 2.9rem);
   line-height: 1.2;
   letter-spacing: -0.02em;
@@ -827,9 +846,21 @@ a.button.ghost {
 }
 
 .legal-en {
-  margin-top: 40px;
+  margin-top: 20px;
+}
+
+.legal-zh-title {
+  margin-top: 40px !important;
   padding-top: 24px;
   border-top: 2px solid var(--hairline);
+}
+
+.legal-h1-en {
+  display: block;
+  margin-top: 4px;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--ink-2);
 }
 
 .legal-en h3 {

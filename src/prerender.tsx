@@ -12,12 +12,12 @@ const noop = () => {}
 export const routes: { file: string; title: string; html: () => string }[] = [
   {
     file: 'index.html',
-    title: 'Wealthline｜個人資產統計',
+    title: 'Wealthline｜個人資產統計 Personal Asset Tracker',
     html: () => renderToStaticMarkup(<Landing returning={null} busy={false} message={null} onSignIn={noop} onResume={noop} />),
   },
   ...(Object.keys(PAGES) as PageKey[]).map((k) => ({
     file: `${k}.html`,
-    title: `${PAGES[k].title}｜Wealthline`,
+    title: `${PAGES[k].title}｜Wealthline ${PAGES[k].en}`,
     html: () => renderToStaticMarkup(<LegalPage page={k} signedIn={false} />),
   })),
 ]
