@@ -42,10 +42,9 @@
 ## 目前支援的功能
 
 ### 登入與資料保存
-- [x] 使用 Google 帳號登入（Google Identity Services），權杖只留在記憶體；重新整理頁面後可一鍵以同一帳號繼續。
+- [x] 使用 Google 帳號登入（Google Identity Services），權杖只存放在目前分頁的 sessionStorage，重新整理頁面後保持登入，關閉分頁即失效；權杖過期後可一鍵以同一帳號繼續。
 - [x] 資料以 JSON 檔存放在使用者自己的 Google Drive，儲存前有未儲存變更提示，關閉分頁前會提醒。
 - [x] 登出時撤銷 Google 存取權杖並清除本機登入資訊。
-- [x] 可選密碼加密：在右上角帳號選單選「啟用資料加密」，以 AES-256-GCM 在瀏覽器加密後才上傳 Drive。
 
 ### 帳戶與持倉
 - [x] 先建立帳戶（銀行帳戶／投資帳戶），設定國家、幣別與資產類別。
@@ -75,7 +74,7 @@
 
 ## 規劃中的功能
 
-以下為預計方向，尚未排定時程，順序不代表優先度。歡迎在 [Issues](https://github.com/howmay/we-wealth/issues) 提出建議。
+以下為預計方向，尚未排定時程，順序不代表優先度。歡迎在 [Issues](https://github.com/howmay/Wealthline/issues) 提出建議。
 
 - [ ] **長期登入**：以伺服器端 refresh token 流程延長登入時間，不必每小時重新授權。
 - [ ] **匯出報表**：匯出 CSV／Excel，或產生月度資產報告。
@@ -85,9 +84,10 @@
 - [ ] **目標配置與再平衡**：設定目標比例，提示偏離與建議調整金額。
 - [ ] **多基準幣別**：可切換以新臺幣以外的幣別（如美元、新幣）呈現總資產。
 - [ ] **自訂資產類別與標籤**。
+- [ ] **資料加密**：可選擇以使用者自訂密碼在瀏覽器端加密 Drive 中的資料檔。
 - [ ] **離線使用（PWA）**：安裝到手機主畫面，離線檢視最近一次資料。
 - [ ] **多語系**：英文介面。
-- [ ] **CI**（已有安全與加密回歸測試）。
+- [ ] **CI**（已有安全回歸測試）。
 
 ## 技術架構
 
@@ -102,11 +102,9 @@
 
 唯一的伺服器端程式是報價查詢 `/api/quote`：Yahoo Finance 不允許瀏覽器跨站請求，所以由這個小程式轉發。它只收到股票代號，不含數量、金額或使用者身分，也不記錄任何內容。
 
-存取權杖只留在記憶體，重新整理或關閉頁面即失去；localStorage 只保存 Google 帳號識別碼、名稱、電子郵件與大頭貼網址，供下次繼續登入。舊版保存的權杖會在讀取時移除。重新授權時會核對 Google 帳號識別碼，避免把目前資料存到其他帳號。
+存取權杖只存放在目前分頁的 sessionStorage（重新整理保持登入，關閉分頁或瀏覽器即失去，不與其他分頁共用）；localStorage 只保存 Google 帳號識別碼、名稱、電子郵件與大頭貼網址，供下次繼續登入，並記錄最後看過的隱私權政策版本。舊版保存的權杖會在讀取時移除。重新授權時會核對 Google 帳號識別碼，避免把目前資料存到其他帳號。
 
-資料預設仍為可讀 JSON。啟用加密前須先儲存變更，使用至少 12 個字元的獨立長密碼；每次重新登入都需輸入該密碼。使用 Web Crypto 的 PBKDF2-SHA256（600,000 次、隨機 16-byte salt）導出 AES-256-GCM 金鑰，每次儲存使用新的隨機 12-byte IV。密碼不保存、不上傳，金鑰只留在記憶體，忘記密碼無法復原。
 
-加密只保護啟用後上傳的檔案內容；既有 Drive 歷史版本、下載備份與分享權限不會自動清除或修改。啟用前請關閉其他裝置及分頁中的舊工作階段，避免舊工作階段覆寫檔案。解鎖中的頁面仍需信任網站程式與瀏覽器環境。
 
 ## 本機開發
 
@@ -125,9 +123,8 @@
 | `npm run build` | 型別檢查並建置到 `dist/` |
 | `npm run preview` | 預覽建置結果 |
 | `npm run lint` | oxlint |
-| `npm test` | 登入、安全標頭、Drive 讀寫與加密回歸測試（Node.js 22.18+） |
+| `npm test` | 登入、安全標頭與 Drive 讀寫回歸測試（Node.js 22.18+） |
 
-介面回歸可使用 `VITE_GOOGLE_CLIENT_ID=test-client npm run dev`，開啟 `/tests/browser.html`。這個測試頁使用虛構 Google 帳號與 Drive 回應，不會存取真實帳號，也不包含在正式建置中。可驗證啟用加密、錯誤密碼、重新解鎖及撤銷失敗仍可登出；加上 `?failUpload=1` 可模擬 Drive 收到密文後回應失敗，重試儲存應維持加密。
 
 `sharp` 暫時以 npm override 鎖定 0.35.5，修補 Wrangler / Miniflare 間接引入的 [GHSA-wq5f-xc86-pv6w](https://github.com/advisories/GHSA-wq5f-xc86-pv6w)。待上游正式更新並通過 `npm audit` 與 Worker 驗證後，可移除此 override。`npm audit` 無漏洞不代表網站不存在其他漏洞。
 
@@ -147,7 +144,6 @@
 | --- | --- |
 | `src/google/auth.ts` | 載入 GIS、取得／撤銷 access token、讀取使用者資料、保存登入狀態 |
 | `src/google/drive.ts` | 在 Drive 中尋找、建立、讀取、覆寫資料檔 |
-| `src/encryption.ts` | 瀏覽器端密碼金鑰導出、認證加密與解密 |
 | `src/model.ts` | 資料檔格式（帳戶、餘額／持倉、匯率）、讀取驗證與統計函式 |
 | `src/quotes.ts`、`server/yahoo.ts`、`worker/index.ts` | 持倉報價：代號轉換與 Yahoo Finance 查詢 |
 | `src/rates.ts` | 匯率：ExchangeRate-API 與 CoinGecko |
@@ -167,8 +163,12 @@
 
 ## 審查與回報
 
-- 一般問題與建議：[GitHub Issues](https://github.com/howmay/we-wealth/issues)。
-- 安全漏洞：請勿公開細節，改用 GitHub 的[私下回報安全漏洞](https://github.com/howmay/we-wealth/security/advisories/new)功能。
+- 一般問題與建議：[GitHub Issues](https://github.com/howmay/Wealthline/issues)。
+- 安全漏洞：請勿公開細節，改用 GitHub 的[私下回報安全漏洞](https://github.com/howmay/Wealthline/security/advisories/new)功能。
+
+## 營運者
+
+Wealthline 由 GitHub 組織 [howmay](https://github.com/howmay) 營運，網站為 <https://wealthline.haomeh.com>。
 
 ## 授權
 

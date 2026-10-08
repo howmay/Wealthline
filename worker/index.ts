@@ -13,6 +13,11 @@ export default {
       ? await handleQuoteRequest(url)
       : await env.ASSETS.fetch(request)
     const response = new Response(result.body, result)
+    // run_worker_first bypasses public/_headers, so keep HTML revalidated here (see that file).
+    if (response.headers.get('Content-Type')?.includes('text/html')) {
+      response.headers.set('Cache-Control', 'public, max-age=0, must-revalidate')
+      response.headers.set('Cloudflare-CDN-Cache-Control', 'no-store')
+    }
     response.headers.set('Content-Security-Policy', [
       "default-src 'self'",
       "script-src 'self' https://accounts.google.com/gsi/client",

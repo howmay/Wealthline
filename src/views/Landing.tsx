@@ -42,7 +42,7 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
               <span className="accent-text">Google Drive</span>
             </p>
             <p className="lead">
-              Wealthline 是免費、開放原始碼的個人資產統計工具：用帳戶整理銀行存款、股票、基金與加密貨幣，自動換算匯率與報價，一眼看清資產配置。沒有後端資料庫，作者也看不到你的資料。
+              Wealthline 是免費、開放原始碼的個人資產統計工具：用帳戶整理銀行存款、股票、基金與加密貨幣，自動換算匯率與報價，一眼看清資產配置。沒有後端資料庫，營運者也看不到你的資料。
             </p>
             <p className="lead lead-en" lang="en">
               Wealthline is a free, open-source web app that tracks your bank balances, stocks, funds and crypto in one place and shows your net worth and asset
@@ -158,7 +158,7 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
           <div>
             <h2>程式碼完全公開，歡迎審查</h2>
             <p className="muted">
-              處理你財務資料的程式，應該讓任何人都能檢查。完整原始碼放在 GitHub，個人學習、研究與教育用途可以自由使用與修改；商業用途需取得作者書面授權。
+              處理你財務資料的程式，應該讓任何人都能檢查。完整原始碼放在 GitHub，個人學習、研究與教育用途可以自由使用與修改；商業用途需取得作者書面授權。Wealthline 由 GitHub 組織 howmay 營運。
             </p>
           </div>
           <div className="row">

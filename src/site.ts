@@ -4,13 +4,20 @@ import { useSyncExternalStore } from 'react'
 
 export const SITE_HOST = 'wealthline.haomeh.com'
 export const SITE_URL = `https://${SITE_HOST}`
-export const REPO_URL = 'https://github.com/howmay/we-wealth'
+export const REPO_URL = 'https://github.com/howmay/Wealthline'
 export const ISSUES_URL = `${REPO_URL}/issues`
 export const SECURITY_URL = `${REPO_URL}/security/advisories/new`
 export const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`
 export const LICENSE_ZH_URL = `${REPO_URL}/blob/main/LICENSE.zh-TW.md`
+// The organization that operates the app; the copyright holder in LICENSE is AUTHOR.
+export const OPERATOR = 'howmay'
+export const OPERATOR_URL = 'https://github.com/howmay'
 export const AUTHOR = 'Harvey Chen'
 export const AUTHOR_URL = 'https://github.com/zhChenOuO'
+
+// Bump when the privacy policy changes in a way that affects Google user data;
+// signed-in users then see a notice in the app (PrivacyNotice in views/Site.tsx).
+export const PRIVACY_UPDATED = '2026-10-09'
 
 export const PAGES = {
   privacy: { path: '/privacy', title: '隱私權政策', en: 'Privacy Policy' },
