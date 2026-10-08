@@ -66,6 +66,34 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
           <Preview />
         </section>
 
+        <section className="landing-section about" aria-labelledby="about-title">
+          <h2 id="about-title">Wealthline 是做什麼的</h2>
+          <div className="about-grid">
+            <div>
+              <p>
+                Wealthline 是免費、開放原始碼的<strong>個人資產統計網頁工具</strong>。你可以建立自己的銀行與投資帳戶，記錄各幣別存款、股票、基金與加密貨幣持倉；Wealthline
+                會自動查詢價格與匯率，換算成新臺幣，呈現總資產、資產配置、幣別曝險與每日走勢。
+              </p>
+              <p>
+                使用 Google 登入，是為了把你的資料存進<strong>你自己的 Google Drive</strong>：本服務只要求 <code>drive.file</code> 權限，只能存取它自己建立的一個資料檔，以及你的名稱、電子郵件與大頭貼，用來顯示登入身分。詳見
+                <Link to={PAGES.privacy.path}>隱私權政策</Link>。
+              </p>
+            </div>
+            <div lang="en" className="about-en">
+              <p>
+                <strong>Wealthline</strong> is a free, open-source web app for tracking your personal assets. Create your bank and brokerage accounts, record cash
+                balances, stocks, funds and crypto holdings, and Wealthline fetches prices and exchange rates to show your total net worth, asset allocation, currency
+                exposure and daily trend.
+              </p>
+              <p>
+                Google sign-in is used to save your data in <strong>your own Google Drive</strong>. Wealthline requests only the <code>drive.file</code> scope, so it can
+                access only the single data file it creates, plus your name, email and profile picture to show who is signed in. See the{' '}
+                <Link to={PAGES.privacy.path}>privacy policy</Link>.
+              </p>
+            </div>
+          </div>
+        </section>
+
         <section className="landing-section">
           <h2>需要的功能都在這裡</h2>
           <div className="feature-grid">

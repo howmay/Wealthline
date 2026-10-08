@@ -13,6 +13,8 @@
 2. 使用者類型選 **外部（External）**。
 3. 填入應用程式名稱、使用者支援電子郵件、開發人員聯絡資訊。應用程式標誌可以用 `public/icon-512.png`（Google 要求 120×120 以上的正方形圖片）。
    「應用程式網域」填入正式網址的頁面：首頁 `https://wealthline.haomeh.com/`、隱私權政策 `https://wealthline.haomeh.com/privacy`、服務條款 `https://wealthline.haomeh.com/terms`，授權網域填 `haomeh.com`。這三頁不需登入即可瀏覽，發布應用程式時 Google 會檢查。
+   這三頁在建置時會預先產生靜態 HTML（`scripts/prerender.mjs`），不執行 JavaScript 也能讀到內容。
+   首頁網域必須先在 [Google Search Console](https://search.google.com/search-console) 驗證為你所有，而且要用擁有這個 Cloud 專案的同一個 Google 帳號驗證：新增「網域」資源 `haomeh.com`，把 Google 提供的 TXT 記錄加到 DNS（Cloudflare → DNS → 新增 TXT 記錄，名稱填 `@`）。驗證成功後，等 24 小時再重新送出品牌驗證。
 4. 在「資料存取（Scopes）」加入：
    - `openid`
    - `.../auth/userinfo.email`
