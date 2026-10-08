@@ -67,11 +67,15 @@ export interface WealthData {
   updatedAt: string
   // How many TWD one unit of each currency is worth.
   fxRates: Record<string, number>
+  // Currencies whose rate the user typed in; automatic updates leave these alone.
+  fxManual: string[]
+  // When rates were last fetched automatically.
+  fxUpdatedAt?: string
   accounts: Account[]
 }
 
 export function emptyData(): WealthData {
-  return { version: 1, updatedAt: new Date().toISOString(), fxRates: {}, accounts: [] }
+  return { version: 1, updatedAt: new Date().toISOString(), fxRates: {}, fxManual: [], accounts: [] }
 }
 
 export const newId = () => crypto.randomUUID()
@@ -97,6 +101,19 @@ export function usedCurrencies(data: WealthData): string[] {
   set.delete(BASE_CURRENCY)
   return [...set].sort()
 }
+
+// Merges automatically fetched rates, keeping the ones the user set by hand.
+export function applyFetchedRates(data: WealthData, rates: Record<string, number>, updatedAt: string): WealthData {
+  const fxRates = { ...data.fxRates }
+  for (const [c, r] of Object.entries(rates)) if (!data.fxManual.includes(c)) fxRates[c] = r
+  return { ...data, fxRates, fxUpdatedAt: updatedAt }
+}
+
+// Rates are refreshed on open when missing or older than six hours.
+export const ratesStale = (data: WealthData) =>
+  missingRates(data).some((c) => !data.fxManual.includes(c)) ||
+  !data.fxUpdatedAt ||
+  Date.now() - Date.parse(data.fxUpdatedAt) > 6 * 3600_000
 
 export const missingRates = (data: WealthData) => usedCurrencies(data).filter((c) => !(data.fxRates[c] > 0))
 
@@ -171,5 +188,13 @@ export function parseWealthData(raw: unknown): WealthData {
     }
   })
 
-  return { version: 1, updatedAt: str(obj.updatedAt) || new Date().toISOString(), fxRates, accounts }
+  const fxManual = Array.isArray(obj.fxManual) ? obj.fxManual.filter((c): c is string => typeof c === 'string') : []
+  return {
+    version: 1,
+    updatedAt: str(obj.updatedAt) || new Date().toISOString(),
+    fxRates,
+    fxManual,
+    fxUpdatedAt: str(obj.fxUpdatedAt) || undefined,
+    accounts,
+  }
 }

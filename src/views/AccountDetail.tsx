@@ -35,29 +35,32 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack }: Pr
       <button className="link back" onClick={onBack}>
         ← 所有帳戶
       </button>
-      <div className="account-head">
+      <section className="panel account-head">
         <div>
           <h2>{a.name}</h2>
-          <p className="muted">
-            {[ACCOUNT_KINDS[a.kind], countryLabel(a.country), a.category, a.purpose].filter(Boolean).join(' · ')}
-          </p>
+          <div className="meta">
+            <span className="tag">{ACCOUNT_KINDS[a.kind]}</span>
+            {a.country && <span className="tag">{countryLabel(a.country)}</span>}
+            <span className="tag">{a.category}</span>
+            {a.purpose && <span className="tag">{a.purpose}</span>}
+          </div>
         </div>
         <div className="total">
-          <span className="muted">合計 {BASE_CURRENCY}</span>
-          <strong>{fmt(accountBaseValue(data, a), 0)}</strong>
+          <span className="eyebrow">合計</span>
+          <strong>NT$ {fmt(accountBaseValue(data, a), 0)}</strong>
+          <button className="ghost small" onClick={onEdit}>
+            編輯帳戶設定
+          </button>
         </div>
-      </div>
-      <div className="row">
-        <button onClick={onEdit}>編輯帳戶設定</button>
-      </div>
+      </section>
 
-      <section className="card">
+      <section className="panel">
         <h3>{a.kind === 'bank' ? '餘額' : '可用金額'}</h3>
         {cash.length === 0 && <p className="muted">尚未設定幣別，請按「編輯帳戶設定」選擇持有幣別。</p>}
         {cash.map((p) => (
           <div className="balance" key={p.id}>
-            <span className="ccy">{p.currency}</span>
-            <NumberInput value={p.quantity} onCommit={(v) => setPosition({ ...p, quantity: v })} aria-label={`${p.currency} 餘額`} />
+            <span className="ccy-badge">{p.currency}</span>
+            <NumberInput className="amount-input" value={p.quantity} onCommit={(v) => setPosition({ ...p, quantity: v })} aria-label={`${p.currency} 餘額`} />
             <span className="muted num">
               {p.currency === BASE_CURRENCY
                 ? ''
@@ -70,11 +73,11 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack }: Pr
       </section>
 
       {(a.kind === 'investment' || holdings.length > 0) && (
-        <section className="card">
+        <section className="panel">
           <h3>持有標的</h3>
           {holdings.length > 0 && (
             <div className="scroll">
-              <table>
+              <table className="data">
                 <thead>
                   <tr>
                     <th>標的</th>
@@ -90,13 +93,13 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack }: Pr
                   {holdings.map((p) => (
                     <tr key={p.id}>
                       <td>
-                        <input value={p.symbol} onChange={(e) => setPosition({ ...p, symbol: e.target.value })} size={10} />
+                        <input className="cell-input" value={p.symbol} onChange={(e) => setPosition({ ...p, symbol: e.target.value })} size={10} />
                       </td>
                       <td className="num">
-                        <NumberInput value={p.quantity} onCommit={(v) => setPosition({ ...p, quantity: v })} size={10} />
+                        <NumberInput className="cell-input" value={p.quantity} onCommit={(v) => setPosition({ ...p, quantity: v })} size={10} />
                       </td>
                       <td className="num">
-                        <NumberInput value={p.price} onCommit={(v) => setPosition({ ...p, price: v })} size={8} />
+                        <NumberInput className="cell-input" value={p.price} onCommit={(v) => setPosition({ ...p, price: v })} size={8} />
                       </td>
                       <td>{p.currency}</td>
                       <td className="num">{fmt(positionValue(p))}</td>
@@ -150,7 +153,9 @@ function AddHolding({ currencies, onAdd }: { currencies: string[]; onAdd: (p: Po
           <option key={c}>{c}</option>
         ))}
       </select>
-      <button type="submit">＋ 新增標的</button>
+      <button type="submit" className="primary">
+        ＋ 新增標的
+      </button>
     </form>
   )
 }

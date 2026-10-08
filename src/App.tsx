@@ -11,8 +11,9 @@ import {
   type UserProfile,
 } from './google/auth'
 import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData } from './google/drive'
-import { emptyData, parseWealthData, type WealthData } from './model'
-import { Accounts } from './views/Accounts'
+import { applyFetchedRates, emptyData, parseWealthData, ratesStale, usedCurrencies, type WealthData } from './model'
+import { fetchRates } from './rates'
+import { Accounts, type AccountsView } from './views/Accounts'
 import { Overview } from './views/Overview'
 import { Rates } from './views/Rates'
 
@@ -29,6 +30,8 @@ export default function App() {
   const [dirty, setDirty] = useState(false)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [tab, setTab] = useState<Tab>('overview')
+  const [accountsView, setAccountsView] = useState<AccountsView>({ page: 'list' })
+  const [ratesError, setRatesError] = useState('')
   // A previous session whose token has expired: offer one-click resume as this account.
   const [returning, setReturning] = useState<UserProfile | null>(() => loadSession()?.profile ?? null)
 
@@ -66,8 +69,23 @@ export default function App() {
     setUser(p)
     const file = await loadData(t, parseWealthData)
     fileId.current = file?.fileId
-    setData(file?.data ?? emptyData())
+    const loaded = file?.data ?? emptyData()
+    setData(loaded)
     setDirty(false)
+    if (ratesStale(loaded)) void refreshRates(loaded)
+  }
+
+  // Updates exchange rates in the background. The new rates are kept in memory and
+  // written to Drive with the next save, so opening the app never leaves unsaved changes.
+  async function refreshRates(from: WealthData) {
+    setRatesError('')
+    try {
+      const r = await fetchRates(usedCurrencies(from))
+      setData((d) => (d ? applyFetchedRates(d, r.rates, r.updatedAt) : d))
+      if (r.unsupported.length) setRatesError(`找不到 ${r.unsupported.join('、')} 的匯率，請手動輸入。`)
+    } catch (e) {
+      setRatesError(e instanceof Error ? e.message : String(e))
+    }
   }
 
   // Restore the last session on load while its token is still valid.
@@ -130,69 +148,131 @@ export default function App() {
 
   const busy = status.kind === 'busy'
 
-  return (
-    <main>
-      <header>
-        <h1>We Wealth</h1>
-        {user && (
-          <div className="user">
-            {user.picture && <img src={user.picture} alt="" referrerPolicy="no-referrer" />}
-            <span>{user.email}</span>
-            <button onClick={signOut} disabled={busy}>
-              登出
-            </button>
+  function go(t: Tab, view?: AccountsView) {
+    setTab(t)
+    if (view) setAccountsView(view)
+    window.scrollTo({ top: 0 })
+  }
+
+  if (!user) {
+    return (
+      <main className="signin-page">
+        <section className="signin-card">
+          <div className="brand big">
+            <span className="logo" aria-hidden>
+              W
+            </span>
+            We Wealth
           </div>
-        )}
-      </header>
-
-      {status.kind === 'busy' && <p className="status">{status.text}</p>}
-      {status.kind === 'error' && <p className="status error">{status.text}</p>}
-
-      {!user ? (
-        <section className="signin">
-          <p>使用 Google 帳號登入。所有資料只存放在你自己的 Google Drive 中。</p>
+          <h1>你的資產，存在你自己的 Google Drive</h1>
+          <ul className="features">
+            <li>用帳戶整理銀行餘額、股票與加密貨幣</li>
+            <li>自動換算匯率，看清資產配置與幣別曝險</li>
+            <li>資料只在你的雲端硬碟，隨時可以查看或刪除</li>
+          </ul>
           {returning ? (
-            <div className="row">
-              <button onClick={resume} disabled={busy}>
-                以 {returning.email} 繼續
+            <div className="stack">
+              <button className="google" onClick={resume} disabled={busy}>
+                <GoogleMark />以 {returning.email} 繼續
               </button>
-              <button className="secondary" onClick={signIn} disabled={busy}>
+              <button className="ghost" onClick={signIn} disabled={busy}>
                 使用其他帳號
               </button>
             </div>
           ) : (
-            <button onClick={signIn} disabled={busy}>
+            <button className="google" onClick={signIn} disabled={busy}>
+              <GoogleMark />
               使用 Google 登入
             </button>
           )}
+          {status.kind === 'busy' && <p className="muted">{status.text}</p>}
+          {status.kind === 'error' && <p className="error">{status.text}</p>}
         </section>
-      ) : (
-        data && (
-          <>
-            <nav className="tabs">
-              {(Object.keys(TABS) as Tab[]).map((t) => (
-                <button key={t} className={t === tab ? 'active' : ''} onClick={() => setTab(t)}>
-                  {TABS[t]}
-                </button>
-              ))}
-            </nav>
+      </main>
+    )
+  }
 
-            {tab === 'overview' && <Overview data={data} onGoRates={() => setTab('rates')} />}
-            {tab === 'accounts' && <Accounts data={data} onChange={update} />}
-            {tab === 'rates' && <Rates data={data} onChange={update} />}
-
-            <footer>
-              <button onClick={save} disabled={busy || !dirty}>
-                {dirty ? '儲存到 Google Drive' : '已儲存'}
+  return (
+    <>
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="brand">
+            <span className="logo" aria-hidden>
+              W
+            </span>
+            <span className="brand-name">We Wealth</span>
+          </div>
+          <nav className="tabs" aria-label="分頁">
+            {(Object.keys(TABS) as Tab[]).map((t) => (
+              <button
+                key={t}
+                className={t === tab ? 'active' : ''}
+                aria-current={t === tab ? 'page' : undefined}
+                onClick={() => go(t, t === 'accounts' ? { page: 'list' } : undefined)}
+              >
+                {TABS[t]}
               </button>
-              <small>
-                檔案位置：我的雲端硬碟 / {FOLDER_NAME} / {DATA_FILE_NAME}
-                {data.updatedAt && `（最後更新 ${new Date(data.updatedAt).toLocaleString('zh-TW')}）`}
-              </small>
-            </footer>
-          </>
-        )
-      )}
-    </main>
+            ))}
+          </nav>
+          <div className="topbar-right">
+            {dirty ? (
+              <button className="primary save" onClick={save} disabled={busy}>
+                {busy ? '儲存中…' : '儲存變更'}
+              </button>
+            ) : (
+              <span className="synced" title={`我的雲端硬碟 / ${FOLDER_NAME} / ${DATA_FILE_NAME}`}>
+                <span aria-hidden>✓</span> 已同步
+              </span>
+            )}
+            <details className="account-menu">
+              <summary aria-label="帳號選單">
+                {user.picture ? <img src={user.picture} alt="" referrerPolicy="no-referrer" /> : <span className="avatar">{user.email[0]}</span>}
+              </summary>
+              <div className="menu">
+                <strong>{user.name}</strong>
+                <span className="muted">{user.email}</span>
+                <span className="muted small">
+                  資料檔：我的雲端硬碟 / {FOLDER_NAME} / {DATA_FILE_NAME}
+                </span>
+                <button onClick={signOut} disabled={busy}>
+                  登出
+                </button>
+              </div>
+            </details>
+          </div>
+        </div>
+      </header>
+
+      <main className="content">
+        {status.kind === 'busy' && !data && <p className="muted">{status.text}</p>}
+        {status.kind === 'error' && <p className="banner error">{status.text}</p>}
+
+        {data && tab === 'overview' && (
+          <Overview
+            data={data}
+            onGoRates={() => go('rates')}
+            onNewAccount={() => go('accounts', { page: 'new' })}
+            onImport={() => go('accounts', { page: 'list', importing: true })}
+            onOpenAccount={(name) => {
+              const a = data.accounts.find((x) => x.name === name)
+              if (a) go('accounts', { page: 'detail', id: a.id })
+            }}
+          />
+        )}
+        {data && tab === 'accounts' && <Accounts data={data} onChange={update} view={accountsView} setView={setAccountsView} />}
+        {data && tab === 'rates' && <Rates data={data} onChange={update} onRefresh={() => refreshRates(data)} error={ratesError} />}
+      </main>
+    </>
+  )
+}
+
+function GoogleMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
+      <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+    </svg>
   )
 }

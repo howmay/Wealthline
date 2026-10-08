@@ -4,6 +4,19 @@
 import { BASE_CURRENCY, newId, type Account, type WealthData } from './model'
 
 const COUNTRY_SUFFIX = /\s+(TW|SG|US|JP|HK|UK|CN)$/i
+const COUNTRY_BY_CATEGORY: [RegExp, string][] = [
+  [/台股/, 'TW'],
+  [/美股/, 'US'],
+  [/新股/, 'SG'],
+]
+
+// Name suffix first ("HSBC SG"), then the market in the category, then Chinese names as Taiwan.
+function guessCountry(name: string, category: string): string {
+  const suffix = name.match(COUNTRY_SUFFIX)?.[1]
+  if (suffix) return suffix.toUpperCase()
+  for (const [re, code] of COUNTRY_BY_CATEGORY) if (re.test(category)) return code
+  return /[\u4e00-\u9fff]/.test(name) ? 'TW' : ''
+}
 
 function toNumber(cell: string | undefined): number {
   return Number((cell ?? '').replace(/[$,\s%]/g, ''))
@@ -48,7 +61,7 @@ export function importSheet(data: WealthData, text: string): ImportResult {
         id: existing?.id ?? newId(),
         name,
         kind: isCash ? 'bank' : 'investment',
-        country: existing?.country || (name.match(COUNTRY_SUFFIX)?.[1].toUpperCase() ?? ''),
+        country: existing?.country || guessCountry(name, category ?? ''),
         category: category || existing?.category || '其他',
         purpose: cells[10] || existing?.purpose || '',
         positions: [],

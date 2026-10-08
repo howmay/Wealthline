@@ -66,7 +66,7 @@ export function AccountForm({ account, purposes, onSave, onCancel, onDelete }: P
   }
 
   return (
-    <form className="card form" onSubmit={submit}>
+    <form className="panel form" onSubmit={submit}>
       <h3>{account ? '編輯帳戶' : '新增帳戶'}</h3>
 
       <div className="field">

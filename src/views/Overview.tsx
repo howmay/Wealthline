@@ -1,56 +1,99 @@
-import { ACCOUNT_KINDS, BASE_CURRENCY, breakdown, countryLabel, missingRates, type WealthData } from '../model'
-import { fmt, pct } from '../format'
+import { fmt } from '../format'
+import {
+  CATEGORIES,
+  COMMON_CURRENCIES,
+  COUNTRIES,
+  breakdown,
+  countryLabel,
+  missingRates,
+  type WealthData,
+} from '../model'
+import { colorize } from '../chartColors'
+import { Allocation, RankBars } from './charts'
 
-const GROUPS: { title: string; key: Parameters<typeof breakdown>[1] }[] = [
-  { title: '依資產類別', key: (a) => a.category },
-  { title: '依帳戶', key: (a) => a.name },
-  { title: '依幣別', key: (_, p) => p.currency },
-  { title: '依國家', key: (a) => countryLabel(a.country) },
-  { title: '依帳戶類型', key: (a) => ACCOUNT_KINDS[a.kind] },
-  { title: '依用途', key: (a) => a.purpose },
-]
+interface Props {
+  data: WealthData
+  onGoRates: () => void
+  onNewAccount: () => void
+  onImport: () => void
+  onOpenAccount: (name: string) => void
+}
 
-export function Overview({ data, onGoRates }: { data: WealthData; onGoRates: () => void }) {
+export function Overview({ data, onGoRates, onNewAccount, onImport, onOpenAccount }: Props) {
+  if (data.accounts.length === 0) {
+    return (
+      <section className="panel empty">
+        <div className="empty-mark" aria-hidden>
+          ＄
+        </div>
+        <h2>開始記錄你的資產</h2>
+        <p className="muted">先建立銀行或投資帳戶，再填入餘額與持倉。也可以直接貼上現有的試算表。</p>
+        <div className="row center">
+          <button className="primary" onClick={onNewAccount}>
+            建立第一個帳戶
+          </button>
+          <button onClick={onImport}>從試算表匯入</button>
+        </div>
+      </section>
+    )
+  }
+
   const missing = missingRates(data)
-  const { total } = breakdown(data, () => '')
-
-  if (data.accounts.length === 0) return <p className="muted">尚無帳戶，請到「帳戶」分頁新增，或貼上試算表匯入。</p>
+  const byCategory = breakdown(data, (a) => a.category)
+  const purposes = [...new Set(data.accounts.map((a) => a.purpose).filter(Boolean))]
 
   return (
-    <>
-      <div className="hero">
-        <span className="muted">總資產（{BASE_CURRENCY}）</span>
-        <strong>{fmt(total, 0)}</strong>
-      </div>
-      {missing.length > 0 && (
-        <p className="warn">
-          {missing.join('、')} 尚未設定匯率，這些部位沒有計入總額。
-          <button className="link" onClick={onGoRates}>
-            設定匯率
-          </button>
+    <div className="overview">
+      <section className="panel hero">
+        <span className="eyebrow">總資產</span>
+        <div className="hero-figure">
+          <small>NT$</small>
+          {fmt(byCategory.total, 0)}
+        </div>
+        <p className="muted">
+          {data.accounts.length} 個帳戶
+          {data.fxUpdatedAt && ` · 匯率更新於 ${new Date(data.fxUpdatedAt).toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' })}`}
         </p>
-      )}
-      <div className="grid">
-        {GROUPS.map(({ title, key }) => (
-          <section key={title} className="card">
-            <h3>{title}</h3>
-            <table className="breakdown">
-              <tbody>
-                {breakdown(data, key).slices.map((s) => (
-                  <tr key={s.label}>
-                    <td>{s.label}</td>
-                    <td className="bar">
-                      <span style={{ width: pct(s.share) }} />
-                    </td>
-                    <td className="num">{fmt(s.value, 0)}</td>
-                    <td className="num muted">{pct(s.share)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        ))}
-      </div>
-    </>
+        {missing.length > 0 && (
+          <p className="notice">
+            <span aria-hidden>⚠</span> {missing.join('、')} 沒有匯率，未計入總額。
+            <button className="link" onClick={onGoRates}>
+              查看匯率
+            </button>
+          </p>
+        )}
+      </section>
+
+      <section className="panel span-2">
+        <h3>資產配置</h3>
+        <Allocation slices={colorize(byCategory.slices, CATEGORIES)} />
+      </section>
+
+      <section className="panel">
+        <h3>帳戶</h3>
+        <RankBars slices={breakdown(data, (a) => a.name).slices} onSelect={onOpenAccount} />
+      </section>
+
+      <section className="panel">
+        <h3>幣別曝險</h3>
+        <Allocation slices={colorize(breakdown(data, (_, p) => p.currency).slices, COMMON_CURRENCIES)} />
+      </section>
+
+      <section className="panel">
+        <h3>國家</h3>
+        <Allocation
+          slices={colorize(
+            breakdown(data, (a) => (a.country ? countryLabel(a.country) : '')).slices,
+            Object.values(COUNTRIES),
+          )}
+        />
+      </section>
+
+      <section className="panel">
+        <h3>用途</h3>
+        <Allocation slices={colorize(breakdown(data, (a) => a.purpose).slices, purposes)} />
+      </section>
+    </div>
   )
 }
+
