@@ -220,7 +220,7 @@ export default function App() {
         <div className="topbar-inner">
           <div className="brand">
             <Logo />
-            <span className="brand-name">We Wealth</span>
+            <span className="brand-name">Wealthline</span>
           </div>
           <nav className="tabs" aria-label="分頁">
             {(Object.keys(TABS) as Tab[]).map((t) => (

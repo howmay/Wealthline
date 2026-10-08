@@ -3,7 +3,7 @@ import { defineConfig, type Plugin } from 'vite'
 import { handleQuoteRequest } from './server/yahoo.ts'
 
 // Serves /api/quote during `npm run dev` and `npm run preview`, mirroring the
-// Cloudflare Pages Function in functions/api/quote.ts.
+// Cloudflare Worker in worker/index.ts.
 function quoteApi(): Plugin {
   const middleware = async (req: { url?: string }, res: import('node:http').ServerResponse, next: () => void) => {
     if (!req.url?.startsWith('/api/quote')) return next()

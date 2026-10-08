@@ -12,7 +12,9 @@
 1. 前往「API 和服務 → OAuth 同意畫面」（新版介面稱為 Google Auth Platform → 品牌）。
 2. 使用者類型選 **外部（External）**。
 3. 填入應用程式名稱、使用者支援電子郵件、開發人員聯絡資訊。應用程式標誌可以用 `public/icon-512.png`（Google 要求 120×120 以上的正方形圖片）。
-   「應用程式網域」填入正式網址的頁面：首頁 `https://<你的網域>/`、隱私權政策 `https://<你的網域>/privacy`、服務條款 `https://<你的網域>/terms`。這三頁不需登入即可瀏覽，發布應用程式時 Google 會檢查。
+   「應用程式網域」填入正式網址的頁面：首頁 `https://wealthline.haomeh.com/`、隱私權政策 `https://wealthline.haomeh.com/privacy`、服務條款 `https://wealthline.haomeh.com/terms`，授權網域填 `haomeh.com`。這三頁不需登入即可瀏覽，發布應用程式時 Google 會檢查。
+   這三頁在建置時會預先產生靜態 HTML（`scripts/prerender.mjs`），不執行 JavaScript 也能讀到內容。
+   首頁網域必須先在 [Google Search Console](https://search.google.com/search-console) 驗證為你所有，而且要用擁有這個 Cloud 專案的同一個 Google 帳號驗證：新增「網域」資源 `haomeh.com`，把 Google 提供的 TXT 記錄加到 DNS（Cloudflare → DNS → 新增 TXT 記錄，名稱填 `@`）。驗證成功後，等 24 小時再重新送出品牌驗證。
 4. 在「資料存取（Scopes）」加入：
    - `openid`
    - `.../auth/userinfo.email`
@@ -29,7 +31,7 @@
 3. 「已授權的 JavaScript 來源」加入：
    - `http://localhost:5173`（本機開發）
    - `http://localhost:4173`（`npm run preview`）
-   - 正式部署的網址，例如 `https://we-wealth.pages.dev`
+   - 正式部署的網址，例如 `https://wealthline.haomeh.com`
 
    只填「協定 + 網域 + port」，結尾不要加 `/` 或路徑。`localhost` 和 `127.0.0.1` 算不同來源，要和瀏覽器網址列完全一致。存檔後通常要等 5 分鐘到幾小時才會生效。
 4. 「已授權的重新導向 URI」留空即可（使用 Google Identity Services 的 token 彈出視窗流程，不需要 redirect）。
@@ -44,7 +46,7 @@ npm install
 npm run dev
 ```
 
-部署到 Cloudflare Pages（或其他靜態主機）時，在建置環境變數中設定 `VITE_GOOGLE_CLIENT_ID`，並記得把正式網址加入「已授權的 JavaScript 來源」。用戶端 ID 會出現在前端程式碼中，這是正常的，它不是機密。
+部署到 Cloudflare Workers 時，在 Workers Builds 的建置環境變數中設定 `VITE_GOOGLE_CLIENT_ID`，並記得把正式網址加入「已授權的 JavaScript 來源」。用戶端 ID 會出現在前端程式碼中，這是正常的，它不是機密。
 
 ## 常見錯誤
 

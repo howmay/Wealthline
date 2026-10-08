@@ -2,6 +2,8 @@
 
 import { useSyncExternalStore } from 'react'
 
+export const SITE_HOST = 'wealthline.haomeh.com'
+export const SITE_URL = `https://${SITE_HOST}`
 export const REPO_URL = 'https://github.com/howmay/we-wealth'
 export const ISSUES_URL = `${REPO_URL}/issues`
 export const SECURITY_URL = `${REPO_URL}/security/advisories/new`
@@ -17,7 +19,7 @@ export const PAGES = {
 } as const
 export type PageKey = keyof typeof PAGES
 
-// Cloudflare Pages serves index.html for unknown paths, so these routes work on reload too.
+// Cloudflare serves index.html for unknown paths (wrangler.jsonc), so these routes work on reload too.
 const subscribe = (cb: () => void) => {
   window.addEventListener('popstate', cb)
   return () => window.removeEventListener('popstate', cb)
