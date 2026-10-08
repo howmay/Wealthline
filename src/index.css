@@ -74,7 +74,8 @@ button:disabled {
 }
 
 .signin button,
-footer button {
+footer button,
+button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
@@ -246,30 +247,143 @@ textarea {
   gap: 12px;
 }
 
-.account-head .title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  flex: 1;
+h2 {
+  margin: 0;
 }
 
-.fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-top: 8px;
+.account-head p {
+  margin: 4px 0 0;
 }
 
-.fields label {
+.total {
   display: flex;
   flex-direction: column;
-  font-size: 0.8rem;
-  color: var(--muted);
-  gap: 2px;
+  align-items: flex-end;
 }
 
-.fields input,
-.fields select {
-  color: var(--fg);
+.total strong {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+button.back {
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.account-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.account-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.account-list button {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  grid-template-areas: 'name value chevron' 'meta value chevron';
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 0;
+  text-align: left;
+}
+
+.account-list button:hover {
+  background: var(--surface);
+}
+
+.account-list .name {
+  grid-area: name;
+  font-weight: 600;
+}
+
+.account-list .meta {
+  grid-area: meta;
+  font-size: 0.85rem;
+}
+
+.account-list .num {
+  grid-area: value;
+}
+
+.form {
+  max-width: 560px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 14px 0;
+}
+
+.field > span {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border-radius: 999px;
+}
+
+.chip small {
+  color: var(--muted);
+}
+
+.chip.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.choices .chip:has(small) {
+  border-radius: 8px;
+  padding: 8px 14px;
+  min-width: 160px;
+}
+
+.push-right {
+  margin-left: auto;
+}
+
+.balance {
+  display: grid;
+  grid-template-columns: 4rem minmax(0, 220px) 1fr;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.balance .ccy {
+  font-weight: 600;
+}
+
+.balance input {
+  text-align: right;
+  font-size: 1.1rem;
+}
+
+.balance .num {
+  text-align: left;
 }
 
 .scroll {

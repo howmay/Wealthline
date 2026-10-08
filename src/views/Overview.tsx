@@ -1,11 +1,11 @@
-import { ACCOUNT_KINDS, BASE_CURRENCY, breakdown, missingRates, type WealthData } from '../model'
+import { ACCOUNT_KINDS, BASE_CURRENCY, breakdown, countryLabel, missingRates, type WealthData } from '../model'
 import { fmt, pct } from '../format'
 
 const GROUPS: { title: string; key: Parameters<typeof breakdown>[1] }[] = [
   { title: '依資產類別', key: (a) => a.category },
   { title: '依帳戶', key: (a) => a.name },
   { title: '依幣別', key: (_, p) => p.currency },
-  { title: '依國家', key: (a) => a.country },
+  { title: '依國家', key: (a) => countryLabel(a.country) },
   { title: '依帳戶類型', key: (a) => ACCOUNT_KINDS[a.kind] },
   { title: '依用途', key: (a) => a.purpose },
 ]

@@ -13,6 +13,31 @@ export const CATEGORIES = [
   '其他',
 ]
 
+export const COUNTRIES: Record<string, string> = {
+  TW: '台灣',
+  SG: '新加坡',
+  US: '美國',
+  JP: '日本',
+  HK: '香港',
+  GLOBAL: '全球 / 不限',
+}
+export const countryLabel = (code: string) => COUNTRIES[code] ?? code
+
+export const COMMON_CURRENCIES = ['TWD', 'USD', 'SGD', 'JPY', 'HKD', 'EUR', 'CNY', 'USDT']
+const HOME_CURRENCY: Record<string, string> = { TW: 'TWD', SG: 'SGD', US: 'USD', JP: 'JPY', HK: 'HKD' }
+export const homeCurrency = (country: string) => HOME_CURRENCY[country] ?? 'USD'
+
+export function defaultCategory(kind: AccountKind, country: string): string {
+  if (kind === 'bank') return '現金與外幣活存'
+  if (country === 'TW') return '國內股票 (台股)'
+  if (country === 'US') return '海外股票 (美股)'
+  if (country === 'SG') return '海外股票 (新股)'
+  return '其他'
+}
+
+// Currencies an account holds cash in, in the order they were added.
+export const cashCurrencies = (a: Account) => [...new Set(a.positions.filter((p) => p.type === 'cash').map((p) => p.currency))]
+
 // A bank account only holds currency balances; an investment account holds
 // available cash plus holdings (stocks, funds, coins).
 export type AccountKind = 'bank' | 'investment'
