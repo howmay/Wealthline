@@ -1,7 +1,7 @@
 // Site-wide components shared by the signed-out pages and the app: links, the logo and the footer.
 
 import { useId, useState, type AnchorHTMLAttributes, type MouseEvent } from 'react'
-import { AUTHOR, AUTHOR_URL, LICENSE_ZH_URL, PAGES, PRIVACY_UPDATED, REPO_URL, navigate, type PageKey } from '../site'
+import { AUTHOR, AUTHOR_URL, LICENSE_ZH_URL, OPERATOR, OPERATOR_URL, PAGES, PRIVACY_UPDATED, REPO_URL, navigate, type PageKey } from '../site'
 
 // An in-app link: a real <a href> (so it can be opened in a new tab) that navigates without a reload.
 export function Link({ to, onClick, ...rest }: { to: string } & AnchorHTMLAttributes<HTMLAnchorElement>) {
@@ -51,7 +51,7 @@ export function SiteFooter() {
         <div className="site-footer-brand">
           <Logo size={20} />
           <span>
-            © 2026 <a href={AUTHOR_URL}>{AUTHOR}</a> · 開放原始碼，非商業授權
+            © 2026 <a href={AUTHOR_URL}>{AUTHOR}</a> · 由 <a href={OPERATOR_URL}>{OPERATOR}</a> 營運 · 開放原始碼，非商業授權
           </span>
         </div>
         <nav aria-label="網站資訊">
