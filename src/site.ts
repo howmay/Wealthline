@@ -13,9 +13,9 @@ export const AUTHOR = 'Harvey Chen'
 export const AUTHOR_URL = 'https://github.com/zhChenOuO'
 
 export const PAGES = {
-  privacy: { path: '/privacy', title: '隱私權政策' },
-  terms: { path: '/terms', title: '使用條款' },
-  disclaimer: { path: '/disclaimer', title: '免責聲明' },
+  privacy: { path: '/privacy', title: '隱私權政策', en: 'Privacy Policy' },
+  terms: { path: '/terms', title: '使用條款', en: 'Terms of Service' },
+  disclaimer: { path: '/disclaimer', title: '免責聲明', en: 'Disclaimer' },
 } as const
 export type PageKey = keyof typeof PAGES
 

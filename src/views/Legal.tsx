@@ -30,7 +30,12 @@ export function LegalPage({ page, signedIn }: { page: PageKey; signedIn: boolean
           ))}
         </nav>
         <article>
-          <h1>{PAGES[page].title}</h1>
+          <h1>
+            {PAGES[page].title}
+            <span className="legal-h1-en" lang="en">
+              Wealthline {PAGES[page].en}
+            </span>
+          </h1>
           <p className="muted small">生效日期：{EFFECTIVE}</p>
           {page === 'privacy' && <Privacy />}
           {page === 'terms' && <Terms />}
@@ -77,10 +82,12 @@ const SCOPES = [
 function Privacy() {
   return (
     <>
+      <PrivacyEnglish />
+      <h2 className="legal-zh-title">中文版</h2>
       <p className="legal-lead">
         Wealthline（<a href={SITE_URL}>{SITE_HOST}</a>）是一個開放原始碼的個人資產統計工具，讓你記錄銀行存款、股票、基金與加密貨幣，並換算成新臺幣看清資產配置。
         我們的設計原則很簡單：<strong>你的資產資料只存在你自己的 Google Drive</strong>，作者沒有任何伺服器或資料庫保存它，也看不到它。
-        本政策說明本服務存取哪些資料、如何使用、存放、分享與刪除。英文版本附於本頁下方。
+        本政策說明本服務存取哪些資料、如何使用、存放、分享與刪除。英文版本在本頁上方，兩者內容相同。
       </p>
 
       <Section title="一、適用範圍與聯絡方式">
@@ -198,7 +205,6 @@ function Privacy() {
         <p>本政策如有修改，會更新本頁的生效日期，並可在 GitHub 的版本紀錄中查到每一次的變更內容。</p>
       </Section>
 
-      <PrivacyEnglish />
     </>
   )
 }
@@ -230,80 +236,101 @@ function ScopeTable({ lang }: { lang: 'zh' | 'en' }) {
 
 function PrivacyEnglish() {
   return (
-    <section className="legal-en" lang="en">
-      <h2>Privacy Policy (English)</h2>
-      <p className="muted small">Effective date: October 8, 2026</p>
+    <section className="legal-en" lang="en" id="english">
+      <h2>Wealthline Privacy Policy (English)</h2>
+      <p className="muted small">Effective date: October 8, 2026 · App: Wealthline · Website: {SITE_URL} · Developer: {AUTHOR}</p>
       <p>
-        Wealthline (<a href={SITE_URL}>{SITE_HOST}</a>) is an open-source personal asset tracker. You record bank balances, stocks, funds and crypto holdings, and
-        Wealthline converts them to Taiwan dollars (TWD) and shows how your assets are allocated. <strong>Your data is stored only in your own Google Drive.</strong>{' '}
-        Wealthline has no backend database, and its developer cannot see your data. Wealthline is developed by {AUTHOR}; contact is through{' '}
-        <a href={ISSUES_URL}>GitHub Issues</a>.
+        This privacy policy explains how <strong>Wealthline</strong> (<a href={SITE_URL}>{SITE_HOST}</a>), a free, open-source personal asset tracking web app,
+        accesses, uses, stores, shares and deletes Google user data. Wealthline lets you record bank balances, stocks, funds and crypto holdings and shows your
+        total net worth and asset allocation. <strong>All of your data is stored only in your own Google Drive.</strong> Wealthline has no backend database,
+        and its developer cannot see your data.
       </p>
 
-      <h3>Google permissions we request</h3>
+      <h3>1. Google user data we access</h3>
+      <p>When you sign in with Google, Wealthline requests only these scopes:</p>
       <ScopeTable lang="en" />
-      <p>Wealthline does not request any other Google permission, such as Gmail, Contacts, Calendar or full Drive access.</p>
-
-      <h3>Data we access and how we use it</h3>
+      <p>From these scopes Wealthline accesses:</p>
       <ul>
+        <li>your Google account <strong>email address, name and profile picture URL</strong>;</li>
         <li>
-          <strong>Google account basics</strong> (email, name, profile picture URL): to show who is signed in and to offer one-click sign-in.
+          the <strong>single data file</strong> that Wealthline creates in your Google Drive (<code>My Drive / {FOLDER_NAME} / {DATA_FILE_NAME}</code>),
+          which holds the accounts, balances, holdings, exchange rates, daily snapshots and edit log that you enter;
         </li>
-        <li>
-          <strong>Google access token</strong> (expires after about one hour): to call the Google Drive API on your behalf.
-        </li>
-        <li>
-          <strong>Asset data you enter</strong> (accounts, balances, holdings by ticker and quantity, exchange rates, daily snapshots and an edit log): to calculate and
-          display your asset statistics.
-        </li>
+        <li>a short-lived <strong>OAuth access token</strong> (about one hour) used to call the Google Drive API on your behalf.</li>
+      </ul>
+      <p>Wealthline does not access Gmail, Contacts, Calendar or any other file in your Google Drive.</p>
+
+      <h3>2. How we use Google user data</h3>
+      <p>Google user data is used only to provide the features you see in the app:</p>
+      <ul>
+        <li>your email, name and picture are shown in the account menu so you know which account is signed in, and your email lets you sign in again with one click;</li>
+        <li>the Drive file is read to display your asset statistics and written when you press “Save”.</li>
       </ul>
       <p>
-        This data is used only to provide the features you see. We do not sell, rent or share it, use it for advertising or profiling, use it to train AI or machine
-        learning models, or let anyone, including the developer, read it.
+        Wealthline does not use Google user data for advertising, does not sell it, does not use it for credit or lending decisions, does not build user
+        profiles or databases from it, and does not let any person read it. Wealthline does not use Google user data, including data obtained through
+        Google Workspace APIs, to develop, improve or train generalized or non-personalized AI or machine learning models.
       </p>
 
-      <h3>Storage and retention</h3>
+      <h3>3. How we share, transfer or disclose Google user data</h3>
+      <p>
+        <strong>We do not share, transfer or disclose Google user data with any third party.</strong> Google user data travels only between your browser
+        and Google. To look up market prices, the browser sends only ticker symbols (for example 2330.TW) to the app's own quote relay on Cloudflare
+        Workers, which asks Yahoo Finance, and only currency or coin codes to ExchangeRate-API and CoinGecko. These requests contain no Google user data, no
+        amounts and no identity. Cloudflare hosts the website and may log technical data such as IP addresses under its own policy.
+      </p>
+
+      <h3>4. How we store and protect Google user data</h3>
       <ul>
+        <li>Your asset data is stored in your own Google Drive and protected by your Google account's security. Wealthline keeps no copy on any server.</li>
         <li>
-          Asset data is a JSON file in your Google Drive at <code>My Drive / {FOLDER_NAME} / {DATA_FILE_NAME}</code>. It stays there until you delete it.
+          Sign-in information (access token, email, name and picture URL) is stored only in your browser's localStorage on your device, never on a
+          server.
         </li>
+        <li>All traffic between your browser, Google and Wealthline uses HTTPS (TLS) encryption.</li>
+        <li>Wealthline only requests the narrow drive.file scope, so it cannot reach your other files.</li>
         <li>
-          Sign-in information (the access token, email, name and picture URL) is kept in your browser's localStorage until you sign out. Signing out revokes the token
-          with Google and clears it.
+          The full source code is public on <a href={REPO_URL}>GitHub</a>, so anyone can verify these statements.
         </li>
-        <li>Nothing is stored on any server controlled by the developer.</li>
       </ul>
 
-      <h3>Sharing with third parties</h3>
-      <p>
-        Data obtained from Google APIs is never sent anywhere other than Google. To look up prices, your browser sends only <strong>ticker symbols</strong> (for example
-        2330.TW) to the app's quote relay on Cloudflare Workers, which asks Yahoo Finance, and only currency or coin codes to ExchangeRate-API and CoinGecko. No
-        quantities, amounts or identity are included. Cloudflare hosts the site and may log technical data such as IP addresses under its own policy.
-      </p>
+      <h3>5. Data retention and deletion</h3>
+      <ul>
+        <li>The Drive data file stays in your Drive until you delete it. Delete the "{FOLDER_NAME}" folder and empty the trash to remove it completely.</li>
+        <li>
+          Sign-in information stays in your browser until you sign out. Signing out revokes the access token with Google and clears it. Clearing your
+          browser's site data also removes it.
+        </li>
+        <li>
+          You can revoke Wealthline's access at any time at{' '}
+          <a href="https://myaccount.google.com/connections">Google Account → Third-party apps &amp; services</a>.
+        </li>
+        <li>
+          Because the developer stores none of your data, there is nothing to delete on our side. If you have a deletion or privacy request, open an issue
+          at <a href={ISSUES_URL}>GitHub Issues</a> or contact the developer through <a href={AUTHOR_URL}>GitHub</a>.
+        </li>
+      </ul>
 
-      <h3>Limited Use disclosure</h3>
+      <h3>6. Limited Use disclosure</h3>
       <p>
         Wealthline's use and transfer to any other app of information received from Google APIs will adhere to the{' '}
-        <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.
+        <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use
+        requirements.
       </p>
 
-      <h3>Deleting your data and revoking access</h3>
-      <ul>
-        <li>Delete the "{FOLDER_NAME}" folder in Google Drive and empty the trash. The developer keeps no copy.</li>
-        <li>Sign out in Wealthline, or clear the site's data in your browser.</li>
-        <li>
-          Remove Wealthline's access at <a href="https://myaccount.google.com/connections">Google Account → Third-party connections</a>.
-        </li>
-      </ul>
+      <h3>7. Cookies and tracking</h3>
+      <p>Wealthline uses no cookies, analytics, advertising or tracking technologies.</p>
 
-      <h3>Cookies, security and children</h3>
+      <h3>8. Children</h3>
+      <p>Wealthline is not directed at children under 13 and does not knowingly process their personal data.</p>
+
+      <h3>9. Changes to this policy</h3>
+      <p>When this policy changes, the effective date above is updated, and every change is visible in the GitHub history.</p>
+
+      <h3>10. Contact</h3>
       <p>
-        Wealthline uses no cookies, analytics, advertising or tracking. All connections use HTTPS, and the full source code is public on <a href={REPO_URL}>GitHub</a>.
-        Wealthline is not directed at children.
+        Developer: {AUTHOR}. Contact: <a href={ISSUES_URL}>GitHub Issues</a> or <a href={AUTHOR_URL}>{AUTHOR_URL}</a>.
       </p>
-
-      <h3>Changes</h3>
-      <p>When this policy changes, the effective date on this page is updated, and every change is visible in the GitHub history.</p>
     </section>
   )
 }
