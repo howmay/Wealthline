@@ -666,6 +666,19 @@ a.button.ghost {
   color: var(--ink-2);
 }
 
+.privacy-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--accent-wash);
+}
+
+.privacy-notice a,
+.menu a {
+  color: var(--accent);
+}
+
 /* Site footer */
 
 .site-footer {
