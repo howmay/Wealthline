@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { fmt, pct } from '../format'
 import { localDate, snapshotOf, type Change, type Snapshot } from '../history'
 import { CATEGORIES, type WealthData } from '../model'
@@ -14,10 +14,11 @@ interface Props {
   dirty: boolean
   busy: boolean
   onSave: () => void
+  onChange: (d: WealthData) => void
   onOpenAccount: (id: string) => void
 }
 
-export function HistoryView({ data, dirty, busy, onSave, onOpenAccount }: Props) {
+export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount }: Props) {
   const [mode, setMode] = useState<Mode>('total')
   const [accountFilter, setAccountFilter] = useState('')
   const [now] = useState(() => new Date().toISOString())
@@ -96,8 +97,58 @@ export function HistoryView({ data, dirty, busy, onSave, onOpenAccount }: Props)
           changes={accountFilter ? changes.filter((c) => c.accountId === accountFilter) : changes}
           showAccount={!accountFilter}
           onOpenAccount={(id) => data.accounts.some((a) => a.id === id) && onOpenAccount(id)}
+          onDelete={(c) => {
+            if (!confirm(`刪除「${c.account}」${c.type === 'cash' ? `${c.currency} 餘額` : c.symbol} 的這筆異動紀錄？目前的數字不會改變。`)) return
+            onChange({ ...data, history: { ...data.history, changes: changes.filter((x) => x !== c) } })
+          }}
         />
       </section>
+
+      {saved.length > 0 && (
+        <details className="panel daily">
+          <summary>
+            <h3>每日紀錄</h3>
+            <span className="muted small">{saved.length} 天 · 走勢圖的資料來源，數字不對的那天可以刪掉</span>
+          </summary>
+          <div className="scroll">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th className="num">總資產</th>
+                  <th className="num">帳戶數</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {[...saved].reverse().map((s) => (
+                  <tr key={s.date}>
+                    <td>{s.date.replace(/-/g, '/')}</td>
+                    <td className="num">NT$ {fmt(s.total, 0)}</td>
+                    <td className="num">{s.accounts.length}</td>
+                    <td className="num">
+                      <button
+                        className="icon"
+                        aria-label={`刪除 ${s.date} 的紀錄`}
+                        title="刪除這天的紀錄"
+                        onClick={() => {
+                          if (!confirm(`刪除 ${s.date.replace(/-/g, '/')} 的每日紀錄？`)) return
+                          onChange({ ...data, history: { ...data.history, snapshots: saved.filter((x) => x !== s) } })
+                        }}
+                      >
+                        ×
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {saved.some((s) => s.date === today.date) && (
+            <p className="muted small hint">今天的紀錄會在每次儲存時更新為當下的數字。</p>
+          )}
+        </details>
+      )}
     </>
   )
 }
@@ -171,7 +222,19 @@ function seriesFor(mode: Mode, points: Snapshot[], accountNames: Map<string, str
 
 const signed = (n: number, digits: number) => `${n >= 0 ? '+' : '−'}${fmt(Math.abs(n), digits)}`
 
-function ChangeRow({ c, showAccount, onOpenAccount }: { c: Change; showAccount: boolean; onOpenAccount?: (id: string) => void }) {
+export function ChangeRow({
+  c,
+  showAccount,
+  onOpenAccount,
+  showTime = true,
+  extra,
+}: {
+  c: Change
+  showAccount: boolean
+  onOpenAccount?: (id: string) => void
+  showTime?: boolean
+  extra?: ReactNode
+}) {
   const what = c.type === 'cash' ? `${c.currency} 餘額` : displaySymbol(c.symbol)
   const time = new Date(c.at).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })
   let detail: React.ReactNode
@@ -206,8 +269,8 @@ function ChangeRow({ c, showAccount, onOpenAccount }: { c: Change; showAccount: 
     )
   }
   return (
-    <li>
-      <span className="when muted small">{time}</span>
+    <li className={showTime ? '' : 'no-time'}>
+      {showTime && <span className="when muted small">{time}</span>}
       <span className="what">
         {showAccount &&
           (onOpenAccount ? (
@@ -219,7 +282,10 @@ function ChangeRow({ c, showAccount, onOpenAccount }: { c: Change; showAccount: 
           ))}
         <strong>{what}</strong>
       </span>
-      <span className="detail">{detail}</span>
+      <span className="detail">
+        {detail}
+        {extra}
+      </span>
     </li>
   )
 }
@@ -229,11 +295,13 @@ export function ChangeList({
   changes,
   showAccount = true,
   onOpenAccount,
+  onDelete,
   limit = 60,
 }: {
   changes: Change[]
   showAccount?: boolean
   onOpenAccount?: (id: string) => void
+  onDelete?: (c: Change) => void
   limit?: number
 }) {
   const [shown, setShown] = useState(limit)
@@ -253,7 +321,19 @@ export function ChangeList({
           <h4>{day.replace(/-/g, '/')}</h4>
           <ul>
             {list.map((c, i) => (
-              <ChangeRow key={`${c.at}-${i}`} c={c} showAccount={showAccount} onOpenAccount={onOpenAccount} />
+              <ChangeRow
+                key={`${c.at}-${i}`}
+                c={c}
+                showAccount={showAccount}
+                onOpenAccount={onOpenAccount}
+                extra={
+                  onDelete && (
+                    <button className="icon" aria-label="刪除這筆紀錄" title="刪除這筆紀錄" onClick={() => onDelete(c)}>
+                      ×
+                    </button>
+                  )
+                }
+              />
             ))}
           </ul>
         </div>

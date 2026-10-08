@@ -104,6 +104,32 @@ function upsert(snapshots: Snapshot[], s: Snapshot): Snapshot[] {
   return [...snapshots.filter((x) => x.date !== s.date), s].sort((x, y) => x.date.localeCompare(y.date))
 }
 
+// The edits a save would record, for review before saving.
+export const pendingChanges = (saved: WealthData | null, data: WealthData): Change[] =>
+  diffPositions(saved ?? { ...data, accounts: [] }, data, new Date().toISOString())
+
+// Puts one balance or holding back the way it was at the last save.
+// Returns null when the account itself was deleted (cancel the save to get it back).
+export function revertChange(saved: WealthData | null, data: WealthData, c: Change): WealthData | null {
+  const current = data.accounts.find((a) => a.id === c.accountId)
+  if (!current) return null
+  const key = `${c.type}:${c.type === 'cash' ? c.currency : c.symbol.toUpperCase()}`
+  const original = (saved?.accounts.find((a) => a.id === c.accountId)?.positions ?? []).filter((p) => keyOf(p) === key)
+  const i = current.positions.findIndex((p) => keyOf(p) === key)
+  const others = current.positions.filter((p) => keyOf(p) !== key)
+  // Keep the position where it was in the list.
+  const at = i >= 0 ? i : others.length
+  const positions = [...others.slice(0, at), ...original, ...others.slice(at)]
+  return { ...data, accounts: data.accounts.map((a) => (a.id === current.id ? { ...a, positions } : a)) }
+}
+
+// Share of the earlier quantity that changed; Infinity for something added or removed.
+export function changeRatio(c: Change): number {
+  if (!c.before || !c.after) return Infinity
+  if (c.before.quantity === 0) return c.after.quantity === 0 ? 0 : Infinity
+  return Math.abs(c.after.quantity - c.before.quantity) / Math.abs(c.before.quantity)
+}
+
 // Adds this save to the history: the edits since the last saved version, and today's snapshot.
 // `saved` is the version currently in Drive (null before the first save).
 export function recordSave(saved: WealthData | null, next: WealthData): WealthData {
