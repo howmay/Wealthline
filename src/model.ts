@@ -1,36 +1,102 @@
 // Shape of the JSON file stored in the user's Drive. Bump `version` on breaking changes.
 
-export const ASSET_CATEGORIES = ['現金', '股票', '基金', '加密貨幣', '不動產', '其他'] as const
-export type AssetCategory = (typeof ASSET_CATEGORIES)[number]
+export const BASE_CURRENCY = 'TWD'
 
-export interface Asset {
+export const CATEGORIES = [
+  '現金與外幣活存',
+  '國內股票 (台股)',
+  '海外股票 (美股)',
+  '海外股票 (新股)',
+  '基金與退休金',
+  '加密貨幣資產',
+  '不動產',
+  '其他',
+]
+
+// A bank account only holds currency balances; an investment account holds
+// available cash plus holdings (stocks, funds, coins).
+export type AccountKind = 'bank' | 'investment'
+export const ACCOUNT_KINDS: Record<AccountKind, string> = { bank: '銀行帳戶', investment: '投資帳戶' }
+
+export interface Position {
+  id: string
+  type: 'cash' | 'holding'
+  currency: string
+  symbol: string // empty for cash
+  quantity: number // the balance for cash
+  price: number // always 1 for cash
+}
+
+export interface Account {
   id: string
   name: string
-  category: AssetCategory
-  currency: string
-  amount: number
+  kind: AccountKind
+  country: string
+  category: string
+  purpose: string
+  positions: Position[]
 }
 
 export interface WealthData {
   version: 1
   updatedAt: string
-  assets: Asset[]
+  // How many TWD one unit of each currency is worth.
+  fxRates: Record<string, number>
+  accounts: Account[]
 }
 
 export function emptyData(): WealthData {
-  return { version: 1, updatedAt: new Date().toISOString(), assets: [] }
+  return { version: 1, updatedAt: new Date().toISOString(), fxRates: {}, accounts: [] }
 }
 
-// Totals per currency, then per category within each currency.
-export function totalsByCurrency(assets: Asset[]): Map<string, { total: number; byCategory: Map<AssetCategory, number> }> {
-  const out = new Map<string, { total: number; byCategory: Map<AssetCategory, number> }>()
-  for (const a of assets) {
-    const entry = out.get(a.currency) ?? { total: 0, byCategory: new Map() }
-    entry.total += a.amount
-    entry.byCategory.set(a.category, (entry.byCategory.get(a.category) ?? 0) + a.amount)
-    out.set(a.currency, entry)
+export const newId = () => crypto.randomUUID()
+
+export const positionValue = (p: Position) => p.quantity * p.price
+
+// Returns NaN when the currency has no exchange rate yet.
+export function rateOf(data: WealthData, currency: string): number {
+  if (currency === BASE_CURRENCY) return 1
+  return data.fxRates[currency] ?? NaN
+}
+
+export const baseValue = (data: WealthData, p: Position) => positionValue(p) * rateOf(data, p.currency)
+
+export function accountBaseValue(data: WealthData, a: Account): number {
+  return a.positions.reduce((sum, p) => sum + (baseValue(data, p) || 0), 0)
+}
+
+export function usedCurrencies(data: WealthData): string[] {
+  const set = new Set<string>()
+  for (const a of data.accounts) for (const p of a.positions) set.add(p.currency)
+  for (const c of Object.keys(data.fxRates)) set.add(c)
+  set.delete(BASE_CURRENCY)
+  return [...set].sort()
+}
+
+export const missingRates = (data: WealthData) => usedCurrencies(data).filter((c) => !(data.fxRates[c] > 0))
+
+export interface Slice {
+  label: string
+  value: number
+  share: number
+}
+
+// Groups every position's base-currency value by a key, largest first.
+export function breakdown(data: WealthData, keyOf: (a: Account, p: Position) => string): { total: number; slices: Slice[] } {
+  const sums = new Map<string, number>()
+  for (const a of data.accounts) {
+    for (const p of a.positions) {
+      const v = baseValue(data, p)
+      if (!Number.isFinite(v)) continue
+      const key = keyOf(a, p) || '未設定'
+      sums.set(key, (sums.get(key) ?? 0) + v)
+    }
   }
-  return out
+  const total = [...sums.values()].reduce((s, v) => s + v, 0)
+  const slices = [...sums]
+    .map(([label, value]) => ({ label, value, share: total ? value / total : 0 }))
+    .sort((x, y) => y.value - x.value)
+  return { total, slices }
 }
 
 // The file sits in the user's Drive and may have been edited by hand, so check it before use.
@@ -39,25 +105,46 @@ export function parseWealthData(raw: unknown): WealthData {
   const fail = (why: string): never => {
     throw new Error(`Drive 中的資料檔格式不正確：${why}。請修正或刪除該檔案後重新登入。`)
   }
-  if (typeof raw !== 'object' || raw === null) fail('不是 JSON 物件')
-  const obj = raw as Record<string, unknown>
+  const obj = (typeof raw === 'object' && raw !== null ? raw : fail('不是 JSON 物件')) as Record<string, unknown>
   if (obj.version !== 1) fail(`不支援的版本 ${String(obj.version)}`)
-  if (!Array.isArray(obj.assets)) fail('缺少 assets 陣列')
-  const assets = (obj.assets as unknown[]).map((item, i): Asset => {
-    const a = (typeof item === 'object' && item !== null ? item : fail(`第 ${i + 1} 筆資產不是物件`)) as Record<string, unknown>
-    if (typeof a.name !== 'string' || !a.name.trim()) fail(`第 ${i + 1} 筆資產缺少名稱`)
-    if (typeof a.amount !== 'number' || !Number.isFinite(a.amount)) fail(`第 ${i + 1} 筆資產的金額不是數字`)
+  if (!Array.isArray(obj.accounts)) fail('缺少 accounts 陣列')
+
+  const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v.trim() : fallback)
+  const num = (v: unknown, where: string) =>
+    typeof v === 'number' && Number.isFinite(v) ? v : fail(`${where}不是數字`)
+
+  const fxRates: Record<string, number> = {}
+  if (typeof obj.fxRates === 'object' && obj.fxRates !== null) {
+    for (const [c, r] of Object.entries(obj.fxRates)) fxRates[c.toUpperCase()] = num(r, `匯率 ${c} `)
+  }
+
+  const accounts = (obj.accounts as unknown[]).map((item, i): Account => {
+    const where = `第 ${i + 1} 個帳戶`
+    const a = (typeof item === 'object' && item !== null ? item : fail(`${where}不是物件`)) as Record<string, unknown>
+    if (!str(a.name)) fail(`${where}缺少名稱`)
+    if (!Array.isArray(a.positions)) fail(`${where}缺少 positions 陣列`)
     return {
-      id: typeof a.id === 'string' && a.id ? a.id : crypto.randomUUID(),
-      name: a.name as string,
-      category: ASSET_CATEGORIES.includes(a.category as AssetCategory) ? (a.category as AssetCategory) : '其他',
-      currency: typeof a.currency === 'string' && a.currency.trim() ? a.currency.trim().toUpperCase() : 'TWD',
-      amount: a.amount as number,
+      id: str(a.id) || newId(),
+      name: str(a.name),
+      kind: a.kind === 'bank' ? 'bank' : 'investment',
+      country: str(a.country).toUpperCase(),
+      category: str(a.category, '其他') || '其他',
+      purpose: str(a.purpose),
+      positions: (a.positions as unknown[]).map((pi, j): Position => {
+        const pw = `${where}（${str(a.name)}）的第 ${j + 1} 筆資料`
+        const p = (typeof pi === 'object' && pi !== null ? pi : fail(`${pw}不是物件`)) as Record<string, unknown>
+        const type = p.type === 'holding' ? 'holding' : 'cash'
+        return {
+          id: str(p.id) || newId(),
+          type,
+          currency: str(p.currency).toUpperCase() || BASE_CURRENCY,
+          symbol: str(p.symbol),
+          quantity: num(p.quantity, `${pw}的數量`),
+          price: type === 'cash' ? 1 : num(p.price, `${pw}的單價`),
+        }
+      }),
     }
   })
-  return {
-    version: 1,
-    updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : new Date().toISOString(),
-    assets,
-  }
+
+  return { version: 1, updatedAt: str(obj.updatedAt) || new Date().toISOString(), fxRates, accounts }
 }
