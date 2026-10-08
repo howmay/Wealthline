@@ -1,5 +1,7 @@
 // Shape of the JSON file stored in the user's Drive. Bump `version` on breaking changes.
 
+import { emptyHistory, parseHistory, type History } from './history'
+
 export const BASE_CURRENCY = 'TWD'
 
 export const CATEGORIES = [
@@ -74,10 +76,12 @@ export interface WealthData {
   // When rates were last fetched automatically.
   fxUpdatedAt?: string
   accounts: Account[]
+  // Past edits and daily values; see history.ts.
+  history: History
 }
 
 export function emptyData(): WealthData {
-  return { version: 1, updatedAt: new Date().toISOString(), fxRates: {}, fxManual: [], accounts: [] }
+  return { version: 1, updatedAt: new Date().toISOString(), fxRates: {}, fxManual: [], accounts: [], history: emptyHistory() }
 }
 
 export const newId = () => crypto.randomUUID()
@@ -202,5 +206,6 @@ export function parseWealthData(raw: unknown): WealthData {
     fxManual,
     fxUpdatedAt: str(obj.fxUpdatedAt) || undefined,
     accounts,
+    history: parseHistory(obj.history, fail),
   }
 }

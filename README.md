@@ -35,9 +35,10 @@
 | `src/model.ts` | 資料檔格式（帳戶、餘額／持倉、匯率）、讀取驗證與統計函式 |
 | `src/quotes.ts`、`server/yahoo.ts`、`functions/api/quote.ts` | 持倉報價：代號轉換（2330 → 2330.TW、BTC → BTC-USD）與 Yahoo Finance 查詢 |
 | `src/rates.ts` | 匯率：ExchangeRate-API（法幣）與 CoinGecko（穩定幣、加密貨幣） |
+| `src/history.ts` | 歷史：每次儲存記下被修改的餘額／持倉（修改前後的值），以及當天各帳戶、各類別的台幣價值 |
 | `src/importSheet.ts` | 從試算表貼上的資料列匯入帳戶與匯率 |
 | `src/App.tsx` | 登入流程、分頁與儲存 |
-| `src/views/` | 總覽、帳戶、匯率三個分頁 |
+| `src/views/` | 總覽、帳戶、歷史、匯率四個分頁 |
 
 ## 資料模型
 
