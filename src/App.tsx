@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { fetchProfile, requestAccessToken, revokeAccessToken, type AccessToken, type UserProfile } from './google/auth'
 import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData } from './google/drive'
-import { ASSET_CATEGORIES, emptyData, totalsByCurrency, type AssetCategory, type WealthData } from './model'
+import { ASSET_CATEGORIES, emptyData, parseWealthData, totalsByCurrency, type AssetCategory, type WealthData } from './model'
 
 type Status = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'error'; text: string }
 
@@ -37,7 +37,7 @@ export default function App() {
     run('登入中…', async () => {
       token.current = await requestAccessToken('select_account')
       setUser(await fetchProfile(token.current))
-      const file = await loadData<WealthData>(token.current)
+      const file = await loadData(token.current, parseWealthData)
       fileId.current = file?.fileId
       setData(file?.data ?? emptyData())
       setDirty(false)

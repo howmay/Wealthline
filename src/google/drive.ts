@@ -59,12 +59,18 @@ export interface DriveFile<T> {
   data: T
 }
 
-// Returns null when the user has no data file yet.
-export async function loadData<T>(token: AccessToken): Promise<DriveFile<T> | null> {
+// Returns null when the user has no data file yet. `parse` validates the file's contents.
+export async function loadData<T>(token: AccessToken, parse: (raw: unknown) => T): Promise<DriveFile<T> | null> {
   const fileId = await findFile(token, APP_PROP.data)
   if (!fileId) return null
   const res = await driveFetch(token, `${API}/${fileId}?alt=media`)
-  return { fileId, data: (await res.json()) as T }
+  let raw: unknown
+  try {
+    raw = JSON.parse(await res.text())
+  } catch {
+    throw new Error(`Drive 中的 ${DATA_FILE_NAME} 不是有效的 JSON，請修正或刪除該檔案後重新登入。`)
+  }
+  return { fileId, data: parse(raw) }
 }
 
 // Creates the file on first save; afterwards overwrites the same file.
