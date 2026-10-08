@@ -2,6 +2,12 @@
   "name": "we-wealth",
   "private": true,
   "version": "0.0.0",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "Harvey Chen (https://github.com/zhChenOuO)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/howmay/we-wealth.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
