@@ -16,7 +16,14 @@ export type AccountsView =
   | { page: 'edit'; id: string }
   | { page: 'detail'; id: string }
 
-export function Accounts({ data, onChange, view, setView }: Props & { view: AccountsView; setView: (v: AccountsView) => void }) {
+interface AccountsProps extends Props {
+  view: AccountsView
+  setView: (v: AccountsView) => void
+  onRefreshPrices: () => Promise<void>
+  priceError: string
+}
+
+export function Accounts({ data, onChange, view, setView, onRefreshPrices, priceError }: AccountsProps) {
   const showImport = view.page === 'list' && !!view.importing
   const setShowImport = (importing: boolean) => setView({ page: 'list', importing })
 
@@ -57,6 +64,8 @@ export function Accounts({ data, onChange, view, setView }: Props & { view: Acco
         onChange={saveAccount}
         onEdit={() => setView({ page: 'edit', id: current.id })}
         onBack={() => setView({ page: 'list' })}
+        onRefreshPrices={onRefreshPrices}
+        priceError={priceError}
       />
     )
   }

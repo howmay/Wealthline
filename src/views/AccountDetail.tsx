@@ -13,6 +13,7 @@ import {
   type Position,
   type WealthData,
 } from '../model'
+import { displaySymbol, lookupQuote } from '../quotes'
 import { NumberInput } from './NumberInput'
 
 interface Props {
@@ -21,10 +22,13 @@ interface Props {
   onChange: (a: Account) => void
   onEdit: () => void
   onBack: () => void
+  onRefreshPrices: () => Promise<void>
+  priceError: string
 }
 
 // Where the numbers go: balances per currency, and holdings for investment accounts.
-export function AccountDetail({ data, account: a, onChange, onEdit, onBack }: Props) {
+export function AccountDetail({ data, account: a, onChange, onEdit, onBack, onRefreshPrices, priceError }: Props) {
+  const [refreshing, setRefreshing] = useState(false)
   const setPositions = (positions: Position[]) => onChange({ ...a, positions })
   const setPosition = (p: Position) => setPositions(a.positions.map((x) => (x.id === p.id ? p : x)))
   const cash = a.positions.filter((p) => p.type === 'cash')
@@ -74,16 +78,31 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack }: Pr
 
       {(a.kind === 'investment' || holdings.length > 0) && (
         <section className="panel">
-          <h3>持有標的</h3>
+          <div className="panel-head">
+            <h3>持有標的</h3>
+            {holdings.some((p) => !p.priceManual) && (
+              <button
+                className="small"
+                disabled={refreshing}
+                onClick={async () => {
+                  setRefreshing(true)
+                  await onRefreshPrices()
+                  setRefreshing(false)
+                }}
+              >
+                {refreshing ? '更新中…' : '更新報價'}
+              </button>
+            )}
+          </div>
+          {priceError && <p className="notice">{priceError}</p>}
           {holdings.length > 0 && (
             <div className="scroll">
-              <table className="data">
+              <table className="data holdings">
                 <thead>
                   <tr>
                     <th>標的</th>
                     <th className="num">數量</th>
-                    <th className="num">單價</th>
-                    <th>幣別</th>
+                    <th className="num">價格</th>
                     <th className="num">市值</th>
                     <th className="num">{BASE_CURRENCY}</th>
                     <th />
@@ -93,16 +112,18 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack }: Pr
                   {holdings.map((p) => (
                     <tr key={p.id}>
                       <td>
-                        <input className="cell-input" value={p.symbol} onChange={(e) => setPosition({ ...p, symbol: e.target.value })} size={10} />
+                        <strong>{displaySymbol(p.symbol)}</strong>
+                        {p.name && p.name !== p.symbol && <div className="muted small ellipsis">{p.name}</div>}
                       </td>
                       <td className="num">
                         <NumberInput className="cell-input" value={p.quantity} onCommit={(v) => setPosition({ ...p, quantity: v })} size={10} />
                       </td>
                       <td className="num">
-                        <NumberInput className="cell-input" value={p.price} onCommit={(v) => setPosition({ ...p, price: v })} size={8} />
+                        <PriceCell position={p} onChange={setPosition} />
                       </td>
-                      <td>{p.currency}</td>
-                      <td className="num">{fmt(positionValue(p))}</td>
+                      <td className="num">
+                        {fmt(positionValue(p))} <span className="muted small">{p.currency}</span>
+                      </td>
                       <td className="num">{fmt(baseValue(data, p), 0)}</td>
                       <td>
                         <button
@@ -119,43 +140,138 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack }: Pr
               </table>
             </div>
           )}
-          <AddHolding
-            currencies={cashCurrencies(a)}
-            onAdd={(p) => setPositions([...a.positions, p])}
-          />
+          <AddHolding account={a} onAdd={(p) => setPositions([...a.positions, p])} />
         </section>
       )}
     </>
   )
 }
 
-function AddHolding({ currencies, onAdd }: { currencies: string[]; onAdd: (p: Position) => void }) {
-  const [currency, setCurrency] = useState(currencies[0] ?? BASE_CURRENCY)
-  const options = [...new Set([...currencies, currency])]
+// Shows the market price; clicking lets the user type their own, which then stays fixed.
+function PriceCell({ position: p, onChange }: { position: Position; onChange: (p: Position) => void }) {
+  const [editing, setEditing] = useState(false)
+  if (editing) {
+    return (
+      <span className="price-edit">
+        <NumberInput
+          className="cell-input"
+          value={p.price}
+          autoFocus
+          onCommit={(v) => {
+            if (v !== p.price) onChange({ ...p, price: v, priceManual: true })
+            setEditing(false)
+          }}
+          onKeyDown={(e) => e.key === 'Escape' && setEditing(false)}
+          size={8}
+        />
+      </span>
+    )
+  }
+  return (
+    <span className="price">
+      <button className="link" onClick={() => setEditing(true)} title="點一下手動輸入價格">
+        {fmt(p.price, 4)} <span className="muted small">{p.currency}</span>
+      </button>
+      {p.priceManual ? (
+        <button className="tag-btn" onClick={() => onChange({ ...p, priceManual: false })} title="改回自動報價">
+          手動
+        </button>
+      ) : (
+        p.priceUpdatedAt && <span className="tag good">自動</span>
+      )}
+    </span>
+  )
+}
 
-  function submit(e: FormEvent<HTMLFormElement>) {
+// Only the symbol and quantity are needed; price, currency and name come from the quote.
+function AddHolding({ account, onAdd }: { account: Account; onAdd: (p: Position) => void }) {
+  const [symbol, setSymbol] = useState('')
+  const [quantity, setQuantity] = useState('')
+  const [looking, setLooking] = useState(false)
+  // Set when no quote was found: the user can then enter price and currency themselves.
+  const [manual, setManual] = useState<{ price: string; currency: string } | null>(null)
+
+  function reset() {
+    setSymbol('')
+    setQuantity('')
+    setManual(null)
+  }
+
+  async function submit(e: FormEvent) {
     e.preventDefault()
-    const f = new FormData(e.currentTarget)
-    const quantity = Number(String(f.get('quantity')).replace(/,/g, ''))
-    const price = Number(String(f.get('price')).replace(/,/g, ''))
-    if (!Number.isFinite(quantity) || !Number.isFinite(price)) return
-    onAdd({ id: newId(), type: 'holding', currency, symbol: String(f.get('symbol')).trim(), quantity, price })
-    e.currentTarget.reset()
+    const qty = Number(quantity.replace(/,/g, ''))
+    if (!symbol.trim() || !Number.isFinite(qty)) return
+    if (manual) {
+      const price = Number(manual.price.replace(/,/g, ''))
+      if (!Number.isFinite(price)) return
+      onAdd({ id: newId(), type: 'holding', symbol: symbol.trim().toUpperCase(), quantity: qty, price, currency: manual.currency, priceManual: true })
+      return reset()
+    }
+    setLooking(true)
+    const q = await lookupQuote(symbol, account.country, account.category.includes('加密'))
+    setLooking(false)
+    if (!q) {
+      setManual({ price: '', currency: cashCurrencies(account)[0] ?? BASE_CURRENCY })
+      return
+    }
+    onAdd({
+      id: newId(),
+      type: 'holding',
+      symbol: q.symbol,
+      name: q.name,
+      quantity: qty,
+      price: q.price,
+      currency: q.currency,
+      priceUpdatedAt: new Date().toISOString(),
+    })
+    reset()
   }
 
   return (
-    <form className="row add-holding" onSubmit={submit}>
-      <input name="symbol" placeholder="代號，如 2330、AAPL、BTC" required size={16} />
-      <input name="quantity" placeholder="數量" inputMode="decimal" required size={8} />
-      <input name="price" placeholder="單價" inputMode="decimal" required size={8} />
-      <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-        {options.map((c) => (
-          <option key={c}>{c}</option>
-        ))}
-      </select>
-      <button type="submit" className="primary">
-        ＋ 新增標的
-      </button>
+    <form className="add-holding" onSubmit={submit}>
+      <div className="row">
+        <input
+          value={symbol}
+          onChange={(e) => {
+            setSymbol(e.target.value)
+            setManual(null)
+          }}
+          placeholder="代號，如 2330、AAPL、BTC"
+          aria-label="代號"
+          required
+          size={18}
+        />
+        <input value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="數量" aria-label="數量" inputMode="decimal" required size={10} />
+        {manual && (
+          <>
+            <input
+              value={manual.price}
+              onChange={(e) => setManual({ ...manual, price: e.target.value })}
+              placeholder="單價"
+              aria-label="單價"
+              inputMode="decimal"
+              required
+              size={8}
+              autoFocus
+            />
+            <input
+              value={manual.currency}
+              onChange={(e) => setManual({ ...manual, currency: e.target.value.toUpperCase() })}
+              aria-label="幣別"
+              size={5}
+              maxLength={5}
+            />
+          </>
+        )}
+        <button type="submit" className="primary" disabled={looking}>
+          {looking ? '查詢報價…' : '＋ 新增'}
+        </button>
+      </div>
+      <p className="muted small hint">
+        {manual
+          ? `找不到「${symbol.trim()}」的報價，請手動輸入單價和幣別。`
+          : '只要填代號和數量，價格與幣別會自動帶入。台股填數字代號即可。'}
+      </p>
     </form>
   )
 }

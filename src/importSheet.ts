@@ -73,7 +73,7 @@ export function importSheet(data: WealthData, text: string): ImportResult {
     account.positions.push(
       isCash
         ? { id: newId(), type: 'cash', currency, symbol: '', quantity: quantity * price, price: 1 }
-        : { id: newId(), type: 'holding', currency, symbol: cells[2] || category || '市值', quantity, price },
+        : { id: newId(), type: 'holding', currency, symbol: cells[2] || category || '市值', quantity, price, priceManual: true },
     )
   }
 

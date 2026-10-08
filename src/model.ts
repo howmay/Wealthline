@@ -50,6 +50,9 @@ export interface Position {
   symbol: string // empty for cash
   quantity: number // the balance for cash
   price: number // always 1 for cash
+  name?: string // security name from the quote
+  priceManual?: boolean // the user typed the price; automatic updates leave it alone
+  priceUpdatedAt?: string
 }
 
 export interface Account {
@@ -183,6 +186,11 @@ export function parseWealthData(raw: unknown): WealthData {
           symbol: str(p.symbol),
           quantity: num(p.quantity, `${pw}的數量`),
           price: type === 'cash' ? 1 : num(p.price, `${pw}的單價`),
+          ...(type === 'holding' && {
+            name: str(p.name) || undefined,
+            priceManual: p.priceManual === true || undefined,
+            priceUpdatedAt: str(p.priceUpdatedAt) || undefined,
+          }),
         }
       }),
     }

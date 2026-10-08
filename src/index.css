@@ -984,3 +984,56 @@ td.num .cell-input {
     align-items: flex-start;
   }
 }
+
+/* Holdings */
+
+.holdings td {
+  vertical-align: middle;
+}
+
+.ellipsis {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.price {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.price button.link {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.price button.link:hover {
+  color: var(--accent);
+}
+
+button.tag-btn {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  background: var(--warn-wash);
+  border-color: transparent;
+}
+
+.price-edit .cell-input {
+  border-color: var(--accent);
+  max-width: 120px;
+}
+
+.add-holding {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+
+.add-holding .hint {
+  margin-top: 6px;
+}

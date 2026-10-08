@@ -11,7 +11,8 @@ import {
   type UserProfile,
 } from './google/auth'
 import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData } from './google/drive'
-import { applyFetchedRates, emptyData, parseWealthData, ratesStale, usedCurrencies, type WealthData } from './model'
+import { applyFetchedRates, emptyData, missingRates, parseWealthData, ratesStale, usedCurrencies, type WealthData } from './model'
+import { applyQuotes, fetchHoldingQuotes } from './quotes'
 import { fetchRates } from './rates'
 import { Accounts, type AccountsView } from './views/Accounts'
 import { Overview } from './views/Overview'
@@ -32,6 +33,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('overview')
   const [accountsView, setAccountsView] = useState<AccountsView>({ page: 'list' })
   const [ratesError, setRatesError] = useState('')
+  const [priceError, setPriceError] = useState('')
   // A previous session whose token has expired: offer one-click resume as this account.
   const [returning, setReturning] = useState<UserProfile | null>(() => loadSession()?.profile ?? null)
 
@@ -72,7 +74,18 @@ export default function App() {
     const loaded = file?.data ?? emptyData()
     setData(loaded)
     setDirty(false)
-    if (ratesStale(loaded)) void refreshRates(loaded)
+    void refreshMarket(loaded)
+  }
+
+  // Updates holding prices, then exchange rates (new quotes can bring new currencies).
+  // Like rates, prices stay in memory until the next save.
+  async function refreshMarket(from: WealthData) {
+    const { quotes, failed } = await fetchHoldingQuotes(from)
+    const at = new Date().toISOString()
+    setData((d) => (d ? applyQuotes(d, quotes, at) : d))
+    setPriceError(failed.length ? `找不到 ${failed.join('、')} 的報價，可以點價格手動輸入。` : '')
+    const withQuotes = applyQuotes(from, quotes, at)
+    if (ratesStale(withQuotes)) await refreshRates(withQuotes)
   }
 
   // Updates exchange rates in the background. The new rates are kept in memory and
@@ -145,6 +158,13 @@ export default function App() {
     setData(next)
     setDirty(true)
   }
+
+  // A newly added holding or balance can bring a currency without a rate: fetch it right away.
+  const missingAuto = data ? missingRates(data).filter((c) => !data.fxManual.includes(c)).join(',') : ''
+  useEffect(() => {
+    if (missingAuto && data) void refreshRates(data)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingAuto])
 
   const busy = status.kind === 'busy'
 
@@ -259,7 +279,16 @@ export default function App() {
             }}
           />
         )}
-        {data && tab === 'accounts' && <Accounts data={data} onChange={update} view={accountsView} setView={setAccountsView} />}
+        {data && tab === 'accounts' && (
+          <Accounts
+            data={data}
+            onChange={update}
+            view={accountsView}
+            setView={setAccountsView}
+            onRefreshPrices={() => refreshMarket(data)}
+            priceError={priceError}
+          />
+        )}
         {data && tab === 'rates' && <Rates data={data} onChange={update} onRefresh={() => refreshRates(data)} error={ratesError} />}
       </main>
     </>
