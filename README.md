@@ -98,7 +98,7 @@
 | 儲存 | Google Drive API v3，`drive.file` 範圍 |
 | 報價 | Yahoo Finance（經由 `/api/quote` 轉發，只傳送股票代號） |
 | 匯率 | ExchangeRate-API（法幣）、CoinGecko（加密貨幣） |
-| 部署 | Cloudflare Pages（`/api/quote` 為 Pages Function） |
+| 部署 | Cloudflare Workers（靜態資源 + `/api/quote` Worker） |
 
 唯一的伺服器端程式是報價查詢 `/api/quote`：Yahoo Finance 不允許瀏覽器跨站請求，所以由這個小程式轉發。它只收到股票代號，不含數量、金額或使用者身分，也不記錄任何內容。
 
@@ -122,13 +122,14 @@
 | `npm run preview` | 預覽建置結果 |
 | `npm run lint` | oxlint |
 
-### 部署到 Cloudflare Pages
+### 部署到 Cloudflare Workers
 
 - 建置指令：`npm run build`，輸出目錄：`dist`。
 - 環境變數：`VITE_GOOGLE_CLIENT_ID`。
-- `functions/api/quote.ts` 會自動部署為 Pages Function。
-- 不要在 `dist` 中放 `404.html`，Cloudflare Pages 才會把 `/privacy` 等路徑交給 App 處理。
-- 正式網站為 `https://wealthline.haomeh.com`：在 Cloudflare Pages 專案的「自訂網域」加入 `wealthline.haomeh.com`。
+- `wrangler.jsonc` 設定：`dist/` 為靜態資源，`/api/*` 交給 `worker/index.ts` 處理報價查詢；其他找不到的路徑回傳 `index.html`。
+- `previews` 區塊讓 Pull Request 可以自動建立預覽部署（`wrangler preview`）。
+- 建置時會預先產生 `index.html`、`privacy.html`、`terms.html`、`disclaimer.html`，不執行 JavaScript 也能讀到內容。
+- 正式網站為 `https://wealthline.haomeh.com`：在 Worker 的「網域與路由」加入 `wealthline.haomeh.com`。
 - 把正式網址加入 OAuth 用戶端的「已授權的 JavaScript 來源」，並在 OAuth 同意畫面填入首頁、隱私權政策（`/privacy`）與服務條款（`/terms`）網址。
 
 ## 程式結構
@@ -138,7 +139,7 @@
 | `src/google/auth.ts` | 載入 GIS、取得／撤銷 access token、讀取使用者資料、保存登入狀態 |
 | `src/google/drive.ts` | 在 Drive 中尋找、建立、讀取、覆寫資料檔 |
 | `src/model.ts` | 資料檔格式（帳戶、餘額／持倉、匯率）、讀取驗證與統計函式 |
-| `src/quotes.ts`、`server/yahoo.ts`、`functions/api/quote.ts` | 持倉報價：代號轉換與 Yahoo Finance 查詢 |
+| `src/quotes.ts`、`server/yahoo.ts`、`worker/index.ts` | 持倉報價：代號轉換與 Yahoo Finance 查詢 |
 | `src/rates.ts` | 匯率：ExchangeRate-API 與 CoinGecko |
 | `src/history.ts` | 歷史：異動紀錄與每日快照 |
 | `src/importSheet.ts` | 從試算表貼上的資料列匯入帳戶與匯率 |

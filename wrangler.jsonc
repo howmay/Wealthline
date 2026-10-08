@@ -1,0 +1,17 @@
+// Cloudflare Workers deployment: the built SPA in dist/ as static assets, plus a small
+// Worker for /api/quote (worker/index.ts). Workers Builds runs `npm run build` first.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "we-wealth",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // /privacy serves dist/privacy.html; any other path falls back to index.html.
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  // Lets Workers Builds create preview deployments for pull requests (`wrangler preview`).
+  "previews": {}
+}

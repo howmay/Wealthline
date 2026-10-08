@@ -1,6 +1,6 @@
 // Writes static HTML for the public pages into dist/ after `vite build`:
 // dist/index.html, dist/privacy.html, dist/terms.html, dist/disclaimer.html.
-// Cloudflare Pages serves /privacy from privacy.html; other paths still fall back to index.html.
+// Cloudflare serves /privacy from privacy.html; other paths still fall back to index.html.
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'

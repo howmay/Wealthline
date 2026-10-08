@@ -142,7 +142,7 @@ function Privacy() {
             <strong>Google</strong>（登入、使用者資料、Google Drive API）：讀寫你的資料檔。適用 <a href="https://policies.google.com/privacy">Google 隱私權政策</a>。
           </li>
           <li>
-            <strong>報價查詢 /api/quote</strong>：本服務部署在 Cloudflare Pages 上的轉發程式，只收到<strong>股票代號</strong>（例如 2330.TW），再向 Yahoo Finance 查詢價格。不包含數量、金額或你的身分，也不記錄任何內容。
+            <strong>報價查詢 /api/quote</strong>：本服務部署在 Cloudflare Workers 上的轉發程式，只收到<strong>股票代號</strong>（例如 2330.TW），再向 Yahoo Finance 查詢價格。不包含數量、金額或你的身分，也不記錄任何內容。
           </li>
           <li>
             <strong>ExchangeRate-API</strong>（open.er-api.com）與 <strong>CoinGecko</strong>：查詢匯率與加密貨幣價格，請求中只有幣別或幣種名稱。
@@ -277,7 +277,7 @@ function PrivacyEnglish() {
       <h3>Sharing with third parties</h3>
       <p>
         Data obtained from Google APIs is never sent anywhere other than Google. To look up prices, your browser sends only <strong>ticker symbols</strong> (for example
-        2330.TW) to the app's quote relay on Cloudflare Pages, which asks Yahoo Finance, and only currency or coin codes to ExchangeRate-API and CoinGecko. No
+        2330.TW) to the app's quote relay on Cloudflare Workers, which asks Yahoo Finance, and only currency or coin codes to ExchangeRate-API and CoinGecko. No
         quantities, amounts or identity are included. Cloudflare hosts the site and may log technical data such as IP addresses under its own policy.
       </p>
 

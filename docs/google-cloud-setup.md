@@ -46,7 +46,7 @@ npm install
 npm run dev
 ```
 
-部署到 Cloudflare Pages（或其他靜態主機）時，在建置環境變數中設定 `VITE_GOOGLE_CLIENT_ID`，並記得把正式網址加入「已授權的 JavaScript 來源」。用戶端 ID 會出現在前端程式碼中，這是正常的，它不是機密。
+部署到 Cloudflare Workers 時，在 Workers Builds 的建置環境變數中設定 `VITE_GOOGLE_CLIENT_ID`，並記得把正式網址加入「已授權的 JavaScript 來源」。用戶端 ID 會出現在前端程式碼中，這是正常的，它不是機密。
 
 ## 常見錯誤
 

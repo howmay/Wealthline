@@ -1,5 +1,5 @@
 // Looks up a market price from Yahoo Finance's chart endpoint. Runs server-side only
-// (Cloudflare Pages Function in production, Vite dev server locally) because Yahoo
+// (Cloudflare Worker in production, Vite dev server locally) because Yahoo
 // does not allow browser requests from other sites. No user data passes through here.
 
 export interface Quote {
@@ -29,7 +29,7 @@ export async function yahooQuote(symbol: string): Promise<Quote | null> {
   }
 }
 
-// Shared by both servers: GET /api/quote?symbol=AAPL → Quote JSON, or 404.
+// Shared by the Vite dev server and the Cloudflare Worker: GET /api/quote?symbol=AAPL → Quote JSON, or 404.
 export async function handleQuoteRequest(url: URL): Promise<Response> {
   const symbol = url.searchParams.get('symbol') ?? ''
   const quote = await yahooQuote(symbol).catch(() => null)

@@ -19,7 +19,7 @@ export const PAGES = {
 } as const
 export type PageKey = keyof typeof PAGES
 
-// Cloudflare Pages serves index.html for unknown paths, so these routes work on reload too.
+// Cloudflare serves index.html for unknown paths (wrangler.jsonc), so these routes work on reload too.
 const subscribe = (cb: () => void) => {
   window.addEventListener('popstate', cb)
   return () => window.removeEventListener('popstate', cb)
