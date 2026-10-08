@@ -21,6 +21,8 @@ interface Props {
   onDelete?: () => void
 }
 
+const PURPOSES = ['緊急備用金', '日常開銷', '短期目標', '長期投資', '退休']
+
 // Defines what an account is: type, where it is, which currencies it holds.
 // Balances and holdings are filled in afterwards on the account page.
 export function AccountForm({ account, purposes, onSave, onCancel, onDelete }: Props) {
@@ -137,15 +139,22 @@ export function AccountForm({ account, purposes, onSave, onCancel, onDelete }: P
         </select>
       </label>
 
-      <label className="field">
-        <span>用途（選填）</span>
-        <input list="purposes" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="例如 緊急備用金" />
-        <datalist id="purposes">
-          {purposes.map((p) => (
-            <option key={p} value={p} />
+      <div className="field">
+        <span>用途（選填）：這筆錢是做什麼的，總覽會依用途統計</span>
+        <div className="choices">
+          {[...new Set([...PURPOSES, ...purposes])].map((p) => (
+            <button type="button" key={p} className={p === purpose ? 'chip on' : 'chip'} onClick={() => setPurpose(p === purpose ? '' : p)}>
+              {p}
+            </button>
           ))}
-        </datalist>
-      </label>
+          <input
+            value={PURPOSES.includes(purpose) || purposes.includes(purpose) ? '' : purpose}
+            onChange={(e) => setPurpose(e.target.value)}
+            placeholder="其他用途"
+            size={12}
+          />
+        </div>
+      </div>
 
       <div className="row">
         <button type="submit" className="primary" disabled={!name.trim()}>

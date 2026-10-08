@@ -79,20 +79,31 @@ export function Overview({ data, onGoRates, onNewAccount, onImport, onOpenAccoun
         <Allocation slices={colorize(breakdown(data, (_, p) => p.currency).slices, COMMON_CURRENCIES)} />
       </section>
 
-      <section className="panel">
-        <h3>國家</h3>
-        <Allocation
-          slices={colorize(
-            breakdown(data, (a) => (a.country ? countryLabel(a.country) : '')).slices,
-            Object.values(COUNTRIES),
-          )}
-        />
-      </section>
+      {data.accounts.some((a) => a.country) && (
+        <section className="panel">
+          <h3>國家</h3>
+          <Allocation
+            slices={colorize(
+              breakdown(data, (a) => (a.country ? countryLabel(a.country) : '')).slices,
+              Object.values(COUNTRIES),
+            )}
+          />
+        </section>
+      )}
 
-      <section className="panel">
-        <h3>用途</h3>
-        <Allocation slices={colorize(breakdown(data, (a) => a.purpose).slices, purposes)} />
-      </section>
+      {purposes.length > 0 ? (
+        <section className="panel">
+          <h3>用途</h3>
+          <Allocation slices={colorize(breakdown(data, (a) => a.purpose).slices, purposes)} />
+        </section>
+      ) : (
+        <section className="panel hint-panel">
+          <h3>用途</h3>
+          <p className="muted small">
+            替帳戶標上用途（例如緊急備用金、長期投資、退休），這裡就會顯示每種用途各佔多少。到帳戶頁按「編輯帳戶設定」即可設定。
+          </p>
+        </section>
+      )}
     </div>
   )
 }
