@@ -29,6 +29,8 @@
    - `http://localhost:5173`（本機開發）
    - `http://localhost:4173`（`npm run preview`）
    - 正式部署的網址，例如 `https://we-wealth.pages.dev`
+
+   只填「協定 + 網域 + port」，結尾不要加 `/` 或路徑。`localhost` 和 `127.0.0.1` 算不同來源，要和瀏覽器網址列完全一致。存檔後通常要等 5 分鐘到幾小時才會生效。
 4. 「已授權的重新導向 URI」留空即可（使用 Google Identity Services 的 token 彈出視窗流程，不需要 redirect）。
 5. 建立後複製「用戶端 ID」。
 
@@ -47,6 +49,7 @@ npm run dev
 
 | 錯誤 | 原因 |
 | --- | --- |
+| `401 invalid_client` + `no registered origin` | 這個用戶端 ID 沒有登記目前的網址來源。到該用戶端的「已授權的 JavaScript 來源」加入瀏覽器網址列的來源（例如 `http://localhost:5173`），不是填在「重新導向 URI」。也請確認類型是「網頁應用程式」、`.env.local` 的 ID 和 Console 中的是同一個，改完 `.env.local` 要重新啟動 `npm run dev`。與測試使用者名單無關 |
 | `origin_mismatch` / `redirect_uri_mismatch` | 目前網址沒有列在「已授權的 JavaScript 來源」，注意 port 與 http/https 要完全一致 |
 | `access_denied`（存取遭封鎖） | 帳號不在測試使用者名單中 |
 | `Google Drive API has not been used in project…` | 尚未在專案中啟用 Google Drive API |
