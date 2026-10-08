@@ -12,13 +12,16 @@ import {
 } from './google/auth'
 import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData } from './google/drive'
 import { applyFetchedRates, emptyData, missingRates, parseWealthData, ratesStale, usedCurrencies, type WealthData } from './model'
+import { pendingChanges, recordSave, revertChange } from './history'
 import { applyQuotes, fetchHoldingQuotes } from './quotes'
 import { fetchRates } from './rates'
 import { Accounts, type AccountsView } from './views/Accounts'
+import { HistoryView } from './views/History'
 import { Overview } from './views/Overview'
 import { Rates } from './views/Rates'
+import { SaveReview } from './views/SaveReview'
 
-const TABS = { overview: '總覽', accounts: '帳戶', rates: '匯率' }
+const TABS = { overview: '總覽', accounts: '帳戶', history: '歷史', rates: '匯率' }
 type Tab = keyof typeof TABS
 
 type Status = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'error'; text: string }
@@ -26,12 +29,16 @@ type Status = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'error
 export default function App() {
   const token = useRef<AccessToken | null>(null)
   const fileId = useRef<string | undefined>(undefined)
+  // The version last read from or written to Drive; each save records what changed since it.
+  const saved = useRef<WealthData | null>(null)
   const [user, setUser] = useState<UserProfile | null>(null)
   const [data, setData] = useState<WealthData | null>(null)
   const [dirty, setDirty] = useState(false)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [tab, setTab] = useState<Tab>('overview')
   const [accountsView, setAccountsView] = useState<AccountsView>({ page: 'list' })
+  // Edits to balances or holdings are shown for review before they become history.
+  const [reviewing, setReviewing] = useState(false)
   const [ratesError, setRatesError] = useState('')
   const [priceError, setPriceError] = useState('')
   // A previous session whose token has expired: offer one-click resume as this account.
@@ -71,6 +78,7 @@ export default function App() {
     setUser(p)
     const file = await loadData(t, parseWealthData)
     fileId.current = file?.fileId
+    saved.current = file?.data ?? null
     const loaded = file?.data ?? emptyData()
     setData(loaded)
     setDirty(false)
@@ -140,6 +148,7 @@ export default function App() {
       clearSession()
       token.current = null
       fileId.current = undefined
+      saved.current = null
       setReturning(null)
       setUser(null)
       setData(null)
@@ -148,11 +157,22 @@ export default function App() {
   const save = () =>
     run('儲存到 Google Drive…', async () => {
       if (!data) return
-      const next = { ...data, updatedAt: new Date().toISOString() }
+      const next = recordSave(saved.current, { ...data, updatedAt: new Date().toISOString() })
       fileId.current = await saveData(await validToken(), next, fileId.current)
+      saved.current = next
       setData(next)
       setDirty(false)
+      setReviewing(false)
     })
+
+  const requestSave = () => {
+    if (data && pendingChanges(saved.current, data).length) setReviewing(true)
+    else void save()
+  }
+  const pending = reviewing && data ? pendingChanges(saved.current, data) : []
+  useEffect(() => {
+    if (reviewing && pending.length === 0) setReviewing(false)
+  }, [reviewing, pending.length])
 
   function update(next: WealthData) {
     setData(next)
@@ -236,7 +256,7 @@ export default function App() {
           </nav>
           <div className="topbar-right">
             {dirty ? (
-              <button className="primary save" onClick={save} disabled={busy}>
+              <button className="primary save" onClick={requestSave} disabled={busy}>
                 {busy ? '儲存中…' : '儲存變更'}
               </button>
             ) : (
@@ -263,6 +283,20 @@ export default function App() {
         </div>
       </header>
 
+      {reviewing && data && pending.length > 0 && (
+        <SaveReview
+          changes={pending}
+          busy={busy}
+          canRevert={(c) => data.accounts.some((a) => a.id === c.accountId)}
+          onRevert={(c) => {
+            const next = revertChange(saved.current, data, c)
+            if (next) update(next)
+          }}
+          onConfirm={save}
+          onCancel={() => setReviewing(false)}
+        />
+      )}
+
       <main className="content">
         {status.kind === 'busy' && !data && <p className="muted">{status.text}</p>}
         {status.kind === 'error' && <p className="banner error">{status.text}</p>}
@@ -287,6 +321,16 @@ export default function App() {
             setView={setAccountsView}
             onRefreshPrices={() => refreshMarket(data)}
             priceError={priceError}
+          />
+        )}
+        {data && tab === 'history' && (
+          <HistoryView
+            data={data}
+            dirty={dirty}
+            busy={busy}
+            onSave={requestSave}
+            onChange={update}
+            onOpenAccount={(id) => go('accounts', { page: 'detail', id })}
           />
         )}
         {data && tab === 'rates' && <Rates data={data} onChange={update} onRefresh={() => refreshRates(data)} error={ratesError} />}

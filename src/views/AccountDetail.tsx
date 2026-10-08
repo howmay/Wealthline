@@ -14,6 +14,7 @@ import {
   type WealthData,
 } from '../model'
 import { displaySymbol, lookupQuote } from '../quotes'
+import { ChangeList } from './History'
 import { NumberInput } from './NumberInput'
 
 interface Props {
@@ -140,6 +141,13 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack, onRe
             </div>
           )}
           <AddHolding account={a} onAdd={(p) => setPositions([...a.positions, p])} />
+        </section>
+      )}
+
+      {data.history.changes.some((c) => c.accountId === a.id) && (
+        <section className="panel">
+          <h3>異動紀錄</h3>
+          <ChangeList changes={data.history.changes.filter((c) => c.accountId === a.id)} showAccount={false} limit={20} />
         </section>
       )}
     </>
