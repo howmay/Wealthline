@@ -1,13 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { fmt } from '../format'
-import { positionHistory, snapshotOf, type PositionValue } from '../history'
-import { displaySymbol } from '../quotes'
+import { localDate } from '../history'
 import { BASE_CURRENCY, type Account, type Position, type WealthData } from '../model'
+import { fetchHistory, fxSymbol, positionTimeline, startDate, type PriceHistory } from '../priceHistory'
+import { displaySymbol } from '../quotes'
 import { TrendChart } from './TrendChart'
 
 const day = (iso: string) => new Date(iso).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
 
-// When a holding was added and what it was worth on each recorded day, with today live.
+type Loaded = { prices: PriceHistory | null; fx: PriceHistory | null }
+
+// When a holding was added and what it was worth on each day since, from past closes,
+// past exchange rates and the quantities in the change log.
 export function PositionHistory({
   data,
   account,
@@ -21,23 +25,52 @@ export function PositionHistory({
 }) {
   const [now] = useState(() => new Date().toISOString())
   const [shown, setShown] = useState(10)
-  const today = snapshotOf({ ...data, accounts: [{ ...account, positions: [p] }] }, now)
-  const past = positionHistory(data.history.snapshots, account.id, p).filter((x) => x.date !== today.date)
-  const live = today.positions[0]
-  const points: { date: string; v: PositionValue; live?: boolean }[] = [...past, ...(live ? [{ date: today.date, v: live, live: true }] : [])]
-  const first = points[0]
-  const diff = points.length > 1 ? points[points.length - 1].v.value - first.v.value : null
+  const [loaded, setLoaded] = useState<Loaded | null>(null)
+  const from = startDate(data, account, p, localDate(now)).date
+
+  useEffect(() => {
+    let live = true
+    void Promise.all([
+      p.priceManual ? null : fetchHistory(p.symbol, from),
+      p.currency === BASE_CURRENCY ? null : fetchHistory(fxSymbol(p.currency), from),
+    ]).then(([prices, fx]) => live && setLoaded({ prices, fx }))
+    return () => {
+      live = false
+    }
+  }, [p.symbol, p.currency, p.priceManual, from])
+
+  const head = (
+    <div className="panel-head">
+      <h4>{displaySymbol(p.symbol)} 每日價值</h4>
+      <button className="icon" aria-label="收起" title="收起" onClick={onClose}>
+        ×
+      </button>
+    </div>
+  )
+  if (!loaded) {
+    return (
+      <div className="position-history">
+        {head}
+        <p className="muted small">讀取歷史價格中…</p>
+      </div>
+    )
+  }
+
+  const { days, startKnown, rateFallback } = positionTimeline(data, account, p, loaded.prices, loaded.fx, now)
+  const first = days[0]
+  const diff = days.length > 1 ? days[days.length - 1].value - first.value : null
+  const notes = [
+    !p.priceManual && !loaded.prices && '抓不到歷史股價，過去的日子以當時記錄的價格計算。',
+    p.priceManual && '這個標的是手動價格，價值只在你修改時變動。',
+    rateFallback && '部分日期抓不到歷史匯率，以目前匯率計算。',
+    !startKnown && '加入日期不明，先顯示最近一年。',
+  ].filter(Boolean)
 
   return (
     <div className="position-history">
-      <div className="panel-head">
-        <h4>{displaySymbol(p.symbol)} 每日價值</h4>
-        <button className="icon" aria-label="收起" title="收起" onClick={onClose}>
-          ×
-        </button>
-      </div>
+      {head}
       <p className="muted small">
-        {p.addedAt ? `${day(p.addedAt)} 加入` : '加入日期不明（早於開始記錄加入日期）'}
+        {p.addedAt ? `${day(p.addedAt)} 加入` : '加入日期不明'}
         {diff !== null && (
           <>
             {' · '}自 {first.date.replace(/-/g, '/')} 起價值{' '}
@@ -48,10 +81,10 @@ export function PositionHistory({
           </>
         )}
       </p>
-      {points.length > 0 ? (
+      {days.length > 0 ? (
         <>
-          <TrendChart dates={points.map((x) => x.date)} series={[{ key: 'v', label: '台幣價值', color: 'var(--s1)', values: points.map((x) => x.v.value) }]} area />
-          {points.length < 2 && <p className="muted small chart-note">之後每天第一次登入時會自動記一筆，就能看到這個標的的價值變化。</p>}
+          <TrendChart dates={days.map((x) => x.date)} series={[{ key: 'v', label: '台幣價值', color: 'var(--s1)', values: days.map((x) => x.value) }]} area />
+          {notes.length > 0 && <p className="muted small chart-note">{notes.join(' ')}</p>}
           <div className="scroll">
             <table className="data">
               <thead>
@@ -64,34 +97,34 @@ export function PositionHistory({
                 </tr>
               </thead>
               <tbody>
-                {[...points]
+                {[...days]
                   .reverse()
                   .slice(0, shown)
-                  .map(({ date, v, live }) => (
-                    <tr key={date}>
+                  .map((v) => (
+                    <tr key={v.date}>
                       <td>
-                        {date.replace(/-/g, '/')}
-                        {live && <span className="muted small"> 目前</span>}
+                        {v.date.replace(/-/g, '/')}
+                        {v.live && <span className="muted small"> 目前</span>}
                       </td>
                       <td className="num">{fmt(v.quantity, 8)}</td>
                       <td className="num">
-                        {fmt(v.price, 4)} <span className="muted small">{v.currency}</span>
+                        {fmt(v.price, 4)} <span className="muted small">{p.currency}</span>
                       </td>
-                      <td className="num">{v.currency === BASE_CURRENCY ? '—' : fmt(v.rate, 4)}</td>
+                      <td className="num">{p.currency === BASE_CURRENCY ? '—' : fmt(v.rate, 4)}</td>
                       <td className="num">{fmt(v.value, 0)}</td>
                     </tr>
                   ))}
               </tbody>
             </table>
           </div>
-          {points.length > shown && (
+          {days.length > shown && (
             <button className="ghost small" onClick={() => setShown(shown + 30)}>
-              顯示更早的紀錄（還有 {points.length - shown} 天）
+              顯示更早的紀錄（還有 {days.length - shown} 天）
             </button>
           )}
         </>
       ) : (
-        <p className="muted small">還沒有這個標的的匯率，設定匯率後就能記錄它的台幣價值。</p>
+        <p className="muted small">還沒有這個幣別的匯率，設定匯率後就能看到它的台幣價值。</p>
       )}
     </div>
   )

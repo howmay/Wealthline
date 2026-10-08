@@ -1,5 +1,5 @@
 // Cloudflare Workers deployment: the built SPA in dist/ as static assets, plus a small
-// Worker for /api/quote (worker/index.ts). Workers Builds runs `npm run build` first.
+// Worker for /api/quote and /api/history (worker/index.ts). Workers Builds runs `npm run build` first.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "we-wealth",

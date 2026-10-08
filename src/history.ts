@@ -1,7 +1,7 @@
 // History kept inside the data file: every edit to a balance or holding, and one
 // value snapshot per day, so the user can see how their assets change over time.
 
-import { accountBaseValue, baseValue, rateOf, type Account, type Position, type WealthData } from './model'
+import { accountBaseValue, baseValue, type Account, type Position, type WealthData } from './model'
 
 export interface PositionState {
   quantity: number
@@ -20,18 +20,6 @@ export interface Change {
   after: PositionState | null // null when it was removed
 }
 
-// One balance or holding on one day, so each can be followed over time.
-export interface PositionValue {
-  accountId: string
-  type: 'cash' | 'holding'
-  symbol: string // ticker, or the currency code for a balance
-  currency: string
-  quantity: number
-  price: number
-  rate: number // base currency per unit of `currency`
-  value: number // in the base currency
-}
-
 // Base-currency values on one day; a later save that day replaces it.
 export interface Snapshot {
   date: string // local YYYY-MM-DD
@@ -39,7 +27,6 @@ export interface Snapshot {
   total: number
   accounts: { id: string; name: string; value: number }[]
   categories: Record<string, number>
-  positions: PositionValue[] // empty in snapshots saved before positions were kept
 }
 
 export interface History {
@@ -57,8 +44,9 @@ export function localDate(iso: string): string {
 
 // Positions are matched by what they are (a currency balance or a ticker), not by id,
 // so re-importing a spreadsheet does not read as removing and re-adding everything.
-const keyOf = (p: Position) => `${p.type}:${p.type === 'cash' ? p.currency : p.symbol.toUpperCase()}`
-const recordKey = (r: { type: string; symbol: string }) => `${r.type}:${r.symbol.toUpperCase()}`
+export const keyOf = (p: Position) => `${p.type}:${p.type === 'cash' ? p.currency : p.symbol.toUpperCase()}`
+// The same key for a change log entry, whose symbol is the currency for a balance.
+export const changeKey = (c: { type: string; symbol: string }) => `${c.type}:${c.symbol.toUpperCase()}`
 
 function states(a: Account | undefined): Map<string, { p: Position; s: PositionState }> {
   const m = new Map<string, { p: Position; s: PositionState }>()
@@ -111,34 +99,7 @@ export function snapshotOf(data: WealthData, at: string): Snapshot {
     }
   }
   const accounts = data.accounts.map((a) => ({ id: a.id, name: a.name, value: accountBaseValue(data, a) }))
-  const positions: PositionValue[] = []
-  for (const a of data.accounts) {
-    for (const { p, s } of states(a).values()) {
-      const rate = rateOf(data, p.currency)
-      // Without an exchange rate there is no value to keep for that day.
-      if (!Number.isFinite(rate)) continue
-      positions.push({
-        accountId: a.id,
-        type: p.type,
-        symbol: p.type === 'cash' ? p.currency : p.symbol,
-        currency: p.currency,
-        quantity: s.quantity,
-        price: s.price,
-        rate,
-        value: s.quantity * s.price * rate,
-      })
-    }
-  }
-  return { date: localDate(at), at, total: accounts.reduce((s, a) => s + a.value, 0), accounts, categories, positions }
-}
-
-// One balance or holding's value on each recorded day, oldest first.
-export function positionHistory(snapshots: Snapshot[], accountId: string, p: Position): { date: string; v: PositionValue }[] {
-  const key = keyOf(p)
-  return snapshots.flatMap((s) => {
-    const v = s.positions.find((x) => x.accountId === accountId && recordKey(x) === key)
-    return v ? [{ date: s.date, v }] : []
-  })
+  return { date: localDate(at), at, total: accounts.reduce((s, a) => s + a.value, 0), accounts, categories }
 }
 
 // When each balance or holding first appeared: new ones get this save's time; ones saved
@@ -152,7 +113,7 @@ function stampAdded(saved: WealthData | null, next: WealthData, changes: Change[
       const key = keyOf(p)
       if (!before.has(key)) return { ...p, addedAt: at }
       const added = changes
-        .filter((c) => c.accountId === a.id && !c.before && c.after && recordKey(c) === key)
+        .filter((c) => c.accountId === a.id && !c.before && c.after && changeKey(c) === key)
         .reduce<string | undefined>((latest, c) => (!latest || c.at > latest ? c.at : latest), undefined)
       return added ? { ...p, addedAt: added } : p
     })
@@ -255,23 +216,6 @@ export function parseHistory(raw: unknown, fail: (why: string) => never): Histor
         return { id: r.id as string, name: isStr(r.name) ? r.name : '', value: r.value as number }
       }),
       categories,
-      positions: (Array.isArray(s.positions) ? s.positions : []).flatMap((item: unknown): PositionValue[] => {
-        const r = item as Record<string, unknown>
-        if (typeof item !== 'object' || item === null || !isStr(r.accountId) || !isStr(r.symbol)) return []
-        if (!isNum(r.quantity) || !isNum(r.price) || !isNum(r.rate) || !isNum(r.value)) return []
-        return [
-          {
-            accountId: r.accountId,
-            type: r.type === 'holding' ? 'holding' : 'cash',
-            symbol: r.symbol,
-            currency: isStr(r.currency) ? r.currency : '',
-            quantity: r.quantity,
-            price: r.price,
-            rate: r.rate,
-            value: r.value,
-          },
-        ]
-      }),
     }
   })
   return { changes, snapshots: snapshots.sort((x, y) => x.date.localeCompare(y.date)) }
