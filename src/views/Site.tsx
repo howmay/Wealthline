@@ -4,12 +4,13 @@ import { useId, useState, type AnchorHTMLAttributes, type MouseEvent } from 'rea
 import { AUTHOR, AUTHOR_URL, LICENSE_ZH_URL, OPERATOR, OPERATOR_URL, PAGES, PRIVACY_UPDATED, REPO_URL, navigate, type PageKey } from '../site'
 
 // An in-app link: a real <a href> (so it can be opened in a new tab) that navigates without a reload.
-export function Link({ to, onClick, ...rest }: { to: string } & AnchorHTMLAttributes<HTMLAnchorElement>) {
+// `replace` swaps the current history entry instead of adding one.
+export function Link({ to, replace, onClick, ...rest }: { to: string; replace?: boolean } & AnchorHTMLAttributes<HTMLAnchorElement>) {
   const click = (e: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(e)
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
     e.preventDefault()
-    navigate(to)
+    navigate(to, { replace })
   }
   return <a href={to} onClick={click} {...rest} />
 }

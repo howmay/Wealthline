@@ -1,13 +1,21 @@
 // Public notice pages: privacy policy, terms of use and disclaimer. They are reachable
 // without signing in, since Google's OAuth consent screen links to the privacy policy.
 
-import type { ReactNode } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import { DATA_FILE_NAME, FOLDER_NAME } from '../google/drive'
-import { AUTHOR, ISSUES_URL, LICENSE_URL, LICENSE_ZH_URL, OPERATOR, OPERATOR_URL, PAGES, REPO_URL, SECURITY_URL, SITE_HOST, SITE_URL, type PageKey } from '../site'
+import { AUTHOR, ISSUES_URL, LICENSE_URL, LICENSE_ZH_URL, OPERATOR, OPERATOR_URL, PAGES, REPO_URL, SECURITY_URL, SITE_HOST, SITE_URL, hasPrevious, type PageKey } from '../site'
 import { Link, Logo, SiteFooter } from './Site'
 
 const EFFECTIVE = '2026 年 10 月 9 日'
 const DATA_PATH = `我的雲端硬碟 / ${FOLDER_NAME} / ${DATA_FILE_NAME}`
+
+// Going back returns to the page the notice was opened from, so the browser's back button
+// afterwards does not lead to the notice again. Opened directly, the link simply goes home.
+function backToApp(e: MouseEvent<HTMLAnchorElement>) {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || !hasPrevious()) return
+  e.preventDefault()
+  window.history.back()
+}
 
 export function LegalPage({ page, signedIn }: { page: PageKey; signedIn: boolean }) {
   return (
@@ -17,14 +25,14 @@ export function LegalPage({ page, signedIn }: { page: PageKey; signedIn: boolean
           <Logo />
           <span>Wealthline</span>
         </Link>
-        <Link to="/" className="legal-back">
+        <Link to="/" className="legal-back" onClick={backToApp}>
           {signedIn ? '← 回到我的資產' : '← 回到首頁'}
         </Link>
       </header>
       <main className="legal">
         <nav className="legal-tabs" aria-label="公告">
           {(Object.keys(PAGES) as PageKey[]).map((k) => (
-            <Link key={k} to={PAGES[k].path} className={k === page ? 'active' : ''} aria-current={k === page ? 'page' : undefined}>
+            <Link key={k} to={PAGES[k].path} replace className={k === page ? 'active' : ''} aria-current={k === page ? 'page' : undefined}>
               {PAGES[k].title}
             </Link>
           ))}

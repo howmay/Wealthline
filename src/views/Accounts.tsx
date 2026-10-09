@@ -18,14 +18,16 @@ export type AccountsView =
 
 interface AccountsProps extends Props {
   view: AccountsView
-  setView: (v: AccountsView) => void
+  // `replace` swaps the current history entry instead of adding one, for pages the back button should skip.
+  setView: (v: AccountsView, replace?: boolean) => void
+  onBack: (fallback: AccountsView) => void
   onRefreshPrices: () => Promise<void>
   priceError: string
 }
 
-export function Accounts({ data, onChange, view, setView, onRefreshPrices, priceError }: AccountsProps) {
+export function Accounts({ data, onChange, view, setView, onBack, onRefreshPrices, priceError }: AccountsProps) {
   const showImport = view.page === 'list' && !!view.importing
-  const setShowImport = (importing: boolean) => setView({ page: 'list', importing })
+  const setShowImport = (importing: boolean) => setView({ page: 'list', importing }, true)
 
   const saveAccount = (next: Account) => {
     const exists = data.accounts.some((a) => a.id === next.id)
@@ -39,15 +41,17 @@ export function Accounts({ data, onChange, view, setView, onRefreshPrices, price
         account={current}
         onSave={(a) => {
           saveAccount(a)
-          setView({ page: 'detail', id: a.id })
+          // Editing returns to the account it came from; a new account's page takes the form's place.
+          if (current) onBack({ page: 'detail', id: a.id })
+          else setView({ page: 'detail', id: a.id }, true)
         }}
-        onCancel={() => setView(current ? { page: 'detail', id: current.id } : { page: 'list' })}
+        onCancel={() => onBack(current ? { page: 'detail', id: current.id } : { page: 'list' })}
         onDelete={
           current &&
           (() => {
             if (!confirm(`刪除帳戶「${current.name}」以及其中所有餘額與持倉？`)) return
             onChange({ ...data, accounts: data.accounts.filter((a) => a.id !== current.id) })
-            setView({ page: 'list' })
+            setView({ page: 'list' }, true)
           })
         }
       />
@@ -61,7 +65,7 @@ export function Accounts({ data, onChange, view, setView, onRefreshPrices, price
         account={current}
         onChange={saveAccount}
         onEdit={() => setView({ page: 'edit', id: current.id })}
-        onBack={() => setView({ page: 'list' })}
+        onBack={() => onBack({ page: 'list' })}
         onRefreshPrices={onRefreshPrices}
         priceError={priceError}
       />
