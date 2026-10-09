@@ -861,7 +861,7 @@ test('review: single-target UI writes no placeholder for another account period,
  const snapshotRow=[...document.querySelectorAll('section.daily tbody tr')].find(x=>x.textContent.includes('2026/10/05'))
  assert.match(snapshotRow.textContent,/原始快照/);assert.doesNotMatch(snapshotRow.textContent,/資料不完整/)
  const derivedRow=[...document.querySelectorAll('section.daily tbody tr')].find(x=>x.textContent.includes('2026/10/04'))
- assert.match(derivedRow.textContent,/期間推算/);assert.equal(derivedRow.querySelector('button[title]'),null)
+ assert.equal(derivedRow,undefined);assert.match(document.body.textContent,/持倉數量不足的推算日/)
  await click(button('＋ 補登歷史數量'));await chooseHistoryInstrument('b');await setInput(field('歷史日期'),'2026-09-15');await setInput(field('另一合成帳戶 · TWD · TWD 當日數量'),'3');await click(button('取得歷史估值'));assert.match(document.querySelector('[role="status"]').textContent,/NT\$ 13/);await click(button('套用歷史數量'))
  assert.equal(current.history.quantityDays[0].entries.length,1);assert.equal(current.history.quantityDays[0].entries[0].accountId,'b');assert.equal(current.version,6)
  const {periodQuantityOn}=await server.ssrLoadModule('/src/holdingPeriods.ts')
@@ -903,4 +903,27 @@ test('review: unrelated edits retain values; refresh retains same-target values,
  await act(async()=>root.unmount());root=null
  await act(async()=>last.resolve(response('BBB','USD',40)))
  assert.equal(renders.length,beforeUnmount)
+})
+
+test('yellow review: overview and history compare actual last record; explicit unknown explains inability to compare',async()=>{
+ const data=historicalFixture();data.accounts[0].positions[0].quantity=100
+ data.accounts.push({...data.accounts[0],id:'b',name:'合成B'})
+ const {snapshotOf,localDate}=await server.ssrLoadModule('/src/history.ts')
+ const {shiftDate}=await server.ssrLoadModule('/src/holdingPeriods.ts')
+ const {ChangeSinceLast}=await server.ssrLoadModule('/src/views/AssetChange.tsx')
+ const today=localDate(new Date().toISOString()),old=shiftDate(today,-3),yesterday=shiftDate(today,-1)
+ data.history.snapshots=[snapshotOf(data,old+'T12:00:00')]
+ data.accounts[1].positions[0].quantity=200
+ data.history.holdingPeriods=[{id:'r',accountId:'history-account',account:'合成歷史帳戶',category:data.accounts[0].category,country:data.accounts[0].country,type:'cash',symbol:'',currency:'TWD',start:shiftDate(today,-8),end:shiftDate(today,-6),quantity:10,timeZone:'UTC',updatedAt:new Date().toISOString()}]
+ await render(ChangeSinceLast,{data})
+ assert.match(document.body.textContent,/\+100/);assert.doesNotMatch(document.body.textContent,/較昨天/)
+ const props={data,dirty:true,busy:false,onChange:()=>{},onSave:()=>{},onOpenAccount:()=>{}}
+ await render(HistoryView,props)
+ assert.match(document.querySelector('.stats').textContent,/\+100/)
+ assert.equal([...document.querySelectorAll('section.daily tbody tr')].some(row=>row.textContent.includes(yesterday.replaceAll('-','/'))),false)
+ assert.match(document.body.textContent,/持倉數量不足的推算日/)
+ const entry={...data.history.holdingPeriods[0],quantity:null}
+ const unknown={...data,history:{...data.history,quantityDays:[{date:yesterday,updatedAt:new Date().toISOString(),sparse:true,entries:[entry]}]}}
+ await render(ChangeSinceLast,{data:unknown});assert.match(document.body.textContent,/資料不完整，無法比較/)
+ await render(HistoryView,{...props,data:unknown});assert.match(document.querySelector('.stats').textContent,/資料不完整，無法比較/);assert.doesNotMatch(document.querySelector('.stats').textContent,/尚無更早的紀錄/)
 })

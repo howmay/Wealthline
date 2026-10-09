@@ -4,7 +4,7 @@ import { localDate } from './history'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { WealthData } from './model'
 import { clearHistoryCache, fetchHistory } from './priceHistory'
-import { repriceEntry, valueDays, type QuantityDay } from './quantityHistory'
+import { isUnrecordedPartialDay, repriceEntry, valueDays, type QuantityDay } from './quantityHistory'
 
 // Include the evidence/identities used by projection, not present-day prices, FX,
 // debt or save timestamps. This also works when immutable parents recreate objects.
@@ -52,6 +52,7 @@ export function useHistoricalValuations(data: WealthData) {
   return {
     data: { ...data, history: { ...data.history, valuedQuantityDays: values } },
     error: source.error,
+    omittedDays: values.filter(isUnrecordedPartialDay).length,
     status: loading ? (same ? '更新行情中，暫顯示上次估值。' : '正在查詢此組歷史資料。') : same ? loaded!.error : '',
     loading,
     refresh: () => { clearHistoryCache(); reload.current = true; setGeneration(g => g + 1) },

@@ -107,7 +107,8 @@ test('review: period projection preserves known snapshots, while explicit day ov
  for(const date of ['2026-10-05','2026-10-06','2026-10-07','2026-10-08']){
   const row=totals.find(x=>x.date===date);assert.equal(row.total,1100);assert.equal(row.periodDerived,undefined)
  }
- assert.equal(totals.find(x=>x.date==='2026-10-04').periodDerived,true)
+ assert.equal(totals.find(x=>x.date==='2026-10-04'),undefined)
+ assert.equal(values.find(x=>x.date==='2026-10-04').quantityEvidence,'incomplete')
  const original=d.history.snapshots
  const edited=q.applyQuantityDay(d,{...explicit('2026-10-05',0),sparse:true})
  assert.equal(h.totalPoints(edited,now).find(x=>x.date==='2026-10-05').manual,true)
@@ -174,4 +175,48 @@ test('review: same-account other symbol and explicit unknown stay isolated acros
  assert.equal(count(round,'2026-09-20'),null)
  assert.equal(round.history.quantityDays[0].entries.find(e=>e.symbol==='OTHER').quantity,3)
  assert.equal(round.accounts[0].positions[0].quantity,99)
+})
+
+test('yellow review: omit automatic dates without inventory coverage, preserve snapshots and comparison base',async()=>{
+ const d=withPeriod({start:'2026-10-01',end:'2026-10-03'})
+ d.accounts[0].positions[0].quantity=10
+ d.accounts.push({id:'b',name:'合成B',kind:'bank',category:'現金',country:'TW',positions:[{id:'cash',type:'cash',symbol:'',currency:'TWD',quantity:1000,price:1}]})
+ d.history.snapshots=['05','06'].map(x=>h.snapshotOf(d,`2026-10-${x}T12:00:00Z`))
+ d.accounts[1].positions[0].quantity=100
+ const values=await q.valueDays(p.expandPeriodDays(d,now),async()=>prices())
+ const points=h.totalPoints({...d,history:{...d.history,valuedQuantityDays:values}},now)
+ assert.deepEqual(points.map(x=>[x.date,x.total]),[['2026-10-05',1100],['2026-10-06',1100],['2026-10-09',200]])
+ assert.equal(points.at(-2).date,'2026-10-06')
+ assert.ok(values.find(x=>x.date==='2026-10-08').entries.some(e=>e.quantity===null))
+ assert.equal(q.isUnrecordedPartialDay(values.find(x=>x.date==='2026-10-08')),true)
+ assert.equal(d.history.snapshots.length,2)
+})
+
+test('yellow review: genuine price/FX failure, explicit unknown and known zero remain in total history',async()=>{
+ const d=withPeriod({start:'2026-10-01',end:undefined})
+ const raw=p.expandPeriodDays(d,now)
+ assert.ok(raw.every(x=>x.quantityEvidence==='complete'))
+ const unavailable=await q.valueDays(raw,async()=>null)
+ const points=h.totalPoints({...d,history:{...d.history,valuedQuantityDays:unavailable}},now)
+ assert.equal(points.find(x=>x.date==='2026-10-08').total,null)
+ assert.equal(q.isUnrecordedPartialDay(unavailable.at(-1)),false)
+ const fx=withPeriod({start:'2026-10-01',end:undefined,currency:'USD'});fx.accounts[0].positions[0].currency='USD'
+ const values=await q.valueDays(p.expandPeriodDays(fx,now),async symbol=>symbol==='USDTWD=X'?null:{...prices(),currency:'USD'})
+ assert.equal(h.totalPoints({...fx,history:{...fx.history,valuedQuantityDays:values}},now).find(x=>x.date==='2026-10-08').total,null)
+ assert.match(values.at(-1).entries[0].error,/匯率/)
+ const zero=withPeriod({start:'2026-10-01',end:'2026-10-03'})
+ const zeroValues=await q.valueDays(p.expandPeriodDays(zero,now),async()=>null)
+ assert.equal(h.totalPoints({...zero,history:{...zero.history,valuedQuantityDays:zeroValues}},now).find(x=>x.date==='2026-10-08').total,0)
+ // Explicit unknown propagates as evidence, even with another uncovered instrument.
+ d.accounts.push({...d.accounts[0],id:'b'});d.history.quantityDays=[{...explicit('2026-10-06',null),sparse:true}]
+ const unknownValues=await q.valueDays(p.expandPeriodDays(d,now),async()=>prices())
+ const unknown=h.totalPoints({...d,history:{...d.history,valuedQuantityDays:unknownValues}},now)
+ assert.equal(unknown.find(x=>x.date==='2026-10-06').manual,true)
+ assert.equal(unknown.find(x=>x.date==='2026-10-08').total,null)
+ assert.equal(unknownValues.find(x=>x.date==='2026-10-08').quantityEvidence,'explicit-unknown')
+ // Mixed absent inventory and a real market error must not erase the market gap.
+ const mixed=withPeriod({start:'2026-10-01',end:undefined});mixed.accounts.push({...mixed.accounts[0],id:'b'})
+ const mixedValues=await q.valueDays(p.expandPeriodDays(mixed,now),async()=>null)
+ assert.equal(q.isUnrecordedPartialDay(mixedValues.at(-1)),false)
+ assert.equal(h.totalPoints({...mixed,history:{...mixed.history,valuedQuantityDays:mixedValues}},now).find(x=>x.date==='2026-10-08').total,null)
 })

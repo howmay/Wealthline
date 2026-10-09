@@ -21,7 +21,7 @@ export interface QuantityEntry extends HistoricalInstrument {
   fx?: HistoricalQuote
   error?: string
 }
-export interface QuantityDay { date: string; updatedAt: string; entries: QuantityEntry[]; sparse?: true; periodDerived?: boolean }
+export interface QuantityDay { date: string; updatedAt: string; entries: QuantityEntry[]; sparse?: true; periodDerived?: boolean; quantityEvidence?: 'complete' | 'incomplete' | 'explicit-unknown' }
 export type HistoricalPoint = Omit<Snapshot, 'total' | 'accounts' | 'categories'> & {
   total: number | null
   accounts: { id: string; name: string; value: number | null }[]
@@ -144,6 +144,11 @@ export async function valueDays(days: QuantityDay[], fetcher = fetchHistory): Pr
     ...day,
     entries: await valueEntries(day.entries, day.date, shared).catch(() => day.entries.map((e) => repriceEntry(e, day.date, null, null))),
   })))
+}
+// Projection-only coverage, recorded before market lookup can turn a known count
+// into unknown (e.g. unavailable split data). Never hide explicit unknown or price gaps.
+export function isUnrecordedPartialDay(day: QuantityDay) {
+  return day.periodDerived === true && day.quantityEvidence === 'incomplete' && !day.entries.some(e=>e.error)
 }
 export function quantityPoint(day: QuantityDay, original?: Snapshot): HistoricalPoint {
   const accounts = new Map<string, { id: string; name: string; value: number | null }>()

@@ -2,7 +2,7 @@
 // value snapshot per day, so the user can see how their assets change over time.
 
 import { expandPeriodDays, parseHoldingPeriods, type HoldingPeriod } from './holdingPeriods'
-import { parseQuantityDays, quantityPoint, validDate, type QuantityDay, type HistoricalPoint } from './quantityHistory'
+import { isUnrecordedPartialDay, parseQuantityDays, quantityPoint, validDate, type QuantityDay, type HistoricalPoint } from './quantityHistory'
 import { balanceSheet, parseLiability, type Liability } from './liabilities'
 import { accountBaseValue, baseValue, type Account, type Position, type WealthData } from './model'
 
@@ -170,7 +170,7 @@ export function totalPoints(data: WealthData, now: string): HistoricalPoint[] {
   byDate.set(today.date, today)
   for (const day of data.history.valuedQuantityDays ?? expandPeriodDays(data,now)) {
     const original = data.history.snapshots.find(s => s.date === day.date)
-    if (day.periodDerived && original) continue
+    if (day.periodDerived && original || isUnrecordedPartialDay(day)) continue
     // Today's manual asset quantities must still use today's live debt estimate.
     // Past days retain the recorded debt (including unknown), never backfill it.
     const basis = day.date === today.date ? { ...(original ?? today), liabilityTotal: today.liabilityTotal, netWorth: today.netWorth, liabilityEstimated: today.liabilityEstimated } : original

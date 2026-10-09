@@ -29,7 +29,8 @@ export function ChangeSinceLast({ data }: { data: WealthData }) {
   const now = useCalendarNow()
   const today = snapshotOf(data, now)
   const previous = points.length > 1 ? points[points.length - 2] : null
-  if (!previous || previous.total === null || today.total === null) return null
+  if (!previous) return null
+  if (previous.total === null || today.total === null) return <p className="hero-change muted small">較 {shortDate(previous.date)} 的紀錄：資料不完整，無法比較。</p>
   const diff = today.total - previous.total
   const gap = dayNumber(today.date) - dayNumber(previous.date)
   return (

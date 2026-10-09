@@ -53,6 +53,7 @@ export function Overview({ data, onGoRates, onGoLiabilities, onNewAccount, onImp
 
   return (
     <div className="overview">
+      {historical.omittedDays > 0 && <p className="muted small">總額圖與比較略過 {historical.omittedDays} 個沒有原始紀錄、且持倉數量不足的推算日；不代表資產為零。明確未知及缺少行情的日期仍保留缺口。</p>}
       {historical.status && <p className="muted small" aria-live="polite">{historical.status}</p>}
       {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
       <section className="panel hero">

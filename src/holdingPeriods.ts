@@ -143,13 +143,17 @@ export function expandPeriodDays(data: WealthData, now = new Date().toISOString(
     // replace them; generated periods only fill previously unrecorded dates.
     if(snapshots.has(date) && !result.has(date)) continue
     const existing=new Map((result.get(date)?.entries ?? []).map(e=>[instrumentKey(e),e]))
+    let missingEvidence=false, explicitUnknown=false
     const entries=catalog.map(identity=>{
       const key=instrumentKey(identity),state=lookup(identity,date)
-      if(state) return {...identity,quantity:state.quantity,quantityAsOf:state.basisDate}
-      return existing.get(key) ?? {...identity,quantity:counts.get(date)?.get(key) ?? null}
+      if(state) { if(state.quantity===null) explicitUnknown=true; return {...identity,quantity:state.quantity,quantityAsOf:state.basisDate} }
+      const recorded=existing.get(key), count=counts.get(date)?.get(key)
+      if(recorded?.quantity===null) explicitUnknown=true
+      if(!recorded && count===undefined) missingEvidence=true
+      return recorded ?? {...identity,quantity:count ?? null}
     })
     const manual=result.get(date)
-    result.set(date,{...manual,date,updatedAt:manual?.updatedAt ?? now,entries,periodDerived:!manual})
+    result.set(date,{...manual,date,updatedAt:manual?.updatedAt ?? now,entries,periodDerived:!manual,quantityEvidence:explicitUnknown?'explicit-unknown':missingEvidence?'incomplete':'complete'})
   }
   return [...result.values()].sort((a,b)=>a.date.localeCompare(b.date))
 }

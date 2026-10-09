@@ -46,6 +46,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
 
   return (
     <>
+      {historical.omittedDays > 0 && <p className="muted small">總額圖與比較略過 {historical.omittedDays} 個沒有原始紀錄、且持倉數量不足的推算日；不代表資產為零。明確未知及缺少行情的日期仍保留缺口。</p>}
       {historical.status && <p className="muted small" aria-live="polite">{historical.status}</p>}
       {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
       <div className="page-head">
@@ -180,7 +181,7 @@ function Stat({ label, value, note, base, total }: { label: string; value?: stri
       <div className="panel stat">
         <span className="eyebrow">{label}</span>
         <strong className="muted">—</strong>
-        <span className="muted small">尚無更早的紀錄</span>
+        <span className="muted small">{base ? `${base.date.replace(/-/g,'/')} 資料不完整，無法比較` : '尚無更早的紀錄'}</span>
       </div>
     )
   }
