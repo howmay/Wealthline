@@ -27,6 +27,7 @@ before(async () => {
   auth = await server.ssrLoadModule('/src/google/auth.ts')
 })
 afterEach(async () => {
+  const {clearHistoryCache}=await server.ssrLoadModule('/src/priceHistory.ts');clearHistoryCache()
   if (root) await act(() => root.unmount())
   root = null
   globalThis.fetch = originalFetch
@@ -425,6 +426,7 @@ test('historical quantity add/edit/cancel/restore changes only chosen date; char
   globalThis.confirm=()=>true
   await click(button('移除 2025-10-04'))
   assert.equal(current.history.quantityDays.length,0)
+  assert.ok(![...document.querySelectorAll('section.daily tbody tr')].some(r=>r.textContent.includes('2025/10/04')))
   await click(button('復原上次歷史修改'))
   assert.equal(current.history.quantityDays.length,1)
 })
@@ -522,7 +524,7 @@ test('trend chart leaves an actual gap for unknown history and clears out-of-ran
  assert.doesNotMatch(document.querySelector('svg').outerHTML,/NaN|Infinity/)
  }finally{globalThis.ResizeObserver=oldObserver}
 })
-test('a holding without a ticker shows a unit price field and is valued from it without a lookup',async()=>{
+test('unquoted holdings keep quantity without a historical manual price field',async()=>{
  const data=historicalFixture();data.accounts[0].positions=[{id:'fund',type:'holding',symbol:'基金與退休金',currency:'TWD',quantity:3,price:10,priceManual:true}]
  let changed,requests=0
  await render(HistoryView,{data,dirty:true,busy:false,onChange:next=>{changed=next},onSave:()=>{},onOpenAccount:()=>{}})
@@ -530,10 +532,35 @@ test('a holding without a ticker shows a unit price field and is valued from it 
  await click(button('＋ 補登歷史數量'))
  await setInput(field('歷史日期'),'2025-10-04')
  await setInput(field('合成歷史帳戶 · 基金與退休金 · TWD 當日數量'),'2')
- await setInput(field('合成歷史帳戶 · 基金與退休金 · TWD 當日單價'),'1500')
+ assert.equal(field('合成歷史帳戶 · 基金與退休金 · TWD 當日單價'),undefined)
  await click(button('取得歷史估值'))
  assert.equal(requests,0)
- assert.match(document.querySelector('[role="status"]').textContent,/NT\$ 3,000/)
+ assert.match(document.querySelector('[role="status"]').textContent,/資料不完整/)
  await click(button('套用歷史數量'))
- assert.deepEqual(changed.history.quantityDays[0].entries[0].price,{source:'manual',symbol:'基金與退休金',date:'2025-10-04',value:1500})
+ assert.equal(changed.history.quantityDays[0].entries[0].price,undefined)
+  assert.equal(changed.accounts[0].positions[0].price,10)
+})
+
+test('viewing and refreshing historical valuations queries market data without editing stored quantities or prices',async()=>{
+ const data=historicalFixture();data.accounts[0].positions=[{id:'history-stock',type:'holding',symbol:'TEST',currency:'TWD',quantity:1,price:999,priceManual:true}]
+ data.version=3
+ data.history.quantityDays=[{date:'2025-10-04',updatedAt:'2025-10-06T12:00:00Z',entries:[{accountId:'history-account',account:'合成歷史帳戶',category:'股票',country:'TW',type:'holding',symbol:'TEST',currency:'TWD',quantity:2,price:{source:'manual',symbol:'TEST',date:'2025-10-04',value:999}}]}]
+ let price=10,requests=0,changes=0,missing=false
+ globalThis.fetch=async()=>{requests++;return missing?new Response('',{status:404}):Response.json({symbol:'TEST',currency:'TWD',asTraded:true,splits:[],points:[{date:'2025-10-03',close:price}]})}
+ await render(HistoryView,{data,dirty:false,busy:false,onChange:()=>changes++,onSave:()=>{},onOpenAccount:()=>{}})
+ const row=()=>[...document.querySelectorAll('section.daily tbody tr')].find(r=>r.textContent.includes('2025/10/04'))
+ assert.match(row().textContent,/NT\$ 20/)
+ assert.match(document.querySelector('[aria-label="歷史持倉數量"]').textContent,/2025-10-03/)
+ price=20
+ await click(button('重新查詢歷史行情'))
+ assert.match(row().textContent,/NT\$ 40/)
+ missing=true
+ await click(button('重新查詢歷史行情'))
+ assert.match(row().textContent,/資料不完整/)
+ assert.equal(requests,3);assert.equal(changes,0)
+ assert.equal(data.history.quantityDays[0].entries[0].price.value,999)
+ assert.equal(data.accounts[0].positions[0].price,999)
+ await click(button('編輯數量 2025-10-04'))
+ assert.equal(field('合成歷史帳戶 · TEST · TWD 當日單價'),undefined)
+ await click(button('取消歷史編輯'))
 })

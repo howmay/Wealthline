@@ -74,28 +74,25 @@ export function quoteOn(history: PriceHistory | null, date: string): HistoricalQ
 export function entryValue(entry: QuantityEntry): number | null {
   if (entry.quantity === null) return null
   if (entry.quantity === 0) return 0
-  const price = entry.type === 'cash' ? 1 : entry.price?.value
+  const price = entry.type === 'cash' ? 1 : entry.price?.source === 'Yahoo' ? entry.price.value : undefined
   const fx = entry.currency === 'TWD' ? 1 : entry.fx?.value
   const value = price === undefined || fx === undefined ? NaN : entry.quantity * price * fx
   return Number.isFinite(value) ? value : null
 }
-// Symbols Yahoo can look up; anything else (a fund name, a sheet label) needs a typed price.
+// Preserve legacy manual fields on read, but only market quotes can value history.
 const TICKER = /^[A-Z0-9.\-=^]{1,24}$/
-export const manualPrice = (entry: QuantityEntry, date: string, value: number): HistoricalQuote =>
-  ({ source: 'manual', symbol: entry.symbol, date, value })
-// Holdings with no market price to look up: not a ticker, or priced by hand in the account.
-export function needsTypedPrice(data: WealthData, entry: HistoricalInstrument): boolean {
-  if (entry.type === 'cash') return false
-  if (!TICKER.test(entry.symbol)) return true
-  const lots = data.accounts.find((a) => a.id === entry.accountId)?.positions.filter((p) => p.type === 'holding' && p.symbol.toUpperCase() === entry.symbol && p.currency === entry.currency) ?? []
-  return lots.length > 0 && lots.every((p) => p.priceManual)
+export function repriceEntry(e: QuantityEntry, date: string, prices: PriceHistory | null, rates: PriceHistory | null): QuantityEntry {
+  const { price: _price, fx: _fx, error: _error, ...entry } = e
+  if (e.quantity === null || e.quantity === 0) return entry
+  const price = e.type !== 'cash' && prices?.currency === e.currency ? quoteOn(prices, date) : undefined
+  const fx = e.currency !== 'TWD' && rates?.currency === 'TWD' ? quoteOn(rates, date) : undefined
+  const error = [e.type !== 'cash' && !price && '缺少相符幣別的歷史收盤價', e.currency !== 'TWD' && !fx && '缺少歷史匯率'].filter(Boolean).join('；')
+  return { ...entry, ...(price && {price}), ...(fx && {fx}), ...(error && {error}) }
 }
-// `typedOnly` marks holdings that are never looked up, even when the symbol looks like a ticker.
 export async function valueEntries(
   entries: QuantityEntry[],
   date: string,
   fetcher = fetchHistory,
-  typedOnly: (e: QuantityEntry) => boolean = () => false,
 ): Promise<QuantityEntry[]> {
   validatePastDate(date)
   const cache = new Map<string, Promise<PriceHistory | null>>()
@@ -105,11 +102,11 @@ export async function valueEntries(
   }
   // Only symbol/date leave the client. Names, account IDs and quantities do not.
   return Promise.all(entries.map(async e => {
-    const { price: typed, fx: _fx, error: _error, ...entry } = e
+    const { price: _price, fx: _fx, error: _error, ...entry } = e
     if (entry.quantity === null || entry.quantity === 0) return entry
-    let price = typed?.source === 'manual' ? typed : undefined
+    let price: HistoricalQuote | undefined
     let fx: HistoricalQuote | undefined
-    if (entry.type !== 'cash' && !price && TICKER.test(entry.symbol) && !typedOnly(e)) for (const symbol of candidates(entry.symbol, entry.country, entry.category.includes('加密'))) {
+    if (entry.type !== 'cash' && !price && TICKER.test(entry.symbol)) for (const symbol of candidates(entry.symbol, entry.country, entry.category.includes('加密'))) {
       const history = await get(symbol)
       if (history?.currency === entry.currency) price = quoteOn(history, date)
       if (price) break
@@ -118,7 +115,7 @@ export async function valueEntries(
       const history = await get(fxSymbol(entry.currency))
       if (history?.currency === 'TWD') fx = quoteOn(history, date)
     }
-    const error = [entry.type !== 'cash' && !price && '缺少相符幣別的歷史收盤價，可手填當日單價', entry.currency !== 'TWD' && !fx && '缺少歷史匯率'].filter(Boolean).join('；')
+    const error = [entry.type !== 'cash' && !price && '缺少相符幣別的歷史收盤價', entry.currency !== 'TWD' && !fx && '缺少歷史匯率'].filter(Boolean).join('；')
     const result = { ...entry, ...(price && { price }), ...(fx && { fx }), ...(error && { error }) }
     return !error && entryValue(result) === null ? { ...result, error: '估值超出有效數值範圍' } : result
   }))

@@ -6,8 +6,6 @@ import {
   entriesForDate,
   entryValue,
   instrumentKey,
-  manualPrice,
-  needsTypedPrice,
   parseQuantityDays,
   quantityPoint,
   validatePastDate,
@@ -24,7 +22,6 @@ export interface QuantityEditRequest {
 
 const nameOf = (e: QuantityEntry) => `${e.account} · ${e.symbol || e.currency} · ${e.currency}`
 const stamp = () => new Date().toISOString()
-const typedPriceOf = (e: QuantityEntry) => (e.price?.source === 'manual' ? String(e.price.value) : '')
 
 // Dated quantities entered by hand, listed newest first, with the editor opened from here
 // or from a row of the daily table.
@@ -33,9 +30,11 @@ export function QuantityHistory({
   onChange,
   request: editing,
   onRequest: setEditing,
+  displayDays,
 }: {
   data: WealthData
   onChange: (d: WealthData) => void
+  displayDays?: QuantityDay[]
   request?: QuantityEditRequest
   onRequest: (request: QuantityEditRequest | undefined) => void
 }) {
@@ -57,7 +56,7 @@ export function QuantityHistory({
         按帳戶記錄某一天的實際持有總數量。同帳戶同標的同幣別合計多批次，不同帳戶分開。只影響選定日期；不修改目前持倉，也不推定其他日期。
       </p>
       <p className="muted small">
-        每日紀錄可按「編輯數量」修正。有代號的股票與加密貨幣自動取 Yahoo 當日或前 7 日內最近的收盤價與匯率，顯示實際行情日期；查不到行情的基金、退休金等可手填當日單價。缺資料就留空，不套用今日價格。
+        每日紀錄可按「編輯數量」修正。查詢時向 Yahoo 取得當日或前 7 日內最近的收盤價與匯率，顯示實際行情日期；查不到行情的項目保留數量並顯示未知。缺資料就留空，不套用今日價格或手填價；供應商可能延遲，不保證逐秒即時。
       </p>
       {error && (
         <p role="alert" className="banner error">
@@ -110,7 +109,7 @@ export function QuantityHistory({
             </div>
           </div>
           <div className="quantity-rows">
-            {day.entries.map((entry) => (
+            {(displayDays?.find(d => d.date === day.date)?.entries ?? day.entries).map((entry) => (
               <div className="quantity-row" key={instrumentKey(entry)}>
                 <strong>{nameOf(entry)}</strong>
                 <span>數量 {entry.quantity === null ? '未知' : fmt(entry.quantity, 8)}</span>
@@ -141,7 +140,6 @@ export function QuantityEditor({
   const [today] = useState(() => localDate(new Date().toISOString()))
   const [entries, setEntries] = useState<QuantityEntry[]>(() => entriesForDate(data, initialDate))
   const [drafts, setDrafts] = useState<string[]>(() => entries.map((e) => e.quantity?.toString() ?? ''))
-  const [priceDrafts, setPriceDrafts] = useState<string[]>(() => entries.map(typedPriceOf))
   const [preview, setPreview] = useState<QuantityDay | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -180,13 +178,11 @@ export function QuantityEditor({
     const values = entriesForDate(latest.current, next)
     setEntries(values)
     setDrafts(values.map((e) => e.quantity?.toString() ?? ''))
-    setPriceDrafts(values.map(typedPriceOf))
   }
   const editAt = (setter: typeof setDrafts, i: number, value: string) => {
     resetPreview()
     setter((d) => d.map((v, j) => (j === i ? value : v)))
   }
-  const showsPrice = (e: QuantityEntry, i: number) => needsTypedPrice(data, e) || priceDrafts[i] !== ''
 
   const prepare = async () => {
     resetPreview()
@@ -199,17 +195,13 @@ export function QuantityEditor({
       const rows = entries.map((e, i): QuantityEntry => {
         const { price: _price, fx: _fx, error: _error, ...rest } = e
         const quantity = drafts[i].trim() === '' ? null : Number(drafts[i])
-        const typed = priceDrafts[i].trim()
-        if (!typed) return { ...rest, quantity }
-        const value = Number(typed)
-        if (!Number.isFinite(value) || value <= 0) throw new Error(`${nameOf(e)}：手填單價須為正數`)
-        return { ...rest, quantity, price: manualPrice(e, date, value) }
+        return { ...rest, quantity }
       })
       const candidate = { date, updatedAt: stamp(), entries: rows }
       parseQuantityDays([candidate])
       if (!rows.length) throw new Error('請先加入至少一項歷史持倉')
       setLoading(true)
-      const valued = await valueEntries(rows, date, undefined, (e) => needsTypedPrice(latest.current, e))
+      const valued = await valueEntries(rows, date)
       if (live.current && revision.current === request) setPreview({ ...candidate, entries: valued })
     } catch (e) {
       if (live.current && revision.current === request) setError(e instanceof Error ? e.message : '無法取得歷史行情')
@@ -236,7 +228,6 @@ export function QuantityEditor({
       resetPreview()
       setEntries([...entries, entry])
       setDrafts([...drafts, ''])
-      setPriceDrafts([...priceDrafts, ''])
       setAccountFilter('')
     } catch (e) {
       setError(e instanceof Error ? e.message : '資料不正確')
@@ -271,14 +262,8 @@ export function QuantityEditor({
             <span>{nameOf(entry)} 當日數量</span>
             <input inputMode="decimal" value={drafts[i]} onChange={(e) => editAt(setDrafts, i, e.target.value)} />
           </label>
-          {showsPrice(entry, i) && (
-            <label className="field">
-              <span>{nameOf(entry)} 當日單價</span>
-              <input inputMode="decimal" placeholder="查不到行情，請手填" value={priceDrafts[i]} onChange={(e) => editAt(setPriceDrafts, i, e.target.value)} />
-            </label>
-          )}
           <small className="muted">
-            {entry.type === 'cash' ? '現金：幣別單位值為 1' : showsPrice(entry, i) ? `沒有可查的行情，以手填的 ${entry.currency} 單價計算` : '合計同帳戶、同標的、同幣別的所有批次'}
+            {entry.type === 'cash' ? '現金：幣別單位值為 1' : '合計同帳戶、同標的、同幣別的所有批次'}
           </small>
           <button type="button" onClick={() => editAt(setDrafts, i, '')}>
             清除數量（未知）
@@ -361,7 +346,7 @@ export function QuantityEditor({
 
 function Valuation({ entry: e }: { entry: QuantityEntry }) {
   const value = entryValue(e)
-  const price = e.price && (e.price.source === 'manual' ? `手填單價 ${fmt(e.price.value, 6)} ${e.currency}` : `Yahoo ${e.price.symbol} · ${e.price.date} 收盤 ${fmt(e.price.value, 6)} ${e.currency}`)
+  const price = e.price?.source === 'Yahoo' ? `Yahoo ${e.price.symbol} · ${e.price.date} 收盤 ${fmt(e.price.value, 6)} ${e.currency}` : undefined
   return (
     <div className="small">
       <span>{value === null ? '估值未知' : `NT$ ${fmt(value, 2)}`}</span>

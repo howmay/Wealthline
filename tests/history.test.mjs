@@ -67,7 +67,7 @@ test('daily values combine past closes, past rates and the quantity held each da
   assert.equal(incomplete, false)
 })
 
-test('without past prices a hand-priced holding uses the prices in its change log', () => {
+test('without past prices historical values stay unknown despite recorded manual prices', () => {
   const p = holding({ currency: 'TWD', quantity: 2, price: 120, priceManual: true, addedAt: noon('2026-10-01') })
   const log = [
     { ...change(noon('2026-10-01'), null, { quantity: 1, price: 100 }), currency: 'TWD' },
@@ -75,7 +75,7 @@ test('without past prices a hand-priced holding uses the prices in its change lo
   ]
   const d = data([p], { history: { snapshots: [], changes: log } })
   const { days } = timeline.positionTimeline(d, d.accounts[0], p, null, null, noon('2026-10-07'))
-  assert.deepEqual(days.map((x) => [x.date, x.value]), [['2026-10-01', 100], ['2026-10-03', 240], ['2026-10-07', 240]])
+  assert.deepEqual(days.map((x) => [x.date, x.value]), [['2026-10-01', null], ['2026-10-03', null], ['2026-10-07', 240]])
 })
 
 test('the history relay rejects symbols and dates that are not plain values', async () => {

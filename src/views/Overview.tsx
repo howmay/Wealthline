@@ -1,3 +1,4 @@
+import { useHistoricalValuations } from '../useHistoricalValuations'
 import { balanceSheet } from '../liabilities'
 import { fmt } from '../format'
 import {
@@ -23,6 +24,7 @@ interface Props {
 }
 
 export function Overview({ data, onGoRates, onGoLiabilities, onNewAccount, onImport, onOpenAccount }: Props) {
+  const historical = useHistoricalValuations(data)
   if (data.accounts.length === 0 && !data.liabilities?.length) {
     return (
       <section className="panel empty">
@@ -54,7 +56,7 @@ export function Overview({ data, onGoRates, onGoLiabilities, onNewAccount, onImp
           <small>NT$</small>
           {fmt(byCategory.total, 0)}
         </div>
-        <ChangeSinceLast data={data} />
+        <ChangeSinceLast data={historical.data} />
         <p className="muted">
           {data.accounts.length} 個帳戶
           {data.fxUpdatedAt && ` · 匯率更新於 ${new Date(data.fxUpdatedAt).toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' })}`}
@@ -80,7 +82,8 @@ export function Overview({ data, onGoRates, onGoLiabilities, onNewAccount, onImp
       </section>
       {!data.accounts.length && <section className="panel span-2"><p className="muted">尚未記錄資產，目前總資產為 0。</p><button onClick={onNewAccount}>新增資產帳戶</button></section>}
       {data.accounts.length > 0 && <>
-      <AssetChange data={data} />
+      <AssetChange data={historical.data} />
+      {!!data.history.quantityDays?.length && <div className="span-2"><button disabled={historical.loading} onClick={historical.refresh}>{historical.loading ? '查詢歷史行情中…' : '重新查詢歷史行情'}</button></div>}
 
       <section className="panel span-2">
         <h3>資產配置</h3>

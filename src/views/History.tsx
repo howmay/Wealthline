@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { useHistoricalValuations } from '../useHistoricalValuations'
 import { fmt, pct } from '../format'
 import { localDate, snapshotOf, totalPoints, type Change } from '../history'
 import { CATEGORIES, type WealthData } from '../model'
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount }: Props) {
+  const historical = useHistoricalValuations(data)
   const [mode, setMode] = useState<Mode>('total')
   const [accountFilter, setAccountFilter] = useState('')
   const [quantityRequest,setQuantityRequest] = useState<QuantityEditRequest>()
@@ -31,7 +33,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
   // Today is always shown with the current numbers; saving records it.
   const today = snapshotOf({ ...data, liabilities: data.liabilities ?? [] }, now)
   const savedToday = saved.some((s) => s.date === today.date)
-  const points = totalPoints(data, now)
+  const points = totalPoints(historical.data, now)
   const dates = points.map((s) => s.date)
   const previous = points.length > 1 ? points[points.length - 2] : null
   const first = points.length > 1 ? points[0] : null
@@ -54,7 +56,8 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
         )}
       </div>
 
-      <QuantityHistory data={data} onChange={onChange} request={quantityRequest} onRequest={setQuantityRequest}/>
+      {!!data.history.quantityDays?.length && <div className="row"><button disabled={historical.loading} onClick={historical.refresh}>{historical.loading ? '查詢歷史行情中…' : '重新查詢歷史行情'}</button><span className="muted small">市場資料可能延遲；依實際行情日期估值，不以儲存價格兜底。</span></div>}
+      <QuantityHistory data={data} onChange={onChange} request={quantityRequest} onRequest={setQuantityRequest} displayDays={historical.data.history.quantityDays}/>
       <section className="stats">
         <Stat label="目前總資產" value={`NT$ ${fmt(today.total, 0)}`} note={savedToday && !dirty ? '今天已記錄' : '儲存後記錄為今天'} />
         <Stat label="較上次紀錄" base={previous} total={today.total} />

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { fmt } from '../format'
 import { localDate } from '../history'
 import { BASE_CURRENCY, type Account, type Position, type WealthData } from '../model'
-import { explicitDays, fetchHistory, fxSymbol, positionTimeline, startDate, type PriceHistory } from '../priceHistory'
-import { displaySymbol } from '../quotes'
+import { clearHistoryCache, explicitDays, fetchHistory, fxSymbol, positionTimeline, startDate, type PriceHistory } from '../priceHistory'
+import { candidates, displaySymbol } from '../quotes'
 import { TrendChart } from './TrendChart'
 
 const day = (iso: string) => new Date(iso).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -24,21 +24,28 @@ export function PositionHistory({
   onClose: () => void
 }) {
   const [now] = useState(() => new Date().toISOString())
+  const [generation, setGeneration] = useState(0)
   const [shown, setShown] = useState(10)
   const [loaded, setLoaded] = useState<Loaded | null>(null)
-  // Quantities entered on the History tab carry forward, so prices start from the earliest one.
+  // Fetch far enough back for this instrument’s selected-day entries.
   const from = [startDate(data, account, p, localDate(now)).date, ...explicitDays(data, account, p).keys()].sort()[0]
 
   useEffect(() => {
     let live = true
     void Promise.all([
-      p.type === 'cash' || p.priceManual ? null : fetchHistory(p.symbol, from),
+      p.type === 'cash' ? null : (async () => {
+        for (const symbol of candidates(p.symbol, account.country, account.category.includes('加密'))) {
+          const history = await fetchHistory(symbol, from)
+          if (history?.currency === p.currency && history.points.length) return history
+        }
+        return null
+      })(),
       p.currency === BASE_CURRENCY ? null : fetchHistory(fxSymbol(p.currency), from),
     ]).then(([prices, fx]) => live && setLoaded({ prices, fx }))
     return () => {
       live = false
     }
-  }, [p.type, p.symbol, p.currency, p.priceManual, from])
+  }, [p.type, p.symbol, p.currency, p.priceManual, from, generation, account.country, account.category])
 
   const head = (
     <div className="panel-head">
@@ -61,17 +68,19 @@ export function PositionHistory({
   const first = days[0]
   const diff = days.length > 1 && days[days.length - 1].value !== null && first.value !== null ? days[days.length - 1].value! - first.value : null
   const notes = [
-    p.type === 'holding' && !p.priceManual && !loaded.prices && '抓不到歷史股價，過去的日子不估值。',
-    p.priceManual && '這個標的是手動價格，價值只在你修改時變動。',
+    p.type === 'holding' && !loaded.prices && '抓不到歷史股價，過去的日子不估值。',
+    '歷史只使用查詢取得的市場行情；不使用手填現價。補登只影響選定日期。',
     p.type === 'cash' && p.currency === BASE_CURRENCY && '台幣餘額只在你修改時變動。',
-    '同帳戶、同標的、同幣別的多筆一起計算；拆股前的數量會換算成當時的股數。',
+    '同帳戶、同標的、同幣別的多筆一起計算；拆股後缺少可靠數量時保持未知。',
     incomplete && '部分日期缺少歷史價格或匯率，顯示未知，不以目前值補算。',
-    !startKnown && '加入日期不明，先顯示最近一年。可在歷史頁補登實際數量。',
+    !startKnown && '加入日期不明，不回推目前數量。可在歷史頁補登實際數量。',
   ].filter(Boolean)
 
   return (
     <div className="position-history">
       {head}
+      <button onClick={() => { clearHistoryCache(); setLoaded(null); setGeneration(g => g + 1) }}>重新查詢歷史行情</button>
+      <p className="muted small">市場資料可能延遲；歷史以已完成行情估值，實際日期列於明細。</p>
       <p className="muted small">
         {p.addedAt ? `${day(p.addedAt)} 加入` : '加入日期不明'}
         {diff !== null && (
