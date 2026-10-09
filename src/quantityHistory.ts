@@ -120,6 +120,20 @@ export async function valueEntries(
     return !error && entryValue(result) === null ? { ...result, error: '估值超出有效數值範圍' } : result
   }))
 }
+// Values every entered day with one query per symbol, from the earliest day, shared by
+// all days; per-day queries would multiply requests by the number of days.
+export async function valueDays(days: QuantityDay[], fetcher = fetchHistory): Promise<QuantityDay[]> {
+  const from = days.map((d) => d.date).sort()[0]
+  const cache = new Map<string, Promise<PriceHistory | null>>()
+  const shared = (symbol: string) => {
+    if (!cache.has(symbol)) cache.set(symbol, fetcher(symbol, from).catch(() => null))
+    return cache.get(symbol)!
+  }
+  return Promise.all(days.map(async (day) => ({
+    ...day,
+    entries: await valueEntries(day.entries, day.date, shared).catch(() => day.entries.map((e) => repriceEntry(e, day.date, null, null))),
+  })))
+}
 export function quantityPoint(day: QuantityDay, original?: Snapshot): HistoricalPoint {
   const accounts = new Map<string, { id: string; name: string; value: number | null }>()
   const categories: Record<string, number | null> = Object.create(null)

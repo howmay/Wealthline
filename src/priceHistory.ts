@@ -2,8 +2,8 @@
 // daily closes and exchange rates come from /api/history, and the quantity held on
 // each day comes from the change log. Nothing here is written to Drive.
 
-import { changeKey, keyOf, localDate, type PositionState } from './history'
-import { instrumentKey, quoteOn, repriceEntry, entryValue, type QuantityEntry } from './quantityHistory'
+import { changeKey, keyOf, localDate } from './history'
+import { entryValue, instrumentKey, quoteOn, repriceEntry, type QuantityEntry } from './quantityHistory'
 import { BASE_CURRENCY, rateOf, type Account, type Position, type WealthData } from './model'
 
 export interface PriceHistory {
@@ -34,17 +34,19 @@ export interface PositionTimeline {
 
 const marketCache = new Map<string, { at: number; result: Promise<PriceHistory | null> }>()
 export function clearHistoryCache() { marketCache.clear() }
-export async function fetchHistory(symbol: string, from: string): Promise<PriceHistory | null> {
+// Past closes change at most once a day, so the browser's cache (an hour, set by the
+// relay) is used unless the user asks to query again (`reload`).
+export async function fetchHistory(symbol: string, from: string, reload = false): Promise<PriceHistory | null> {
   const key = `${symbol}:${from}`
   const cached = marketCache.get(key)
-  if (cached && Date.now() - cached.at < 60_000) return cached.result
-  const result = requestHistory(symbol, from)
+  if (!reload && cached && Date.now() - cached.at < 60_000) return cached.result
+  const result = requestHistory(symbol, from, reload)
   marketCache.set(key, { at: Date.now(), result })
   if (marketCache.size > 100) marketCache.delete(marketCache.keys().next().value!)
   return result
 }
-async function requestHistory(symbol: string, from: string): Promise<PriceHistory | null> {
-  const res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&from=${from}`, { cache: 'no-cache' }).catch(() => null)
+async function requestHistory(symbol: string, from: string, reload: boolean): Promise<PriceHistory | null> {
+  const res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&from=${from}`, { cache: reload ? 'no-cache' : 'default' }).catch(() => null)
   try {
     const body = res?.ok ? await res.json() as PriceHistory : null
     return body && Array.isArray(body.points) && typeof body.currency === 'string' && typeof body.symbol === 'string' && body.points.every(p => p && typeof p.date === 'string' && Number.isFinite(p.close) && p.close > 0) && (body.splits === undefined || Array.isArray(body.splits) && body.splits.every(s => s && typeof s.date === 'string' && Number.isFinite(s.ratio) && s.ratio > 0)) ? body : null
@@ -83,62 +85,117 @@ export function explicitDays(data: WealthData, account: Account, p: Position): M
   return days
 }
 
-// Historical values never use today's prices or rates. Legacy changes identify
-// aggregate instrument quantities, not lots; unknown prehistory remains unknown.
+// Splits after `date` turn one unit then into `factor` units now.
+const splitFactor = (history: PriceHistory | null, date: string) =>
+  (history?.splits ?? []).filter((s) => s.date > date).reduce((factor, s) => factor * s.ratio, 1)
+
+// A date entered on the History tab, valued with the quotes fetched for this view.
+function enteredDay(date: string, stored: QuantityEntry, prices: PriceHistory | null, fx: PriceHistory | null): DayValue {
+  const e = repriceEntry(stored, date, prices, fx)
+  return {
+    date,
+    quantity: e.quantity,
+    price: e.type === 'cash' ? 1 : (e.price?.value ?? null),
+    rate: e.currency === BASE_CURRENCY ? 1 : (e.fx?.value ?? null),
+    priceDate: e.price?.date,
+    rateDate: e.fx?.date,
+    value: entryValue(e),
+  }
+}
+
+// Each past day is valued with the units held that day and that day's market close and
+// rate; today's prices, rates and typed prices are never used for the past.
+// Units held come from, newest first: a quantity entered on the History tab, which holds
+// until the next logged edit or recorded day; the last logged edit; before the first edit,
+// what it started from; with no log at all, each lot from the day it was added. A count
+// carried across a split is converted to the units held on that day.
 export function positionTimeline(
-  data: WealthData, account: Account, p: Position,
-  prices: PriceHistory | null, fx: PriceHistory | null, now: string,
+  data: WealthData,
+  account: Account,
+  p: Position,
+  prices: PriceHistory | null,
+  fx: PriceHistory | null,
+  now: string,
 ): PositionTimeline {
   const today = localDate(now)
   const start = startDate(data, account, p, today)
-  const mixedCurrency = account.positions.some(x => keyOf(x) === keyOf(p) && x.currency !== p.currency)
-  const log = mixedCurrency ? [] : logFor(data, account, p).filter(c => c.currency === p.currency)
-  const explicit = (data.history.quantityDays ?? []).flatMap(d => {
-    const entry = d.entries.find(e => instrumentKey(e) === instrumentKey({accountId:account.id,account:account.name,category:account.category,country:account.country,...p}))
-    return entry ? [{date:d.date,entry}] : []
-  })
-  const lower = [start.date, ...explicit.map(d => d.date)].sort()[0]
-  const stateOn = (date:string): PositionState | null | undefined => {
-    let state: PositionState | null | undefined
-    for(const c of log) {if(localDate(c.at)>date)break;state=c.after}
-    return state
+  const lots = lotsOf(account, p)
+  // The log keys a ticker without its currency, so one held in two currencies has no usable log.
+  const mixedCurrency = account.positions.some((x) => keyOf(x) === keyOf(p) && x.currency !== p.currency)
+  const log = mixedCurrency ? [] : logFor(data, account, p).filter((c) => c.currency === p.currency)
+  const entered = [...explicitDays(data, account, p)].sort(([a], [b]) => a.localeCompare(b))
+  const recordedDays = data.history.snapshots.map((s) => s.date)
+
+  // Units held at the end of `date` and the day that count was recorded;
+  // null before the holding existed, undefined when nothing says.
+  type Held = { quantity: number; recorded: string } | null | undefined
+  const heldOn = (date: string): Held => {
+    let logged: Held
+    for (const c of log) {
+      if (localDate(c.at) > date) break
+      logged = { quantity: c.after?.quantity ?? 0, recorded: localDate(c.at) }
+    }
+    // A recorded day's total was worked out from the logged count, so an entered
+    // quantity stops there and the daily records and this chart agree.
+    const last = entered.filter(([d]) => d <= date).at(-1)
+    if (last && !(logged && logged.recorded > last[0]) && !recordedDays.some((d) => d > last[0] && d <= date)) {
+      const [recorded, e] = last
+      return e.quantity === null ? undefined : { quantity: e.quantity, recorded }
+    }
+    if (logged) return logged
+    if (start.known && date < start.date) return null
+    if (log.length) return log[0].before ? { quantity: log[0].before.quantity, recorded: localDate(log[0].at) } : null
+    if (lots.some((x) => !x.addedAt)) return undefined
+    const held = lots.filter((x) => localDate(x.addedAt!) <= date)
+    return held.length ? { quantity: held.reduce((sum, x) => sum + x.quantity, 0), recorded: today } : null
   }
-  const dates = new Set<string>()
-  for(const pt of prices?.points ?? []) dates.add(pt.date)
-  for(const pt of fx?.points ?? []) dates.add(pt.date)
-  for(const c of log) dates.add(localDate(c.at))
-  for(const d of explicit) dates.add(d.date)
-  const days: DayValue[]=[]
-  let incomplete=false
-  for(const date of [...dates].sort()) {
-    if(date>=today)continue
-    const manual = explicit.find(d=>d.date===date)?.entry
-    if(manual){const fresh=repriceEntry(manual,date,prices,fx);days.push({date,quantity:fresh.quantity,price:fresh.type==='cash'?1:fresh.price?.value??null,rate:fresh.currency==='TWD'?1:fresh.fx?.value??null,priceDate:fresh.price?.date,rateDate:fresh.fx?.date,value:entryValue(fresh)});if(entryValue(fresh)===null)incomplete=true;continue}
-    if(date<lower)continue
-    const state=stateOn(date)
-    if(state===undefined){days.push({date,quantity:null,price:null,rate:null,value:null});incomplete=true;continue}
-    const quantity=state?.quantity??0
-    const quote=prices?.currency===p.currency?quoteOn(prices,date):undefined
-    const rateQuote=fx?.currency===BASE_CURRENCY?quoteOn(fx,date):undefined
-    const price=p.type==='cash'?1:quote?.value??null
-    const rate=p.currency===BASE_CURRENCY?1:rateQuote?.value??null
-    // Never carry a logged quantity across a split without an explicit quantity
-    // for that date: splits change units, and legacy logs are not transactions.
-    const last=log.filter(c=>localDate(c.at)<=date).at(-1)
-    const splitUnknown=quantity !== 0 && !!last && prices?.splits?.some(s=>s.date>localDate(last.at)&&s.date<=date)
-    const value=quantity===0?0:splitUnknown||price===null||rate===null?null:quantity*price*rate
-    if(value===null)incomplete=true
-    days.push({date,quantity:splitUnknown?null:quantity,price,rate,priceDate:quote?.date,rateDate:rateQuote?.date,value:value!==null&&Number.isFinite(value)?value:null})
+
+  const quoted = p.type === 'holding' && prices?.currency === p.currency
+  const dates = new Set<string>(start.known ? [start.date] : [])
+  for (const x of lots) if (x.addedAt) dates.add(localDate(x.addedAt))
+  for (const pt of quoted ? prices!.points : []) dates.add(pt.date)
+  for (const pt of fx?.points ?? []) dates.add(pt.date)
+  for (const c of log) dates.add(localDate(c.at))
+  for (const [date] of entered) dates.add(date)
+
+  const days: DayValue[] = []
+  let incomplete = false
+  for (const date of [...dates].sort()) {
+    if (date >= today) continue
+    const entry = entered.find(([d]) => d === date)?.[1]
+    if (entry) {
+      const day = enteredDay(date, entry, prices, fx)
+      if (day.value === null) incomplete = true
+      days.push(day)
+      continue
+    }
+    const held = heldOn(date)
+    if (held === null) continue
+    if (held === undefined) {
+      // Only a known start says the holding existed; otherwise the day is left out.
+      if (start.known && date >= start.date) {
+        days.push({ date, quantity: null, price: null, rate: null, value: null })
+        incomplete = true
+      }
+      continue
+    }
+    const quantity = quoted ? (held.quantity * splitFactor(prices, held.recorded)) / splitFactor(prices, date) : held.quantity
+    const quote = quoted ? quoteOn(prices, date) : undefined
+    const rateQuote = p.currency === BASE_CURRENCY || fx?.currency !== BASE_CURRENCY ? undefined : quoteOn(fx, date)
+    const price = p.type === 'cash' ? 1 : (quote?.value ?? null)
+    const rate = p.currency === BASE_CURRENCY ? 1 : (rateQuote?.value ?? null)
+    const raw = quantity === 0 ? 0 : price === null || rate === null ? null : quantity * price * rate
+    const value = raw !== null && Number.isFinite(raw) ? raw : null
+    if (value === null) incomplete = true
+    days.push({ date, quantity, price, rate, priceDate: quote?.date, rateDate: rateQuote?.date, value })
   }
-  const storedToday=explicit.find(d=>d.date===today)?.entry
-  const manualToday=storedToday?repriceEntry(storedToday,today,prices,fx):undefined
-  if(manualToday)days.push({date:today,quantity:manualToday.quantity,price:manualToday.type==='cash'?1:manualToday.price?.value??null,rate:manualToday.currency==='TWD'?1:manualToday.fx?.value??null,priceDate:manualToday.price?.date,rateDate:manualToday.fx?.date,value:entryValue(manualToday)})
+
+  const enteredToday = entered.find(([d]) => d === today)?.[1]
+  if (enteredToday) days.push(enteredDay(today, enteredToday, prices, fx))
   else {
-    const group=account.positions.filter(x=>keyOf(x)===keyOf(p)&&x.currency===p.currency)
-    const quantity=group.reduce((sum,x)=>sum+x.quantity,0)
-    const rate=rateOf(data,p.currency)
-    const value=group.reduce((sum,x)=>sum+x.quantity*x.price*rate,0)
-    days.push({date:today,quantity,price:p.price,rate:Number.isFinite(rate)?rate:null,value:Number.isFinite(value)?value:null,live:true})
+    const rate = rateOf(data, p.currency)
+    const value = lots.reduce((sum, x) => sum + x.quantity * x.price * rate, 0)
+    days.push({ date: today, quantity: lots.reduce((sum, x) => sum + x.quantity, 0), price: p.price, rate: Number.isFinite(rate) ? rate : null, value: Number.isFinite(value) ? value : null, live: true })
   }
-  return {days,startKnown:start.known,incomplete}
+  return { days, startKnown: start.known, incomplete }
 }

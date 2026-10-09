@@ -35,12 +35,12 @@ export function PositionHistory({
     void Promise.all([
       p.type === 'cash' ? null : (async () => {
         for (const symbol of candidates(p.symbol, account.country, account.category.includes('加密'))) {
-          const history = await fetchHistory(symbol, from)
+          const history = await fetchHistory(symbol, from, generation > 0)
           if (history?.currency === p.currency && history.points.length) return history
         }
         return null
       })(),
-      p.currency === BASE_CURRENCY ? null : fetchHistory(fxSymbol(p.currency), from),
+      p.currency === BASE_CURRENCY ? null : fetchHistory(fxSymbol(p.currency), from, generation > 0),
     ]).then(([prices, fx]) => live && setLoaded({ prices, fx }))
     return () => {
       live = false
@@ -69,11 +69,11 @@ export function PositionHistory({
   const diff = days.length > 1 && days[days.length - 1].value !== null && first.value !== null ? days[days.length - 1].value! - first.value : null
   const notes = [
     p.type === 'holding' && !loaded.prices && '抓不到歷史股價，過去的日子不估值。',
-    '歷史只使用查詢取得的市場行情；不使用手填現價。補登只影響選定日期。',
+    '歷史只使用查詢取得的市場行情，不使用手填現價。補登的數量會沿用到下一筆異動、補登或每日紀錄為止。',
     p.type === 'cash' && p.currency === BASE_CURRENCY && '台幣餘額只在你修改時變動。',
-    '同帳戶、同標的、同幣別的多筆一起計算；拆股後缺少可靠數量時保持未知。',
+    '同帳戶、同標的、同幣別的多筆一起計算，每筆從自己的加入日起算；拆股前的數量換算成當時的股數。',
     incomplete && '部分日期缺少歷史價格或匯率，顯示未知，不以目前值補算。',
-    !startKnown && '加入日期不明，不回推目前數量。可在歷史頁補登實際數量。',
+    !startKnown && '加入日期不明，不回推目前數量；可在歷史頁補登實際數量。',
   ].filter(Boolean)
 
   return (
