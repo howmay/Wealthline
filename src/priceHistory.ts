@@ -107,7 +107,8 @@ function enteredDay(date: string, stored: QuantityEntry, prices: PriceHistory | 
 // rate; today's prices, rates and typed prices are never used for the past.
 // Units held come from, newest first: a quantity entered on the History tab, which holds
 // until the next logged edit or recorded day; the last logged edit; before the first edit,
-// what it started from; with no log at all, each lot from the day it was added. A count
+// what it started from (unknown while a lot added later would be counted in); with no
+// log at all, each lot from the day it was added. Price-only edits are not counts. A count
 // carried across a split is converted to the units held on that day.
 export function positionTimeline(
   data: WealthData,
@@ -122,7 +123,10 @@ export function positionTimeline(
   const lots = lotsOf(account, p)
   // The log keys a ticker without its currency, so one held in two currencies has no usable log.
   const mixedCurrency = account.positions.some((x) => keyOf(x) === keyOf(p) && x.currency !== p.currency)
-  const log = mixedCurrency ? [] : logFor(data, account, p).filter((c) => c.currency === p.currency)
+  // Only edits that change the count say how many units were held; a typed price change does not.
+  const log = (mixedCurrency ? [] : logFor(data, account, p)).filter(
+    (c) => c.currency === p.currency && (!c.before || !c.after || c.before.quantity !== c.after.quantity),
+  )
   const entered = [...explicitDays(data, account, p)].sort(([a], [b]) => a.localeCompare(b))
   const recordedDays = data.history.snapshots.map((s) => s.date)
 
@@ -144,7 +148,15 @@ export function positionTimeline(
     }
     if (logged) return logged
     if (start.known && date < start.date) return null
-    if (log.length) return log[0].before ? { quantity: log[0].before.quantity, recorded: localDate(log[0].at) } : null
+    if (log.length) {
+      const [first] = log
+      if (!first.before) return null
+      // The count before the first edit covers every lot held by then, so a lot added
+      // after `date` would be counted in: that day stays unknown instead.
+      const recorded = localDate(first.at)
+      if (lots.some((x) => x.addedAt && localDate(x.addedAt) > date && localDate(x.addedAt) <= recorded)) return undefined
+      return { quantity: first.before.quantity, recorded }
+    }
     if (lots.some((x) => !x.addedAt)) return undefined
     const held = lots.filter((x) => localDate(x.addedAt!) <= date)
     return held.length ? { quantity: held.reduce((sum, x) => sum + x.quantity, 0), recorded: today } : null

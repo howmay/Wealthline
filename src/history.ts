@@ -219,7 +219,9 @@ export function recordSave(saved: WealthData | null, next: WealthData): WealthDa
       changes,
       liabilityChanges: [...(next.history.liabilityChanges ?? []), ...diffLiabilities(saved, next, at)],
       snapshots: next.accounts.length || next.liabilities?.length || snapshots.length || saved?.accounts.length || saved?.liabilities?.length
-        ? next.history.quantityDays?.some(d => d.date === localDate(at)) ? snapshots : upsert(snapshots, snapshotOf(stamped, at)) : snapshots,
+        // Today's entered quantities live in quantityDays and still win over this snapshot;
+        // the snapshot keeps today's debt so later days can still show it.
+        ? upsert(snapshots, snapshotOf(stamped, at)) : snapshots,
     },
   }
 }

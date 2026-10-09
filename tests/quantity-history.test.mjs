@@ -71,12 +71,13 @@ test('manual days override history only, preserve unknown debt, order dates and 
  const removed={...corrected,history:{...corrected.history,quantityDays:[]}}
  assert.equal(h.totalPoints(removed,'2025-10-08T12:00:00Z')[0].total,999)
 })
-test('same-day automatic saves preserve manual records and async history edit retains committed logs',()=>{
+test('same-day saves keep the manual records winning while recording the day and async history edit retains committed logs',()=>{
  const data=fixture();const now=new Date().toISOString(),date=h.localDate(now)
  const submitted=q.applyQuantityDay(data,day({date,entries:[entry({quantity:0})]}))
  const persisted=h.recordSave(data,{...submitted,updatedAt:now})
  assert.equal(persisted.version,3);assert.deepEqual(persisted.history.quantityDays,submitted.history.quantityDays)
- assert.equal(persisted.history.snapshots.some(s=>s.date===date),false)
+ assert.equal(persisted.history.snapshots.some(s=>s.date===date),true)
+ assert.equal(h.totalPoints(persisted,now).find(s=>s.date===date).manual,true)
  assert.equal(h.totalPoints(persisted,now).find(s=>s.date===date).total,0)
  const current=q.applyQuantityDay(submitted,day({date,entries:[entry({quantity:null})]}),submitted.history.quantityDays[0])
  const finished=save.finishSave(current,submitted,persisted)
@@ -252,4 +253,33 @@ test('history queries use the browser cache unless the user asks to query again'
   await timeline.fetchHistory('CACHE','2025-10-04',true)
   assert.deepEqual(modes,['default','no-cache'])
  }finally{globalThis.fetch=original;timeline.clearHistoryCache()}
+})
+test('a typed price change is not a count, and a lot added later is never counted into an earlier day',()=>{
+ const l1={...twHolding({id:'l1',symbol:'TEST',quantity:10,price:10,priceManual:true}),addedAt:'2025-10-01T04:00:00Z'},l2={...l1,id:'l2',addedAt:'2025-10-05T04:00:00Z'}
+ const account=twAccount([l1,l2]),saved={...m.emptyData(),accounts:[account],updatedAt:'2025-10-07T04:00:00Z'}
+ const prices={symbol:'TEST',currency:'TWD',asTraded:true,splits:[],points:daily('2025-10-01','2025-10-08',10)}
+ const on=(data,date)=>timeline.positionTimeline(data,data.accounts[0],data.accounts[0].positions[0],prices,null,'2025-10-09T04:00:00Z').days.find(d=>d.date===date)
+ const repriced=h.recordSave(saved,{...saved,updatedAt:'2025-10-08T04:00:00Z',accounts:[{...account,positions:[l1,{...l2,price:11}]}]})
+ assert.equal(repriced.history.changes.length,1)
+ assert.deepEqual([on(repriced,'2025-10-02').quantity,on(repriced,'2025-10-02').value],[10,100])
+ assert.equal(on(repriced,'2025-10-06').quantity,20)
+ const resized=h.recordSave(saved,{...saved,updatedAt:'2025-10-08T04:00:00Z',accounts:[{...account,positions:[l1,{...l2,quantity:15}]}]})
+ assert.deepEqual([on(resized,'2025-10-02').quantity,on(resized,'2025-10-02').value],[null,null])
+ assert.equal(on(resized,'2025-10-06').quantity,20)
+ assert.equal(on(resized,'2025-10-08').quantity,25)
+})
+test('saving on a day with entered quantities keeps that day\'s debt for later days',()=>{
+ const account={id:'cash-acc',name:'合成現金',kind:'bank',category:'現金與外幣活存',country:'TW',positions:[{id:'twd',type:'cash',symbol:'',currency:'TWD',quantity:500,price:1}]}
+ const loan={id:'loan',name:'合成貸款',kind:'personal',currency:'TWD',balance:1200,annualRate:0,repaymentMethod:'annuity',remainingInstallments:12,schedule:{source:'original',baseDate:'2025-09-29',firstDueDate:'2025-09-30',monthlyDay:30,timeZone:'Asia/Taipei'}}
+ const morning={date:'2025-10-04',at:'2025-10-04T01:00:00Z',total:500,accounts:[{id:'cash-acc',name:'合成現金',value:500}],categories:{現金與外幣活存:500},liabilityTotal:0,netWorth:500}
+ for(const snapshots of [[morning],[]]){
+  const saved={...m.emptyData(),accounts:[account],liabilities:[],updatedAt:'2025-10-04T01:00:00Z',history:{changes:[],snapshots}}
+  const entered=q.applyQuantityDay(saved,{date:'2025-10-04',updatedAt:'2025-10-04T05:00:00Z',entries:[{accountId:'cash-acc',account:'合成現金',category:'現金與外幣活存',country:'TW',type:'cash',symbol:'',currency:'TWD',quantity:500}]},undefined)
+  const persisted=h.recordSave(saved,{...entered,liabilities:[loan],updatedAt:'2025-10-04T06:00:00Z'})
+  const reloaded=m.parseWealthData(JSON.parse(JSON.stringify(persisted)))
+  for(const now of ['2025-10-04T07:00:00Z','2025-10-05T07:00:00Z']){
+   const point=h.totalPoints(reloaded,now).find(s=>s.date==='2025-10-04')
+   assert.deepEqual([point.manual,point.total,point.liabilityTotal,point.netWorth,point.liabilityEstimated],[true,500,1100,-600,true])
+  }
+ }
 })
