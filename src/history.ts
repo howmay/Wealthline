@@ -1,6 +1,7 @@
 // History kept inside the data file: every edit to a balance or holding, and one
 // value snapshot per day, so the user can see how their assets change over time.
 
+import { balanceSheet, parseLiability, type Liability } from './liabilities'
 import { accountBaseValue, baseValue, type Account, type Position, type WealthData } from './model'
 
 export interface PositionState {
@@ -27,10 +28,36 @@ export interface Snapshot {
   total: number
   accounts: { id: string; name: string; value: number }[]
   categories: Record<string, number>
+  liabilityTotal?: number | null // absent: not recorded by older clients; null: cannot convert
+  netWorth?: number | null
+}
+
+export interface LiabilityChange {
+  at: string
+  liabilityId: string
+  before: Liability | null
+  after: Liability | null
+}
+
+export function diffLiabilities(prev: WealthData | null, next: WealthData, at: string): LiabilityChange[] {
+  const before = new Map((prev?.liabilities ?? []).map((d) => [d.id, d]))
+  const after = new Map((next.liabilities ?? []).map((d) => [d.id, d]))
+  return [...new Set([...before.keys(), ...after.keys()])].flatMap((id) => {
+    const b = before.get(id) ?? null, a = after.get(id) ?? null
+    return JSON.stringify(b && parseLiability(b)) === JSON.stringify(a && parseLiability(a)) ? [] : [{ at, liabilityId: id, before: b, after: a }]
+  })
+}
+
+export const pendingLiabilityChanges = (saved: WealthData | null, data: WealthData) => diffLiabilities(saved, data, new Date().toISOString())
+export function revertLiabilityChange(saved: WealthData | null, data: WealthData, id: string): WealthData {
+  const original = saved?.liabilities?.find((d) => d.id === id)
+  const others = (data.liabilities ?? []).filter((d) => d.id !== id)
+  return { ...data, liabilities: original ? [...others, original] : others }
 }
 
 export interface History {
   changes: Change[]
+  liabilityChanges?: LiabilityChange[]
   snapshots: Snapshot[]
 }
 
@@ -99,7 +126,11 @@ export function snapshotOf(data: WealthData, at: string): Snapshot {
     }
   }
   const accounts = data.accounts.map((a) => ({ id: a.id, name: a.name, value: accountBaseValue(data, a) }))
-  return { date: localDate(at), at, total: accounts.reduce((s, a) => s + a.value, 0), accounts, categories }
+  const totals = balanceSheet(data)
+  return {
+    date: localDate(at), at, total: accounts.reduce((s, a) => s + a.value, 0), accounts, categories,
+    ...(data.liabilities !== undefined && { liabilityTotal: totals.liabilities, netWorth: totals.net }),
+  }
 }
 
 // When each balance or holding first appeared: new ones get this save's time; ones saved
@@ -168,12 +199,14 @@ export function recordSave(saved: WealthData | null, next: WealthData): WealthDa
     snapshots = [snapshotOf(saved, saved.updatedAt)]
   }
   const changes = [...next.history.changes, ...diffPositions(saved ?? { ...next, accounts: [] }, next, at)]
-  const stamped = { ...next, accounts: stampAdded(saved, next, changes, at) }
+  const stamped: WealthData = { ...next, version: 2, liabilities: next.liabilities ?? [], accounts: stampAdded(saved, next, changes, at) }
   return {
     ...stamped,
     history: {
       changes,
-      snapshots: next.accounts.length ? upsert(snapshots, snapshotOf(stamped, at)) : snapshots,
+      liabilityChanges: [...(next.history.liabilityChanges ?? []), ...diffLiabilities(saved, next, at)],
+      snapshots: next.accounts.length || next.liabilities?.length || snapshots.length || saved?.accounts.length || saved?.liabilities?.length
+        ? upsert(snapshots, snapshotOf(stamped, at)) : snapshots,
     },
   }
 }
@@ -205,6 +238,19 @@ export function parseHistory(raw: unknown, fail: (why: string) => never): Histor
       after: state(c.after ?? null, `${where}的 after `),
     }
   })
+  if (h.liabilityChanges !== undefined && !Array.isArray(h.liabilityChanges)) fail('負債異動紀錄必須是陣列')
+  const liabilityChanges = ((h.liabilityChanges ?? []) as unknown[]).map((item): LiabilityChange => {
+    if (typeof item !== 'object' || item === null) return fail('負債異動紀錄不是物件')
+    const c = item as Record<string, unknown>
+    if (!isStr(c.at) || !isStr(c.liabilityId)) fail('負債異動紀錄缺少欄位')
+    const read = (v: unknown) => {
+      if (v === null) return null
+      try { return parseLiability(v) } catch { return fail('負債異動紀錄格式不正確') }
+    }
+    const before = read(c.before), after = read(c.after)
+    if ((!before && !after) || (before && before.id !== c.liabilityId) || (after && after.id !== c.liabilityId)) fail('負債異動紀錄識別碼不符')
+    return { at: c.at as string, liabilityId: c.liabilityId as string, before, after }
+  })
   const snapshots = (Array.isArray(h.snapshots) ? h.snapshots : []).map((item: unknown, i): Snapshot => {
     const where = `第 ${i + 1} 筆每日紀錄`
     const s = (typeof item === 'object' && item !== null ? item : fail(`${where}不是物件`)) as Record<string, unknown>
@@ -213,7 +259,13 @@ export function parseHistory(raw: unknown, fail: (why: string) => never): Histor
     if (typeof s.categories === 'object' && s.categories !== null) {
       for (const [k, v] of Object.entries(s.categories)) if (isNum(v)) categories[k] = v
     }
+    for (const key of ['liabilityTotal', 'netWorth']) {
+      if (s[key] !== undefined && s[key] !== null && !isNum(s[key])) fail(`${where}的負債／淨資產格式不正確`)
+    }
+    if (typeof s.liabilityTotal === 'number' && s.liabilityTotal < 0) fail(`${where}的負債不可為負值`)
     return {
+      ...(s.liabilityTotal !== undefined && { liabilityTotal: s.liabilityTotal as number | null }),
+      ...(s.netWorth !== undefined && { netWorth: s.netWorth as number | null }),
       date: s.date as string,
       at: isStr(s.at) ? s.at : (s.date as string),
       total: s.total as number,
@@ -225,5 +277,5 @@ export function parseHistory(raw: unknown, fail: (why: string) => never): Histor
       categories,
     }
   })
-  return { changes, snapshots: snapshots.sort((x, y) => x.date.localeCompare(y.date)) }
+  return { changes, liabilityChanges, snapshots: snapshots.sort((x, y) => x.date.localeCompare(y.date)) }
 }

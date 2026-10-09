@@ -18,6 +18,7 @@ test('each signed-in page has its own URL that parses back to the same page', ()
     [{ tab: 'accounts', page: 'new' }, '/accounts/new'],
     [{ tab: 'accounts', page: 'detail', id: 'a b/c' }, '/accounts/a%20b%2Fc'],
     [{ tab: 'accounts', page: 'edit', id: 'abc' }, '/accounts/abc/edit'],
+    [{ tab: 'liabilities' }, '/liabilities'],
     [{ tab: 'history' }, '/history'],
     [{ tab: 'rates' }, '/rates'],
   ]

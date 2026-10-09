@@ -1,9 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { changeRatio, type Change } from '../history'
+import { changeRatio, type Change, type LiabilityChange } from '../history'
+import { LiabilityChangeRow } from './LiabilityChange'
 import { ChangeRow } from './History'
 
 interface Props {
   changes: Change[]
+  liabilityChanges?: LiabilityChange[]
+  onRevertLiability?: (id: string) => void
   busy: boolean
   canRevert: (c: Change) => boolean
   onRevert: (c: Change) => void
@@ -13,7 +16,7 @@ interface Props {
 
 // Shown before a save that changes balances or holdings: these edits become history,
 // so a typo is caught (and undone) here instead of being kept forever.
-export function SaveReview({ changes, busy, canRevert, onRevert, onConfirm, onCancel }: Props) {
+export function SaveReview({ changes, liabilityChanges = [], onRevertLiability, busy, canRevert, onRevert, onConfirm, onCancel }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     ref.current?.showModal()
@@ -24,7 +27,7 @@ export function SaveReview({ changes, busy, canRevert, onRevert, onConfirm, onCa
     <dialog ref={ref} className="review" onCancel={(event) => { event.preventDefault(); if (!busy) onCancel() }} aria-labelledby="review-title">
       <h3 id="review-title">確認要儲存的變更</h3>
       <p className="muted small">
-        以下 {changes.length} 項會記錄到歷史，原本的數字會保留。打錯的可以按「復原」改回去。
+        以下 {changes.length + liabilityChanges.length} 項會記錄到歷史，原本的數字會保留。打錯的可以按「復原」改回去。
       </p>
       {big > 0 && (
         <p className="notice">
@@ -56,6 +59,9 @@ export function SaveReview({ changes, busy, canRevert, onRevert, onConfirm, onCa
           })}
         </ul>
       </div>
+      {liabilityChanges.length > 0 && <div className="review-list"><h4>負債變更</h4><ul className="liability-changes">
+        {liabilityChanges.map((c) => <LiabilityChangeRow key={c.liabilityId} change={c} showTime={false} extra={onRevertLiability && <button className="small" disabled={busy} onClick={() => onRevertLiability(c.liabilityId)}>復原負債</button>} />)}
+      </ul></div>}
       <div className="row review-actions">
         <button onClick={onCancel} disabled={busy}>
           繼續編輯

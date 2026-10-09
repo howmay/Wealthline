@@ -1,3 +1,4 @@
+import { balanceSheet } from '../liabilities'
 import { fmt } from '../format'
 import {
   CATEGORIES,
@@ -15,13 +16,14 @@ import { Allocation, RankBars } from './charts'
 interface Props {
   data: WealthData
   onGoRates: () => void
+  onGoLiabilities?: () => void
   onNewAccount: () => void
   onImport: () => void
   onOpenAccount: (name: string) => void
 }
 
-export function Overview({ data, onGoRates, onNewAccount, onImport, onOpenAccount }: Props) {
-  if (data.accounts.length === 0) {
+export function Overview({ data, onGoRates, onGoLiabilities, onNewAccount, onImport, onOpenAccount }: Props) {
+  if (data.accounts.length === 0 && !data.liabilities?.length) {
     return (
       <section className="panel empty">
         <div className="empty-mark" aria-hidden>
@@ -33,12 +35,14 @@ export function Overview({ data, onGoRates, onNewAccount, onImport, onOpenAccoun
           <button className="primary" onClick={onNewAccount}>
             建立第一個帳戶
           </button>
+          {onGoLiabilities && <button onClick={onGoLiabilities}>新增負債</button>}
           <button onClick={onImport}>從試算表匯入</button>
         </div>
       </section>
     )
   }
 
+  const totals = balanceSheet(data)
   const missing = missingRates(data)
   const byCategory = breakdown(data, (a) => a.category)
 
@@ -57,7 +61,7 @@ export function Overview({ data, onGoRates, onNewAccount, onImport, onOpenAccoun
         </p>
         {missing.length > 0 && (
           <p className="notice">
-            <span aria-hidden>⚠</span> {missing.join('、')} 沒有匯率，未計入總額。
+            <span aria-hidden>⚠</span> {missing.join('、')} 沒有匯率；資產總額可能不完整，相關負債與淨資產暫不換算。
             <button className="link" onClick={onGoRates}>
               查看匯率
             </button>
@@ -65,6 +69,17 @@ export function Overview({ data, onGoRates, onNewAccount, onImport, onOpenAccoun
         )}
       </section>
 
+      <section className="panel stat" aria-label="總負債">
+        <span className="eyebrow">總負債</span><strong>{totals.liabilities === null ? '尚無法換算' : `NT$ ${fmt(totals.liabilities, 0)}`}</strong>
+        <span className="muted small">{data.liabilities?.length ?? 0} 筆手動記錄</span>
+        {onGoLiabilities && <button className="link" onClick={onGoLiabilities}>管理負債</button>}
+      </section>
+      <section className="panel stat" aria-label="淨資產">
+        <span className="eyebrow">淨資產</span><strong>{totals.net === null ? '尚無法換算' : `NT$ ${fmt(totals.net, 0)}`}</strong>
+        <span className="muted small">總資產 − 總負債{totals.net === null ? ' · 請檢查匯率' : ''}</span>
+      </section>
+      {!data.accounts.length && <section className="panel span-2"><p className="muted">尚未記錄資產，目前總資產為 0。</p><button onClick={onNewAccount}>新增資產帳戶</button></section>}
+      {data.accounts.length > 0 && <>
       <AssetChange data={data} />
 
       <section className="panel span-2">
@@ -93,6 +108,7 @@ export function Overview({ data, onGoRates, onNewAccount, onImport, onOpenAccoun
           />
         </section>
       )}
+      </>}
     </div>
   )
 }
