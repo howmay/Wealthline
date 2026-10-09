@@ -1,0 +1,25 @@
+# Wealthline
+
+> Wealthline（個人資產統計）is a free, open-source personal asset tracker web app. Users sign in with Google, and every piece of their data is stored only as a JSON file in their own Google Drive. There is no backend database: the operator cannot see or keep any user's data. Interface language: Traditional Chinese (zh-Hant); base currency: New Taiwan Dollar (TWD).
+
+Key facts:
+
+- Sign-in: Google account via Google Identity Services. Requested scopes: openid, email, profile and `drive.file`, which lets the app reach only the files it created, not the rest of the user's Drive.
+- Data location: `My Drive / We Wealth / we-wealth-data.json` in the user's own Google Drive, visible to the user, who can open, download, back up or delete it at any time.
+- Features: define bank and investment accounts, record cash balances per currency, record holdings by ticker and quantity only (prices from Yahoo Finance, crypto from CoinGecko), automatic exchange rates to TWD (ExchangeRate-API), allocation charts, daily total snapshots, a change log, and per-holding value history.
+- Cost: free. No registration or installation needed.
+- License: PolyForm Noncommercial 1.0.0. Commercial use requires written permission.
+- Operator: the GitHub organization howmay. Source code: https://github.com/howmay/Wealthline
+- Quotes, exchange rates and totals are for reference only and are not investment advice.
+
+## Pages
+
+- [Home](https://wealthline.haomeh.com/): what Wealthline is and how to sign in
+- [Privacy Policy 隱私權政策](https://wealthline.haomeh.com/privacy): how Google user data is accessed, used and stored
+- [Terms of Service 使用條款](https://wealthline.haomeh.com/terms)
+- [Disclaimer 免責聲明](https://wealthline.haomeh.com/disclaimer)
+
+## Optional
+
+- [Source code and README](https://github.com/howmay/Wealthline): full feature list, planned features and local development
+- [Report an issue](https://github.com/howmay/Wealthline/issues)
