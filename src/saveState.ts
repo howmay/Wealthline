@@ -6,6 +6,8 @@ export function finishSave(current: WealthData, submitted: WealthData, persisted
   const stamps = new Map(persisted.accounts.flatMap((a) => a.positions.map((p) => [p.id, p.addedAt])))
   return {
     ...current,
+    version: persisted.version,
+    liabilities: current.liabilities ?? [],
     updatedAt: persisted.updatedAt,
     history: current.history === submitted.history ? persisted.history : current.history,
     accounts: current.accounts.map((a) => ({

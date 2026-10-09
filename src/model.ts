@@ -1,5 +1,6 @@
 // Shape of the JSON file stored in the user's Drive. Bump `version` on breaking changes.
 
+import { parseLiability, type Liability } from './liabilities'
 import { emptyHistory, parseHistory, type History } from './history'
 
 export const BASE_CURRENCY = 'TWD'
@@ -68,7 +69,7 @@ export interface Account {
 }
 
 export interface WealthData {
-  version: 1
+  version: 1 | 2
   updatedAt: string
   // How many TWD one unit of each currency is worth.
   fxRates: Record<string, number>
@@ -77,12 +78,13 @@ export interface WealthData {
   // When rates were last fetched automatically.
   fxUpdatedAt?: string
   accounts: Account[]
+  liabilities?: Liability[]
   // Past edits and daily values; see history.ts.
   history: History
 }
 
 export function emptyData(): WealthData {
-  return { version: 1, updatedAt: new Date().toISOString(), fxRates: {}, fxManual: [], accounts: [], history: emptyHistory() }
+  return { version: 2, liabilities: [], updatedAt: new Date().toISOString(), fxRates: {}, fxManual: [], accounts: [], history: emptyHistory() }
 }
 
 export const newId = () => crypto.randomUUID()
@@ -104,6 +106,7 @@ export function accountBaseValue(data: WealthData, a: Account): number {
 export function usedCurrencies(data: WealthData): string[] {
   const set = new Set<string>()
   for (const a of data.accounts) for (const p of a.positions) set.add(p.currency)
+  for (const d of data.liabilities ?? []) set.add(d.currency)
   for (const c of Object.keys(data.fxRates)) set.add(c)
   set.delete(BASE_CURRENCY)
   return [...set].sort()
@@ -155,7 +158,7 @@ export function parseWealthData(raw: unknown): WealthData {
     throw new Error(`Drive 中的資料檔格式不正確：${why}。請修正或刪除該檔案後重新登入。`)
   }
   const obj = (typeof raw === 'object' && raw !== null ? raw : fail('不是 JSON 物件')) as Record<string, unknown>
-  if (obj.version !== 1) fail(`不支援的版本 ${String(obj.version)}`)
+  if (obj.version !== 1 && obj.version !== 2) fail(`不支援的版本 ${String(obj.version)}`)
   if (!Array.isArray(obj.accounts)) fail('缺少 accounts 陣列')
 
   const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v.trim() : fallback)
@@ -200,14 +203,20 @@ export function parseWealthData(raw: unknown): WealthData {
     }
   })
 
+  if ((obj.version === 2 || obj.liabilities !== undefined) && !Array.isArray(obj.liabilities)) fail('負債資料必須是陣列')
+  const liabilities = obj.liabilities === undefined ? undefined : (obj.liabilities as unknown[]).map((d) => {
+    try { return parseLiability(d) } catch (e) { return fail(e instanceof Error ? e.message : '負債格式不正確') }
+  })
+  if (liabilities && new Set(liabilities.map((d) => d.id)).size !== liabilities.length) fail('負債識別碼重複')
   const fxManual = Array.isArray(obj.fxManual) ? obj.fxManual.filter((c): c is string => typeof c === 'string') : []
   return {
-    version: 1,
+    version: obj.version as 1 | 2,
     updatedAt: str(obj.updatedAt) || new Date().toISOString(),
     fxRates,
     fxManual,
     fxUpdatedAt: str(obj.fxUpdatedAt) || undefined,
     accounts,
+    liabilities,
     history: parseHistory(obj.history, fail),
   }
 }

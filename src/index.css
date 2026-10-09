@@ -2309,3 +2309,32 @@ details.daily .hint {
     animation-duration: 2.4s;
   }
 }
+
+/* Liabilities stay separate from asset allocations and can exceed total assets. */
+.liability-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.liability-list .panel { margin-bottom: 0; min-width: 0; }
+.liability-balance { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.liability-details { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr); gap: 6px 12px; margin: 12px 0; }
+.liability-details dt { color: var(--ink-2); font-size: .85rem; }
+.liability-details dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.liability-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+.liability-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+.liability-form input, .liability-form select { min-width: 0; width: 100%; }
+.liability-changes { padding: 0; list-style: none; }
+.liability-change { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.liability-diff-field { display: contents; }
+@media (max-width: 640px) {
+  .liability-list, .liability-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .liability-details { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .liability-details dd { margin-bottom: 8px; }
+  .tabs { overflow-x: auto; }
+  .tabs button { padding-left: 10px; padding-right: 10px; white-space: nowrap; }
+}
+
+.loan-projection { min-width: 0; margin: 1rem 0; padding: 1rem; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 12px; }
+.loan-projection h4 { margin: 0 0 .5rem; }
+.loan-projection details { min-width: 0; }
+.loan-schedule { max-width: 100%; overflow-x: auto; }
+.loan-schedule table { min-width: 440px; }
+.loan-pages { flex-wrap: wrap; margin-top: .75rem; }
+.liability-form details { min-width: 0; }

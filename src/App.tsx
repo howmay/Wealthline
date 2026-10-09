@@ -14,11 +14,12 @@ import {
 import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData, type DriveFile, type DriveVersion } from './google/drive'
 import { applyFetchedRates, emptyData, missingRates, parseWealthData, ratesStale, usedCurrencies, type WealthData } from './model'
 import { finishSave } from './saveState'
-import { localDate, pendingChanges, recordSave, revertChange } from './history'
+import { localDate, pendingChanges, pendingLiabilityChanges, recordSave, revertChange, revertLiabilityChange } from './history'
 import { applyQuotes, fetchHoldingQuotes } from './quotes'
 import { fetchRates } from './rates'
 import { Accounts, type AccountsView } from './views/Accounts'
 import { HistoryView } from './views/History'
+import { Liabilities } from './views/Liabilities'
 import { Overview } from './views/Overview'
 import { Rates } from './views/Rates'
 import { SaveReview } from './views/SaveReview'
@@ -161,7 +162,7 @@ export default function App() {
     const version = sessionVersion.current
     const at = new Date().toISOString()
     const last = saved.current
-    if (!last || !market.accounts.length || dirtyRef.current || savingRef.current) return
+    if (!last || (!market.accounts.length && !market.liabilities?.length) || dirtyRef.current || savingRef.current) return
     if (last.history.snapshots.some((s) => s.date === localDate(at))) return
     // A value without its exchange rate would record a wrong day.
     if (missingRates(market).length) return
@@ -263,18 +264,19 @@ export default function App() {
   }
 
   const requestSave = () => {
-    if (data && pendingChanges(saved.current, data).length) setReviewing(true)
+    if (data && (pendingChanges(saved.current, data).length || pendingLiabilityChanges(saved.current, data).length)) setReviewing(true)
     else void save()
   }
   const pending = reviewing && data ? pendingChanges(saved.current, data) : []
+  const pendingDebts = reviewing && data ? pendingLiabilityChanges(saved.current, data) : []
   useEffect(() => {
-    if (reviewing && pending.length === 0) setReviewing(false)
-  }, [reviewing, pending.length])
+    if (reviewing && pending.length === 0 && pendingDebts.length === 0) setReviewing(false)
+  }, [reviewing, pending.length, pendingDebts.length])
 
   function update(next: WealthData) {
     editVersion.current++
     dirtyRef.current = true
-    setData(next)
+    setData({ ...next, version: 2, liabilities: next.liabilities ?? [] })
     setDirty(true)
   }
 
@@ -369,9 +371,11 @@ export default function App() {
         </div>
       </header>
 
-      {reviewing && data && pending.length > 0 && (
+      {reviewing && data && (pending.length > 0 || pendingDebts.length > 0) && (
         <SaveReview
           changes={pending}
+          liabilityChanges={pendingDebts}
+          onRevertLiability={(id) => update(revertLiabilityChange(saved.current, data, id))}
           busy={busy}
           canRevert={(c) => data.accounts.some((a) => a.id === c.accountId)}
           onRevert={(c) => {
@@ -401,6 +405,7 @@ export default function App() {
         {data && tab === 'overview' && (
           <Overview
             data={data}
+            onGoLiabilities={() => go({ tab: 'liabilities' })}
             onGoRates={() => go({ tab: 'rates' })}
             onNewAccount={() => goAccounts({ page: 'new' })}
             onImport={() => goAccounts({ page: 'list', importing: true })}
@@ -421,6 +426,7 @@ export default function App() {
             priceError={priceError}
           />
         )}
+        {data && tab === 'liabilities' && <Liabilities data={data} onChange={update} />}
         {data && tab === 'history' && (
           <HistoryView
             data={data}

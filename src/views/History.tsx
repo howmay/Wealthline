@@ -3,6 +3,7 @@ import { fmt, pct } from '../format'
 import { localDate, snapshotOf, type Change, type Snapshot } from '../history'
 import { CATEGORIES, type WealthData } from '../model'
 import { displaySymbol } from '../quotes'
+import { LiabilityChangeRow } from './LiabilityChange'
 import { TrendChart, type Series } from './TrendChart'
 
 const MODES = { total: '總資產', account: '依帳戶', category: '依類別' }
@@ -24,16 +25,16 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
   const [now] = useState(() => new Date().toISOString())
   const { snapshots: saved, changes } = data.history
 
-  if (data.accounts.length === 0 && saved.length === 0) {
+  if (data.accounts.length === 0 && !data.liabilities?.length && saved.length === 0 && !data.history.liabilityChanges?.length) {
     return (
       <section className="panel empty">
-        <p className="muted">還沒有資產紀錄。建立帳戶並儲存後，這裡會開始累積每天的資產變化。</p>
+        <p className="muted">還沒有資產或負債紀錄。建立帳戶或負債並儲存後，這裡會開始累積每天的變化。</p>
       </section>
     )
   }
 
   // Today is always shown with the current numbers; saving records it.
-  const today = snapshotOf(data, now)
+  const today = snapshotOf({ ...data, liabilities: data.liabilities ?? [] }, now)
   const savedToday = saved.some((s) => s.date === today.date)
   const points = [...saved.filter((s) => s.date !== today.date), today]
   const dates = points.map((s) => s.date)
@@ -49,9 +50,9 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
       <div className="page-head">
         <div>
           <h2>歷史</h2>
-          <p className="muted">每天第一次登入和每次儲存，都會記下當天的資產；儲存時也會記下你改了哪些餘額或持倉。</p>
+          <p className="muted">每天第一次登入和每次儲存，都會記下當天的資產、負債與淨資產；儲存時也會記下餘額、持倉與負債異動。</p>
         </div>
-        {!savedToday && !dirty && data.accounts.length > 0 && (
+        {!savedToday && !dirty && (data.accounts.length > 0 || !!data.liabilities?.length) && (
           <button className="primary" onClick={onSave} disabled={busy}>
             記錄今天的資產
           </button>
@@ -104,6 +105,17 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
         />
       </section>
 
+      <section className="panel">
+        <h3>負債異動</h3>
+        {!data.history.liabilityChanges?.length ? <p className="muted">修改負債並儲存後，這裡會保留修改前後的資料。</p> :
+          <ul className="liability-changes">{[...(data.history.liabilityChanges ?? [])].sort((a, b) => b.at.localeCompare(a.at)).map((c, i) => <LiabilityChangeRow key={`${c.at}-${i}`} change={c} extra={<button className="icon" aria-label="刪除這筆負債紀錄" onClick={() => {
+            if (confirm('刪除這筆負債異動紀錄？目前負債餘額不會改變。')) onChange({ ...data, history: { ...data.history, liabilityChanges: data.history.liabilityChanges?.filter((x) => x !== c) } })
+          }}>×</button>} />)}</ul>}
+      </section>
+      <section className="stats">
+        <Stat label="目前總負債" value={today.liabilityTotal == null ? '尚無法換算' : `NT$ ${fmt(today.liabilityTotal, 0)}`} />
+        <Stat label="目前淨資產" value={today.netWorth == null ? '尚無法換算' : `NT$ ${fmt(today.netWorth, 0)}`} note="總資產 − 總負債" />
+      </section>
       {saved.length > 0 && (
         <details className="panel daily">
           <summary>
@@ -116,6 +128,8 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
                 <tr>
                   <th>日期</th>
                   <th className="num">總資產</th>
+                  <th className="num">總負債</th>
+                  <th className="num">淨資產</th>
                   <th className="num">帳戶數</th>
                   <th />
                 </tr>
@@ -125,6 +139,8 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
                   <tr key={s.date}>
                     <td>{s.date.replace(/-/g, '/')}</td>
                     <td className="num">NT$ {fmt(s.total, 0)}</td>
+                    <td className="num">{s.liabilityTotal === undefined ? '未記錄' : s.liabilityTotal === null ? '無法換算' : `NT$ ${fmt(s.liabilityTotal, 0)}`}</td>
+                    <td className="num">{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</td>
                     <td className="num">{s.accounts.length}</td>
                     <td className="num">
                       <button
