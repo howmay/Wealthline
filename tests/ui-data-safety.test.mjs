@@ -1018,3 +1018,84 @@ test('direct row edit saves only the selected historical quantity through the ex
  await drive.finish();assert.ok(document.querySelector('.synced'))
  await click(button('編輯數量 2026-09-01'));assert.equal(document.querySelector('input[inputmode="decimal"]').value,'11');await click(button('取消歷史編輯'));assert.equal(drive.writes,1)
 })
+
+const baselineFixture=()=>{
+ const data=historicalFixture();data.version=7
+ const entries=['A','B','C','D','E'].map((id,i)=>({accountId:id,account:`合成基底帳戶 ${id}`,category:'其他',country:'TW',type:'cash',symbol:'',currency:'TWD',quantity:[100,2,0,3,4][i]}))
+ data.accounts=entries.map(e=>({id:e.accountId,name:e.account,kind:'investment',category:e.category,country:e.country,positions:[{id:`p${e.accountId}`,type:e.type,symbol:'',currency:'TWD',quantity:e.quantity,price:1}]}))
+ data.history.quantityDays=[{date:'2026-10-09',updatedAt:'2026-10-09T12:00:00Z',sparse:true,entries}]
+ return data
+}
+const baselineConfirm=()=>document.querySelector('.baseline-editor input[type="checkbox"]')
+const startBaseline=async()=>{
+ await click(button('沿用持倉回補差異'));await selectValue('持倉基底來源','day:2026-10-09');await setInput(field('回補目的日期'),'2026-09-01')
+}
+test('baseline UI prefills A–E, shows absolute and delta quantities, confirms overwrite and preserves source and current',async()=>{
+ const data=baselineFixture(),originalSource=data.history.quantityDays[0]
+ data.history.quantityDays.unshift({date:'2026-09-01',updatedAt:'2026-09-01T12:00:00Z',entries:[{...originalSource.entries[0],quantity:8},{...originalSource.entries[0],accountId:'removed',account:'目的日既有合成帳戶',quantity:99}]})
+ let current
+ function Harness(){const [value,setValue]=useState(data);useEffect(()=>{current=value},[value]);return createElement(HistoryView,{data:value,dirty:true,busy:false,onChange:setValue,onSave:()=>{},onOpenAccount:()=>{}})}
+ await render(Harness);await startBaseline();assert.equal(field('合成基底帳戶 A · TWD 目的日數量').value,'100');assert.equal(field('合成基底帳戶 C · TWD 目的日數量').value,'0')
+ assert.equal(button('預覽回補差異').disabled,true);await setInput(field('合成基底帳戶 A · TWD 目的日數量'),'300');assert.match(document.querySelector('.baseline-editor').textContent,/差異 \+200/)
+ await click(baselineConfirm());await click(button('預覽回補差異'))
+ const text=document.querySelector('.baseline-editor').textContent
+ assert.match(text,/來源：2026-10-09.*目的：2026-09-01/);assert.match(text,/目的日原紀錄：8/);assert.match(text,/目的日將移除的項目.*目的日既有合成帳戶.*99 → 未持有/)
+ assert.match(text,/目的日總資產：NT\$ 309/);assert.equal(button('套用完整回補').disabled,true)
+ await click(baselineConfirm());await click(button('套用完整回補'));assert.equal(current.version,8)
+ assert.deepEqual(current.history.quantityDays[0].entries.map(e=>e.quantity),[300,2,0,3,4]);assert.deepEqual(current.history.quantityDays[1],originalSource);assert.deepEqual(current.accounts,data.accounts)
+ assert.match([...document.querySelectorAll('section.daily tbody tr')].find(r=>r.textContent.includes('2026/09/01')).textContent,/完整回補.*NT\$ 309/)
+ await click(button('復原上次歷史修改'));assert.deepEqual(current.history.quantityDays,data.history.quantityDays)
+})
+test('baseline cancel, Escape, source switch and reopening never retain prior confirmations or quantities',async()=>{
+ const data=baselineFixture();await render(HistoryView,{data,dirty:false,busy:false,onChange:()=>assert.fail('cancel must not apply'),onSave:()=>{},onOpenAccount:()=>{}})
+ await startBaseline();await setInput(field('合成基底帳戶 A · TWD 目的日數量'),'300');await click(baselineConfirm());await click(button('預覽回補差異'));await click(baselineConfirm());await click(button('返回調整差異'))
+ assert.equal(field('合成基底帳戶 A · TWD 目的日數量').value,'300');await selectValue('持倉基底來源','current');assert.equal(baselineConfirm().checked,false);assert.equal(field('合成基底帳戶 A · TWD 目的日數量').value,'100')
+ await act(()=>field('回補目的日期').dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(document.querySelector('.baseline-editor'),null)
+ await click(button('沿用持倉回補差異'));assert.equal(field('持倉基底來源').value,'');assert.equal(field('回補目的日期'),undefined);await click(button('取消回補'))
+ await click(button('＋ 補登歷史數量'));assert.ok(field('補登帳戶'));await click(button('取消歷史編輯'))
+})
+test('baseline blocks unknown quantities and blank destination values, and ignores late quotes after cancellation',async()=>{
+ const data=baselineFixture();data.history.quantityDays.push({date:'2026-09-20',updatedAt:'2026-09-20T12:00:00Z',entries:[{...data.history.quantityDays[0].entries[0],quantity:null}]})
+ await render(HistoryView,{data,dirty:false,busy:false,onChange:()=>assert.fail('must not apply'),onSave:()=>{},onOpenAccount:()=>{}})
+ await click(button('沿用持倉回補差異'));await selectValue('持倉基底來源','day:2026-09-20');assert.match(document.querySelector('.baseline-editor').textContent,/來源含未知/);assert.equal(button('預覽回補差異'),undefined)
+ await selectValue('持倉基底來源','day:2026-10-09');await setInput(field('回補目的日期'),'2026-09-01');await setInput(field('合成基底帳戶 A · TWD 目的日數量'),'');await click(baselineConfirm());await click(button('預覽回補差異'));assert.match(document.querySelector('.baseline-editor [role="alert"]').textContent,/完整持倉不可缺少數量/)
+ await click(button('取消回補'))
+ const stock=baselineFixture();stock.accounts[0].positions[0]={...stock.accounts[0].positions[0],type:'holding',symbol:'DELAY',currency:'USD'}
+ let resolve,requests=0
+ globalThis.fetch=async()=>{requests++;return new Promise(r=>{resolve=r})}
+ await render(HistoryView,{data:stock,dirty:false,busy:false,onChange:()=>assert.fail('late query must not apply'),onSave:()=>{},onOpenAccount:()=>{}})
+ await click(button('沿用持倉回補差異'));await selectValue('持倉基底來源','current');await setInput(field('回補目的日期'),'2026-09-01');await click(baselineConfirm());await click(button('預覽回補差異'));assert.ok(requests)
+ await click(button('取消回補'));await act(async()=>resolve(new Response('',{status:404})));assert.equal(document.querySelector('.baseline-editor'),null)
+})
+test('baseline refuses stale source before preview and stale destination after confirmation',async()=>{
+ let current=baselineFixture();const props={dirty:false,busy:false,onChange:()=>assert.fail('stale must not apply'),onSave:()=>{},onOpenAccount:()=>{}}
+ await render(HistoryView,{...props,data:current});await startBaseline();await click(baselineConfirm())
+ current=structuredClone(current);current.history.quantityDays[0].entries[0].quantity=200
+ await render(HistoryView,{...props,data:current});await click(button('預覽回補差異'));assert.match(document.querySelector('.baseline-editor [role="alert"]').textContent,/來源數量已變更/)
+ await selectValue('持倉基底來源','current');await selectValue('持倉基底來源','day:2026-10-09');await click(baselineConfirm());await click(button('預覽回補差異'));await click(baselineConfirm())
+ current=structuredClone(current);current.history.quantityDays.push({date:'2026-09-01',updatedAt:'2026-09-01T12:00:00Z',entries:[{...current.history.quantityDays[0].entries[0],quantity:1}]})
+ await render(HistoryView,{...props,data:current});await click(button('套用完整回補'));assert.match(document.querySelector('.baseline-editor [role="alert"]').textContent,/來源或目的日資料已變更/)
+})
+test('baseline saves and reloads v8 through mock Drive, then row editing preserves complete scope',async()=>{
+ window.history.replaceState(null,'','/history');const data=baselineFixture()
+ const h=await server.ssrLoadModule('/src/history.ts');data.history.snapshots=[h.snapshotOf(data,new Date().toISOString())]
+ const drive=setupDrive(data)
+ await render(App);assert.equal(drive.writes,0);await startBaseline();await setInput(field('合成基底帳戶 A · TWD 目的日數量'),'300');await click(baselineConfirm());await click(button('預覽回補差異'));await click(baselineConfirm());await click(button('套用完整回補'))
+ assert.equal(drive.writes,0);await click(button('儲存變更'));assert.equal(drive.writes,1);assert.equal(drive.uploaded.version,8)
+ const parsed=model.parseWealthData(JSON.parse(JSON.stringify(drive.uploaded)));assert.equal(parsed.history.quantityDays[0].inventory.source.date,'2026-10-09');assert.deepEqual(parsed.history.quantityDays[0].entries.map(e=>e.quantity),[300,2,0,3,4])
+ await drive.finish();await click(button('編輯數量 2026-09-01'));await click([...document.querySelectorAll('.history-item-choices button')].find(x=>x.textContent.includes('合成基底帳戶 A')))
+ assert.equal(button('清除數量（未知）'),undefined);await setInput(field('合成基底帳戶 A · TWD · TWD 當日數量'),'301');await click(button('取得歷史估值'));await click(button('套用歷史數量'));await click(button('儲存變更'))
+ assert.equal(drive.uploaded.version,8);assert.ok(drive.uploaded.history.quantityDays[0].inventory);assert.equal(drive.uploaded.history.quantityDays[0].entries[0].quantity,301);await drive.finish()
+})
+
+test('baseline preview discloses destination holding-period basis and leaves later period quantities unchanged',async()=>{
+ const data=baselineFixture(),entry=data.history.quantityDays[0].entries[0]
+ data.history.holdingPeriods=[{...entry,id:'synthetic-period',start:'2026-08-30',end:'2026-09-02',quantity:10,updatedAt:'2026-10-09T12:00:00Z',timeZone:'UTC'}]
+ let current
+ function Harness(){const [value,setValue]=useState(data);useEffect(()=>{current=value},[value]);return createElement(HistoryView,{data:value,dirty:true,busy:false,onChange:setValue,onSave:()=>{},onOpenAccount:()=>{}})}
+ await render(Harness);await startBaseline();await setInput(field('合成基底帳戶 A · TWD 目的日數量'),'300');await click(baselineConfirm());await click(button('預覽回補差異'))
+ assert.match(document.querySelector('.baseline-editor').textContent,/目的日原有期間推算.*基準日 2026-08-30，基準數量 10/)
+ await click(baselineConfirm());await click(button('套用完整回補'))
+ assert.deepEqual(current.history.holdingPeriods,data.history.holdingPeriods)
+ const periods=await server.ssrLoadModule('/src/holdingPeriods.ts');assert.equal(periods.periodQuantityOn(current,entry,'2026-09-02').quantity,0)
+})

@@ -90,6 +90,7 @@ export function explicitDays(data: WealthData, account: Account, p: Position): M
   for (const d of data.history.quantityDays ?? []) {
     const entry = d.entries.find((e) => instrumentKey(e) === key)
     if (entry) days.set(d.date, entry)
+    else if(d.inventory) days.set(d.date,{accountId:account.id,account:account.name,category:account.category,country:account.country,type:p.type,symbol:p.type==='cash' ? '' : p.symbol,currency:p.currency,quantity:0})
   }
   return days
 }
@@ -138,7 +139,9 @@ export function positionTimeline(
   const log = (mixedCurrency ? [] : logFor(data, account, p)).filter(
     (c) => c.currency === p.currency && (!c.before || !c.after || c.before.quantity !== c.after.quantity),
   )
-  const entered = [...explicitDays(data, account, p)].sort(([a], [b]) => a.localeCompare(b))
+  const enteredByDate=explicitDays(data,account,p)
+  const inventoryDates=new Set((data.history.quantityDays ?? []).filter(d=>d.inventory).map(d=>d.date))
+  const entered = [...enteredByDate].sort(([a], [b]) => a.localeCompare(b))
   const identity = {accountId:account.id,account:account.name,category:account.category,country:account.country,type:p.type,symbol:p.symbol,currency:p.currency}
   const periods = (data.history.holdingPeriods ?? []).filter(x=>instrumentKey(x)===instrumentKey(identity))
   const periodLookup = createPeriodIndex(data)
@@ -155,7 +158,7 @@ export function positionTimeline(
     }
     // A recorded day's total was worked out from the logged count, so an entered
     // quantity stops there and the daily records and this chart agree.
-    const last = entered.filter(([d]) => d <= date).at(-1)
+    const last = entered.filter(([d]) => d <= date && !inventoryDates.has(d)).at(-1)
     if (last && !(logged && logged.recorded > last[0]) && !recordedDays.some((d) => d > last[0] && d <= date)) {
       const [recorded, e] = last
       return e.quantity === null ? undefined : { quantity: e.quantity, recorded }
@@ -192,6 +195,12 @@ export function positionTimeline(
   let incomplete = false
   for (const date of [...dates].sort()) {
     if (date >= today) continue
+    const inventoryEntry=inventoryDates.has(date) ? enteredByDate.get(date) : undefined
+    if(inventoryEntry) {
+      const day=enteredDay(date,inventoryEntry,prices,fx)
+      if(day.value===null) incomplete=true
+      days.push(day);continue
+    }
     const periodState = periodLookup(identity,date)
     if (periodState) {
       const day=enteredDay(date,{...identity,quantity:periodState.quantity,quantityAsOf:periodState.basisDate},prices,fx)
