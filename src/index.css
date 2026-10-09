@@ -2409,3 +2409,32 @@ section.daily .scroll { max-width: 100%; overflow-x: auto; }
 @media (max-width: 640px) {
   section.daily button.icon { min-width: 44px; }
 }
+
+
+/* History: distinct overview, source notes and quantity workspace. */
+.history-page { display: grid; gap: 24px; min-width: 0; }
+.history-page > .panel, .history-page > .stats, .history-page > .page-head { margin: 0; }
+.history-heading { align-items: center; }
+.history-heading p { margin-top: 8px; }
+.history-source { padding: 20px; border-left: 3px solid var(--border); background: var(--surface-2); border-radius: 8px; min-width: 0; }
+.history-source-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.history-source-head h3 { margin: 0; font-size: 1rem; }
+.history-source button { min-height: 44px; max-width: 100%; white-space: normal; }
+.history-source-notes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; margin-top: 16px; }
+.history-source-notes p { display: grid; align-content: start; gap: 6px; font-size: .875rem; color: var(--ink-2); line-height: 1.6; }
+.history-source-notes strong { color: var(--ink); }
+.history-source > p { margin-top: 12px; }
+.history-item-choices { display: grid; gap: 10px; margin-top: 16px; }
+.history-item-choices button { display: grid; gap: 6px; text-align: left; padding: 14px; white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.history-item-choices button span { font-size: .875rem; }
+.history-original { padding: 12px 0; border-bottom: 1px solid var(--border); font-size: .875rem; }
+.history-page .quantity-panel > .panel-head { align-items: center; }
+.history-page .quantity-panel > .muted { line-height: 1.6; }
+@media (max-width: 600px) {
+  .history-page { gap: 20px; }
+  .history-source { padding: 16px; }
+  .history-source-notes { grid-template-columns: minmax(0,1fr); gap: 12px; }
+  .history-source-head button { width: 100%; }
+  .history-page .quantity-panel > .panel-head { align-items: stretch; }
+  .history-page .quantity-panel > .panel-head button { white-space: normal; }
+}

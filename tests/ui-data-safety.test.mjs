@@ -546,7 +546,6 @@ test('historical quantity add/edit/cancel/restore changes only chosen date; char
   assert.match(row.textContent,/100/)
   assert.match(row.textContent,/未記錄/)
   await click(button('編輯數量 2025-10-04'))
- await chooseHistoryInstrument()
   assert.equal(field('歷史日期').disabled,true)
   await setInput(field(label),'0')
   await click(button('取得歷史估值'))
@@ -699,7 +698,6 @@ test('viewing and refreshing historical valuations queries market data without e
  assert.equal(data.history.quantityDays[0].entries[0].price.value,999)
  assert.equal(data.accounts[0].positions[0].price,999)
  await click(button('編輯數量 2025-10-04'))
- await chooseHistoryInstrument()
  assert.equal(field('合成歷史帳戶 · TEST · TWD 當日單價'),undefined)
  await click(button('取消歷史編輯'))
 })
@@ -946,7 +944,77 @@ test('crypto cash preview shows depeg conversion legs, persists provenance, and 
  const row=()=>[...document.querySelectorAll('section.daily tbody tr')].find(x=>x.textContent.includes('2026/09/01'))
  assert.match(row().textContent,/NT\$ 220/)
  fail=true;await click(button('重新查詢歷史行情'));assert.match(row().textContent,/資料不完整/)
- await click(button('編輯數量 2026-09-01'));await chooseHistoryInstrument();await click(button('取得歷史估值'))
+ await click(button('編輯數量 2026-09-01'));await click(button('取得歷史估值'))
  assert.match(document.querySelector('.quantity-editor').textContent,/USDT\/USD.*來源暫時異常/)
  await click(button('取消歷史編輯'));assert.equal(current.history.quantityDays[0].entries[0].quantity,7)
+})
+
+test('date-row editing chooses only recorded items, preserves siblings, and resets after cancel or reopen',async()=>{
+ const data=historicalFixture(),day='2026-09-01'
+ const entry={accountId:'history-account',account:'合成歷史帳戶',category:'股票',country:'TW',type:'cash',symbol:'',currency:'TWD',quantity:7}
+ const other={...entry,accountId:'removed',account:'已移除的合成長帳戶InternationalPortfolio',quantity:null}
+ data.history.quantityDays=[{date:day,updatedAt:day+'T12:00:00Z',sparse:true,entries:[entry,other]},{date:'2026-09-02',updatedAt:day+'T12:00:00Z',entries:[{...entry,quantity:9}]}]
+ // A current instrument which was never recorded that day must not enter the edit picker.
+ data.accounts[0].positions.push({id:'new-cash',type:'cash',symbol:'',currency:'USD',quantity:123,price:1})
+ let current
+ function Harness(){const [value,setValue]=useState(data);useEffect(()=>{current=value},[value]);return createElement(HistoryView,{data:value,dirty:true,busy:false,onChange:setValue,onSave:()=>{},onOpenAccount:()=>{}})}
+ await render(Harness)
+ const open=()=>click(button(`編輯數量 ${day}`))
+ await open()
+ const choices=()=>[...document.querySelectorAll('.history-item-choices button')]
+ assert.equal(choices().length,2);assert.match(choices()[1].textContent,/既有數量：未知/);assert.doesNotMatch(choices().map(x=>x.textContent).join(''),/USD/)
+ assert.equal(field('歷史日期'),undefined);assert.equal(document.querySelector('input[inputmode="decimal"]'),null)
+ assert.equal(button(`編輯數量 ${day}`).disabled,true)
+ await click(choices()[1]);assert.equal(field('已移除的合成長帳戶InternationalPortfolio · TWD · TWD 當日數量').value,'')
+ assert.equal(field('歷史日期').value,day);assert.equal(field('歷史日期').disabled,true);assert.equal(field('補登方式'),undefined)
+ await setInput(document.querySelector('input[inputmode="decimal"]'),'20')
+ await click(button('改選其他項目'));await click(choices()[0]);assert.equal(document.querySelector('input[inputmode="decimal"]').value,'7')
+ await setInput(document.querySelector('input[inputmode="decimal"]'),'11');await click(button('取得歷史估值'));await click(button('返回修改'))
+ assert.equal(document.querySelector('input[inputmode="decimal"]').value,'11')
+ await click(button('取得歷史估值'));await click(button('套用歷史數量'))
+ assert.equal(current.history.quantityDays[0].entries.find(e=>e.accountId==='history-account').quantity,11)
+ assert.deepEqual(current.history.quantityDays[0].entries.find(e=>e.accountId==='removed'),other)
+ assert.deepEqual(current.history.quantityDays[1],data.history.quantityDays[1]);assert.deepEqual(current.accounts,data.accounts)
+ await open();await click(choices()[0]);await setInput(document.querySelector('input[inputmode="decimal"]'),'55');await click(button('取消歷史編輯'))
+ await open();await click(choices()[0]);assert.equal(document.querySelector('input[inputmode="decimal"]').value,'11')
+ await act(()=>document.querySelector('.quantity-editor input').dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
+ assert.equal(document.querySelector('.quantity-editor'),null);assert.equal(current.history.quantityDays[0].entries.find(e=>e.accountId==='history-account').quantity,11)
+ await open();assert.equal(choices().length,2);await click(button('取消歷史編輯'))
+ await click(button('＋ 補登歷史數量'));assert.ok(field('補登帳戶'));assert.equal(field('補登帳戶').value,'');assert.match(document.querySelector('.eyebrow').textContent,/新增補登/)
+})
+
+test('single recorded unknown or zero opens directly without choosing an account or losing its value',async()=>{
+ for(const quantity of [null,0]){
+  const data=historicalFixture();data.history.quantityDays=[{date:'2026-09-01',updatedAt:'2026-09-01T12:00:00Z',entries:[{accountId:'gone',account:'已移除的合成帳戶',category:'其他',country:'GLOBAL',type:'cash',symbol:'',currency:'TWD',quantity}]}]
+  await render(HistoryView,{data,dirty:false,busy:false,onChange:()=>assert.fail('cancel must not mutate'),onSave:()=>{},onOpenAccount:()=>{}})
+  await click(button('編輯數量 2026-09-01'));assert.equal(field('補登帳戶'),undefined);assert.equal(document.querySelector('.history-item-choices'),null)
+  assert.equal(document.querySelector('input[inputmode="decimal"]').value,quantity===null?'':'0');assert.match(document.querySelector('.history-original').textContent,quantity===null?/既有數量：未知/:/既有數量：0/)
+  await click(button('取消歷史編輯'))
+ }
+})
+
+test('snapshot-only date offers new entry rather than claiming to edit unavailable quantities',async()=>{
+ const data=historicalFixture();data.history.snapshots=[{date:'2026-09-01',at:'2026-09-01T12:00:00Z',total:900,accounts:[{id:'history-account',name:'合成歷史帳戶',value:900}],categories:{股票:900}}]
+ await render(HistoryView,{data,dirty:false,busy:false,onChange:()=>assert.fail('cancel must not mutate'),onSave:()=>{},onOpenAccount:()=>{}})
+ assert.equal(button('編輯數量 2026-09-01'),undefined);await click(button('補登數量 2026-09-01'));await chooseHistoryInstrument()
+ assert.equal(field('歷史日期').value,'2026-09-01');assert.equal(document.querySelector('input[inputmode="decimal"]').value,'')
+ await selectValue('補登方式','period');await setInput(field('結束／賣出日期（不含，選填）'),'2026-09-03');await click(button('取消歷史編輯'))
+ await click(button('＋ 補登歷史數量'));await chooseHistoryInstrument();assert.equal(field('補登方式').value,'day');assert.equal(field('結束／賣出日期（不含，選填）'),undefined)
+})
+
+test('direct row edit saves only the selected historical quantity through the existing Drive save flow',async()=>{
+ window.history.replaceState(null,'','/history')
+ const data=historicalFixture(),now=new Date().toISOString()
+ const {localDate}=await server.ssrLoadModule('/src/history.ts')
+ const entry={accountId:'history-account',account:'合成歷史帳戶',category:'股票',country:'TW',type:'cash',symbol:'',currency:'TWD',quantity:7}
+ data.version=7
+ data.history.quantityDays=[{date:'2026-09-01',updatedAt:now,sparse:true,entries:[entry]},{date:localDate(now),updatedAt:now,sparse:true,entries:[{...entry,quantity:900}]}]
+ const drive=setupDrive(data);await render(App);assert.equal(drive.writes,0)
+ await click(button('編輯數量 2026-09-01'));assert.equal(document.querySelector('input[inputmode="decimal"]').value,'7')
+ await setInput(document.querySelector('input[inputmode="decimal"]'),'11');await click(button('取得歷史估值'));await click(button('套用歷史數量'))
+ assert.equal(drive.writes,0);await click(button('儲存變更'));assert.equal(drive.writes,1)
+ assert.equal(drive.uploaded.version,7);assert.equal(drive.uploaded.history.quantityDays[0].entries[0].quantity,11)
+ assert.deepEqual(drive.uploaded.history.quantityDays[1],data.history.quantityDays[1]);assert.equal(drive.uploaded.accounts[0].positions[0].quantity,900)
+ await drive.finish();assert.ok(document.querySelector('.synced'))
+ await click(button('編輯數量 2026-09-01'));assert.equal(document.querySelector('input[inputmode="decimal"]').value,'11');await click(button('取消歷史編輯'));assert.equal(drive.writes,1)
 })

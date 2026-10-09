@@ -45,14 +45,11 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
   for (const s of points) for (const a of s.accounts) accountNames.set(a.id, a.name)
 
   return (
-    <>
-      {historical.omittedDays > 0 && <p className="muted small">總額圖與比較略過 {historical.omittedDays} 個沒有原始紀錄、且持倉數量不足的推算日；不代表資產為零。明確未知及缺少行情的日期仍保留缺口。</p>}
-      {historical.status && <p className="muted small" aria-live="polite">{historical.status}</p>}
-      {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
-      <div className="page-head">
+    <div className="history-page">
+      <div className="page-head history-heading">
         <div>
           <h2>歷史</h2>
-          <p className="muted">選擇帳戶與標的，補登或修正當日持有數量。已填資料保留，不修改目前持倉。</p>
+          <p className="muted">查看資產變化，補登或修正過去的持有數量。</p>
         </div>
         {!savedToday && !dirty && (data.accounts.length > 0 || !!data.liabilities?.length) && (
           <button className="primary" onClick={onSave} disabled={busy}>
@@ -61,7 +58,16 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
         )}
       </div>
 
-      {!!(data.history.quantityDays?.length || data.history.holdingPeriods?.length) && <div className="row"><button disabled={historical.loading} onClick={historical.refresh}>{historical.loading ? '查詢歷史行情中…' : '重新查詢歷史行情'}</button><span className="muted small">原始快照保留原值，期間推算只補沒有快照的日期；單日補登優先。市場資料可能延遲；依實際行情日期估值，不以儲存價格兜底。</span></div>}
+      <section className="history-source" aria-label="歷史資料與行情來源">
+        <div className="history-source-head"><h3>資料與行情</h3>{!!(data.history.quantityDays?.length || data.history.holdingPeriods?.length) && <button disabled={historical.loading} onClick={historical.refresh}>{historical.loading ? '查詢歷史行情中…' : '重新查詢歷史行情'}</button>}</div>
+        <div className="history-source-notes">
+          <p><strong>紀錄規則</strong><span>原始快照保留原值；期間推算補上沒有快照的日期，單日補登優先。</span></p>
+          <p><strong>市場來源</strong><span>價格與匯率採 Yahoo 實際行情日期，可能延遲。缺價或缺匯率保持未知，不使用儲存價格代替。</span></p>
+        </div>
+        {historical.omittedDays > 0 && <p className="muted small">總額圖與比較略過 {historical.omittedDays} 個沒有原始紀錄、且持倉數量不足的推算日；不代表資產為零。明確未知及缺少行情的日期仍保留缺口。</p>}
+        {historical.status && <p className="muted small" aria-live="polite">{historical.status}</p>}
+        {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
+      </section>
       <QuantityHistory data={data} onChange={onChange} request={quantityRequest} onRequest={setQuantityRequest} displayDays={historical.data.history.valuedQuantityDays ?? historical.data.history.quantityDays}/>
       <section className="stats">
         <Stat label="目前總資產" value={`NT$ ${fmt(today.total, 0)}`} note={savedToday && !dirty ? '今天已記錄' : '儲存後記錄為今天'} />
@@ -147,7 +153,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
                     <td className="num" data-label="淨資產"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</span></td>
                     <td className="num" data-label="帳戶數"><span className="daily-cell-value">{s.accounts.length}</span></td>
                     <td className="num daily-actions">
-                      <button onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date)})}>編輯數量 {s.date}</button>
+                      <button disabled={!!quantityRequest} onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date)})}>{data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} {s.date}</button>
                       {!s.manual && !s.periodDerived && saved.some(x=>x.date===s.date) && <button
                         className="icon"
                         aria-label={`刪除 ${s.date} 的紀錄`}
@@ -171,7 +177,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
           )}
         </section>
       )}
-    </>
+    </div>
   )
 }
 
