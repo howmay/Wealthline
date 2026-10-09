@@ -2338,3 +2338,21 @@ details.daily .hint {
 .loan-schedule table { min-width: 440px; }
 .loan-pages { flex-wrap: wrap; margin-top: .75rem; }
 .liability-form details { min-width: 0; }
+
+.loan-terms { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 1rem; }
+.liability-form small, .liability-list .notice, .liability-list details { overflow-wrap: anywhere; }
+.quantity-editor { margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.quantity-day { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.quantity-rows { display: grid; gap: 8px; }
+.quantity-row { min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--hairline); overflow-wrap: anywhere; }
+.quantity-row > strong, .quantity-row > span { display: block; }
+.quantity-row[hidden] { display: none; }
+.quantity-editor .row, .quantity-day .row { flex-wrap: wrap; }
+.quantity-editor input, .quantity-editor select { max-width: 100%; min-width: 0; }
+section.daily table { min-width: 700px; }
+section.daily .scroll { max-width: 100%; overflow-x: auto; }
+@media (max-width: 640px) {
+  .quantity-day .panel-head, section[aria-label="歷史持倉數量"] > .panel-head { align-items: flex-start; flex-direction: column; }
+  .quantity-editor { padding: 12px; }
+}
+.quantity-editor { scroll-margin-top: 120px; }

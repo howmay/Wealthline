@@ -3,8 +3,8 @@ import { estimateLoan, REPAYMENT_METHODS, type AmortizingMethod } from '../loanE
 import { fmt } from '../format'
 
 const PAGE_SIZE = 12
-export function LoanProjection({ principal, annualRate, periods, method, currency }: {
-  principal?: number; annualRate?: number; periods?: number; method: AmortizingMethod; currency: string
+export function LoanProjection({ principal, annualRate, periods, method, currency, scheduled = false }: {
+  principal?: number; annualRate?: number; periods?: number; method: AmortizingMethod; currency: string; scheduled?: boolean
 }) {
   const [page, setPage] = useState(0)
   const result = useMemo(() => {
@@ -12,7 +12,7 @@ export function LoanProjection({ principal, annualRate, periods, method, currenc
     try { return { estimate: estimateLoan({ principal, annualRate, periods, method }) } }
     catch (e) { return { error: e instanceof Error ? e.message : '無法試算' } }
   }, [principal, annualRate, periods, method])
-  if (!result) return <p className="muted small">填入目前剩餘本金、年利率與剩餘期數，即可查看試算。</p>
+  if (!result) return <p className="muted small">填入本金、年利率與期數，即可查看試算。</p>
   if ('error' in result) return <p className="notice" role="status">試算：{result.error}</p>
   const { estimate } = result
   const maxPage = Math.ceil(estimate.rows.length / PAGE_SIZE) - 1
@@ -26,13 +26,13 @@ export function LoanProjection({ principal, annualRate, periods, method, currenc
         <dt>預估首期應付</dt><dd>{money(estimate.rows[0].payment)}</dd>
         <dt>預估末期應付</dt><dd>{money(estimate.rows.at(-1)!.payment)}（本金固定，利息隨餘額下降；0% 時不變）</dd>
       </>}
-      <dt>剩餘總利息</dt><dd>{money(estimate.totalInterest)}</dd>
-      <dt>剩餘本息合計</dt><dd>{money(estimate.totalPayment)}</dd>
+      <dt>{scheduled ? '完整基準計畫總利息' : '剩餘總利息'}</dt><dd>{money(estimate.totalInterest)}</dd>
+      <dt>{scheduled ? '完整基準計畫本息合計' : '剩餘本息合計'}</dt><dd>{money(estimate.totalPayment)}</dd>
     </dl>
-    <p className="notice small">僅供試算，不會隨日期自動修改實際欠款或淨資產。實際還款後請自行更新本金與剩餘期數。</p>
+    <p className="notice small">{scheduled ? '此為完整基準計畫。按日期推算的本金會計入預估負債與淨資產；不代表實際付款，也不改寫原始本金。' : '僅供試算，不會隨日期自動修改實際欠款或淨資產。實際還款後請自行更新本金與剩餘期數。'}</p>
     <details>
       <summary>查看每期本金、利息與預估期末本金</summary>
-      <p className="muted small">期數從下一期起算；表格可左右滑動。金額顯示至小數 2 位，各欄獨立四捨五入，顯示加總可能有尾差。</p>
+      <p className="muted small">{scheduled ? '期數從基準計畫第一期起算；包含已到期的期數。' : '期數從下一期起算。'}表格可左右滑動。金額顯示至小數 2 位，各欄獨立四捨五入，顯示加總可能有尾差。</p>
       <div className="scroll loan-schedule" tabIndex={0} role="region" aria-label="逐期攤還試算表（可橫向捲動）">
         <table className="data"><thead><tr><th>期數</th><th className="num">應付</th><th className="num">本金</th><th className="num">利息</th><th className="num">期末本金</th></tr></thead>
           <tbody>{estimate.rows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map((row) => <tr key={row.period}>

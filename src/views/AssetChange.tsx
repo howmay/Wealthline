@@ -1,6 +1,7 @@
+import { useCalendarNow } from '../useCalendarNow'
 import { useState } from 'react'
 import { fmt, pct } from '../format'
-import { totalPoints } from '../history'
+import { totalPoints, snapshotOf } from '../history'
 import type { WealthData } from '../model'
 import { TrendChart } from './TrendChart'
 
@@ -12,21 +13,23 @@ const RANGES = [
 ] as const
 
 const DAY = 86400_000
-const dayNumber = (date: string) => Date.parse(`${date}T00:00:00`) / DAY
+const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / DAY
 const shortDate = (date: string) => date.slice(5).replace('-', '/').replace(/^0/, '').replace('/0', '/')
 const signed = (n: number) => `${n >= 0 ? '+' : '−'}${fmt(Math.abs(n), 0)}`
 
 // How the total moved: against the previous record on the hero, and over a chosen range below.
 function useAssetChange(data: WealthData) {
-  const [now] = useState(() => new Date().toISOString())
+  const now = useCalendarNow()
   const points = totalPoints(data, now)
   return { points, today: points[points.length - 1] }
 }
 
 export function ChangeSinceLast({ data }: { data: WealthData }) {
-  const { points, today } = useAssetChange(data)
+  const { points } = useAssetChange(data)
+  const now = useCalendarNow()
+  const today = snapshotOf(data, now)
   const previous = points.length > 1 ? points[points.length - 2] : null
-  if (!previous) return null
+  if (!previous || previous.total === null || today.total === null) return null
   const diff = today.total - previous.total
   const gap = dayNumber(today.date) - dayNumber(previous.date)
   return (
@@ -53,7 +56,7 @@ export function AssetChange({ data }: { data: WealthData }) {
   })
   const shown = points.slice(startIndex)
   const base = shown[0]
-  const diff = today.total - base.total
+  const diff = today.total === null || base.total === null ? null : today.total - base.total
 
   return (
     <section className="panel span-2 asset-change">
@@ -67,6 +70,7 @@ export function AssetChange({ data }: { data: WealthData }) {
           ))}
         </div>
       </div>
+      {data.history.quantityDays?.length ? <p className="muted small">含手動補登的歷史估值；目前總資產仍以現有持倉計算。資料不完整的日期保留缺口。</p> : null}
       {shown.length < 2 ? (
         <p className="muted">
           目前只有一天的紀錄。每天第一次登入時會自動記一筆，累積幾天之後，這裡就會顯示總資產的變化。
@@ -75,11 +79,11 @@ export function AssetChange({ data }: { data: WealthData }) {
         <>
           <p className="change-figure">
             <strong className="num">
-              {signed(diff)} <small>NT$</small>
+              {diff === null ? '資料不完整' : signed(diff)} <small>NT$</small>
             </strong>
-            {base.total > 0 && <span className="num"> {diff >= 0 ? '+' : '−'}{pct(Math.abs(diff) / base.total)}</span>}
+            {diff !== null && base.total !== null && base.total > 0 && <span className="num"> {diff >= 0 ? '+' : '−'}{pct(Math.abs(diff) / base.total)}</span>}
             <span className="muted small">
-              {' '}自 {base.date.replace(/-/g, '/')}（NT$ {fmt(base.total, 0)}）
+              {' '}自 {base.date.replace(/-/g, '/')}（{base.total === null ? '資料不完整' : `NT$ ${fmt(base.total, 0)}`}）
             </span>
           </p>
           <TrendChart dates={shown.map((p) => p.date)} series={[{ key: 'total', label: '總資產', color: 'var(--s1)', values: shown.map((p) => p.total) }]} area />

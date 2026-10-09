@@ -163,7 +163,7 @@ export default function App() {
     const at = new Date().toISOString()
     const last = saved.current
     if (!last || (!market.accounts.length && !market.liabilities?.length) || dirtyRef.current || savingRef.current) return
-    if (last.history.snapshots.some((s) => s.date === localDate(at))) return
+    if (last.history.snapshots.some((s) => s.date === localDate(at)) || last.history.quantityDays?.some(d => d.date === localDate(at))) return
     // A value without its exchange rate would record a wrong day.
     if (missingRates(market).length) return
     const next = recordSave(last, { ...market, updatedAt: at })
@@ -276,7 +276,7 @@ export default function App() {
   function update(next: WealthData) {
     editVersion.current++
     dirtyRef.current = true
-    setData({ ...next, version: 2, liabilities: next.liabilities ?? [] })
+    setData({ ...next, version: next.version === 4 || next.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [] })
     setDirty(true)
   }
 

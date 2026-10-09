@@ -5,7 +5,7 @@ export interface Series {
   key: string
   label: string
   color: string
-  values: number[] // one per date
+  values: (number | null)[] // one per date
 }
 
 const HEIGHT = 260
@@ -55,13 +55,14 @@ const shortDate = (d: string, withYear: boolean) => {
 // Values over time on one shared axis, with a crosshair that lists every series on hover.
 export function TrendChart({ dates, series, area = false }: { dates: string[]; series: Series[]; area?: boolean }) {
   const [ref, width] = useWidth<HTMLDivElement>()
-  const [hover, setHover] = useState<number | null>(null)
+  const [hoverIndex, setHover] = useState<number | null>(null)
+  const hover = hoverIndex !== null && hoverIndex < dates.length ? hoverIndex : null
 
-  const times = dates.map((d) => Date.parse(`${d}T00:00:00`))
+  const times = dates.map((d) => Date.parse(`${d}T00:00:00Z`))
   const t0 = times[0]
   const t1 = times[times.length - 1]
-  const all = series.flatMap((s) => s.values)
-  const ticks = niceTicks(Math.min(...all), Math.max(...all))
+  const all = series.flatMap((s) => s.values).filter((v): v is number => v !== null && Number.isFinite(v))
+  const ticks = niceTicks(all.length ? Math.min(...all) : 0, all.length ? Math.max(...all) : 1)
   const lo = ticks[0]
   const hi = ticks[ticks.length - 1]
   const axis = axisFormat(ticks)
@@ -117,23 +118,23 @@ export function TrendChart({ dates, series, area = false }: { dates: string[]; s
               {shortDate(dates[i], multiYear)}
             </text>
           ))}
-          {area && series.length === 1 && dates.length > 1 && (
+          {area && series.length === 1 && dates.length > 1 && series[0].values.every(v => v !== null) && (
             <path
               className="area"
               style={{ fill: series[0].color }}
-              d={`M${x(0)},${y(lo)} ${series[0].values.map((v, i) => `L${x(i)},${y(v)}`).join(' ')} L${x(dates.length - 1)},${y(lo)} Z`}
+              d={`M${x(0)},${y(lo)} ${series[0].values.map((v, i) => `L${x(i)},${y(v!)}`).join(' ')} L${x(dates.length - 1)},${y(lo)} Z`}
             />
           )}
           {series.map((s) => (
             <g key={s.key} style={{ color: s.color }}>
-              {dates.length > 1 && <path className="line" d={s.values.map((v, i) => `${i ? 'L' : 'M'}${x(i)},${y(v)}`).join(' ')} />}
-              {(showDots || dates.length === 1) && s.values.map((v, i) => <circle key={i} className="dot" cx={x(i)} cy={y(v)} r={3.5} />)}
+              {dates.length > 1 && <path className="line" d={s.values.map((v, i) => v === null ? '' : `${i && s.values[i-1] !== null ? 'L' : 'M'}${x(i)},${y(v)}`).join(' ')} />}
+              {(showDots || dates.length === 1) && s.values.map((v, i) => v !== null && <circle key={i} className="dot" cx={x(i)} cy={y(v)} r={3.5} />)}
             </g>
           ))}
           {hover !== null && (
             <g>
               <line className="crosshair" x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={PAD.top + innerH} />
-              {series.map((s) => (
+              {series.map((s) => s.values[hover] !== null && (
                 <circle key={s.key} className="dot hot" style={{ color: s.color }} cx={x(hover)} cy={y(s.values[hover])} r={5} />
               ))}
             </g>
@@ -156,12 +157,12 @@ export function TrendChart({ dates, series, area = false }: { dates: string[]; s
         >
           <strong>{shortDate(dates[hover], true)}</strong>
           {[...series]
-            .sort((a, b) => b.values[hover] - a.values[hover])
+            .sort((a, b) => (b.values[hover] ?? -Infinity) - (a.values[hover] ?? -Infinity))
             .map((s) => (
               <span key={s.key} className="tip-row">
                 {series.length > 1 && <i style={{ background: s.color }} />}
                 {series.length > 1 && <span className="label">{s.label}</span>}
-                <span className="value">NT$ {fmt(s.values[hover], 0)}</span>
+                <span className="value">{s.values[hover] === null ? '資料不完整' : `NT$ ${fmt(s.values[hover], 0)}`}</span>
               </span>
             ))}
         </div>
