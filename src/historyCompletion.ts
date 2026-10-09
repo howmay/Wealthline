@@ -1,7 +1,8 @@
 import type { WealthData } from './model'
 import { quantityBaselines, quantityOnly, type QuantityBaseline } from './historyBaseline'
-import { destinationEvidence, resolveCompletion } from './holdingPeriods'
-import { applyQuantityDay, instrumentKey, parseQuantityDays, type QuantityDay, type QuantityEntry } from './quantityHistory'
+import { localDate } from './history'
+import { destinationEvidence, expandPeriodDays, resolveCompletion } from './holdingPeriods'
+import { applyQuantityDay, instrumentKey, isUnrecordedPartialDay, parseQuantityDays, type QuantityDay, type QuantityEntry } from './quantityHistory'
 
 export function nearestBaseline(data:WealthData,date:string,now=new Date().toISOString()):QuantityBaseline|undefined {
   const distance=(d:string)=>Math.abs(Date.parse(`${d}T00:00:00Z`)-Date.parse(`${date}T00:00:00Z`))
@@ -46,8 +47,9 @@ export function applyCompletion(data:WealthData,day:QuantityDay,revision:string,
 export function removalMessage(data:WealthData,date:string):string {
   const day=data.history.quantityDays?.find(d=>d.date===date)
   const after={...data,history:{...data.history,quantityDays:data.history.quantityDays?.filter(d=>d.date!==date)}}
-  const hasPeriod=destinationEvidence(after,date).length>0 && !!data.history.holdingPeriods?.length
-  const result=data.history.snapshots.some(s=>s.date===date) ? '恢復原始快照（快照不會刪除）' : hasPeriod ? '依剩餘期間重新推算' : '這天可能從每日列表消失'
+  const remaining=expandPeriodDays(after).find(d=>d.date===date)
+  const hasPeriod=remaining?.periodDerived && !isUnrecordedPartialDay(remaining)
+  const result=data.history.snapshots.some(s=>s.date===date) ? '恢復原始快照（快照不會刪除）' : date===localDate(new Date().toISOString()) ? '恢復目前持倉估值' : hasPeriod ? '依剩餘期間重新推算' : '這天會從每日列表消失'
   return `移除 ${date} 的${day?.inventory ? '完整回補' : '手動補登與當日補齊'}？${result}。原本單日明確數量若曾接續持有期間，移除後也會重新計算後續日期；補齊項目僅影響這天。目前持倉不變。`
 }
 export { resolveCompletion }
