@@ -11,7 +11,7 @@ import {
   type AccessToken,
   type UserProfile,
 } from './google/auth'
-import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData } from './google/drive'
+import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData, type DriveFile } from './google/drive'
 import { applyFetchedRates, emptyData, missingRates, parseWealthData, ratesStale, usedCurrencies, type WealthData } from './model'
 import { localDate, pendingChanges, recordSave, revertChange } from './history'
 import { applyQuotes, fetchHoldingQuotes } from './quotes'
@@ -22,6 +22,7 @@ import { Overview } from './views/Overview'
 import { Rates } from './views/Rates'
 import { SaveReview } from './views/SaveReview'
 import { Landing } from './views/Landing'
+import { Opening, type OpeningStep } from './views/Opening'
 import { LegalPage } from './views/Legal'
 import { PAGES, usePage } from './site'
 import { Link, Logo, PrivacyNotice, SiteFooter } from './views/Site'
@@ -51,6 +52,13 @@ export default function App() {
   const [priceError, setPriceError] = useState('')
   // A previous session whose token has expired: offer one-click resume as this account.
   const [returning, setReturning] = useState<UserProfile | null>(() => loadSession()?.profile ?? null)
+  // Between getting a token and showing the app. A reload with a live token starts here,
+  // so the signed-out page never flashes before the app.
+  const [opening, setOpening] = useState<{ step: OpeningStep; profile?: UserProfile } | null>(() =>
+    loadSession()?.token ? { step: 'auth' } : null,
+  )
+  // Prices and rates being fetched after the data file has loaded.
+  const [refreshing, setRefreshing] = useState(false)
   // The notice pages are open to everyone; the app's own state stays mounted behind them.
   const page = usePage()
 
@@ -83,9 +91,17 @@ export default function App() {
   }
 
   async function openSession(t: AccessToken) {
-    const p = await fetchProfile(t)
-    const file = await loadData(t, parseWealthData)
-    sessionVersion.current++
+    setOpening({ step: 'auth' })
+    let p: UserProfile
+    let file: DriveFile<WealthData> | null
+    try {
+      p = await fetchProfile(t)
+      setOpening({ step: 'drive', profile: p })
+      file = await loadData(t, parseWealthData)
+    } finally {
+      setOpening(null)
+    }
+    const version = ++sessionVersion.current
     token.current = t
     storeSession({ profile: p, token: t })
     setUser(p)
@@ -94,7 +110,13 @@ export default function App() {
     const loaded = file?.data ?? emptyData()
     setData(loaded)
     setDirty(false)
-    void refreshMarket(loaded).then((market) => market && recordToday(market))
+    setRefreshing(true)
+    void refreshMarket(loaded)
+      .then((market) => {
+        if (version === sessionVersion.current) setRefreshing(false)
+        return market && recordToday(market)
+      })
+      .catch(() => version === sessionVersion.current && setRefreshing(false))
   }
 
   // Updates holding prices, then exchange rates (new quotes can bring new currencies).
@@ -204,6 +226,7 @@ export default function App() {
       fileId.current = undefined
       saved.current = null
       setReturning(null)
+      setRefreshing(false)
       setUser(null)
       setData(null)
       setDirty(false)
@@ -255,6 +278,7 @@ export default function App() {
   if (page) return <LegalPage page={page} signedIn={!!user} />
 
   if (!user) {
+    if (opening) return <Opening step={opening.step} profile={opening.profile} />
     return (
       <Landing
         returning={returning}
@@ -267,8 +291,7 @@ export default function App() {
   }
 
   return (
-    <>
-      
+    <div className="app-enter">
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
@@ -292,6 +315,10 @@ export default function App() {
               <button className="primary save" onClick={requestSave} disabled={busy}>
                 {busy ? '儲存中…' : '儲存變更'}
               </button>
+            ) : refreshing ? (
+              <span className="refreshing" role="status">
+                <span className="spinner" aria-hidden /> 更新報價
+              </span>
             ) : (
               <span className="synced" title={`我的雲端硬碟 / ${FOLDER_NAME} / ${DATA_FILE_NAME}`}>
                 <span aria-hidden>✓</span> 已同步
@@ -333,7 +360,7 @@ export default function App() {
         />
       )}
 
-      <main className="content">
+      <main className="content view-enter" key={tab}>
         <PrivacyNotice />
         {status.kind === 'busy' && !data && <p className="muted">{status.text}</p>}
         {status.kind === 'error' && <p className="banner error">{status.text}</p>}
@@ -373,6 +400,6 @@ export default function App() {
         {data && tab === 'rates' && <Rates data={data} onChange={update} onRefresh={async () => void (await refreshRates(data))} error={ratesError} />}
       </main>
       <SiteFooter />
-    </>
+    </div>
   )
 }

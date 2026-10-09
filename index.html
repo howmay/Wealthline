@@ -16,6 +16,9 @@
     <meta property="og:url" content="https://wealthline.haomeh.com/" />
     <meta property="og:image" content="https://wealthline.haomeh.com/icon-512.png" />
     <link rel="canonical" href="https://wealthline.haomeh.com/" />
+    <!-- A reload while signed in goes straight to the loading screen: hide the prerendered sign-in page until the app takes over (main.tsx). -->
+    <script>try{if(sessionStorage.getItem('we-wealth.token'))document.documentElement.classList.add('restoring')}catch(e){}</script>
+    <style>.restoring #root>.landing{visibility:hidden;animation:restoring-reveal 0s 6s forwards}@keyframes restoring-reveal{to{visibility:visible}}</style>
   </head>
   <body>
     <div id="root"></div>
