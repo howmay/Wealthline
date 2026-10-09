@@ -1,3 +1,4 @@
+import { useCalendarNow } from '../useCalendarNow'
 import { useState, type ReactNode } from 'react'
 import { useHistoricalValuations } from '../useHistoricalValuations'
 import { fmt, pct } from '../format'
@@ -26,8 +27,8 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
   const historical = useHistoricalValuations(data)
   const [mode, setMode] = useState<Mode>('total')
   const [accountFilter, setAccountFilter] = useState('')
+  const now = useCalendarNow()
   const [quantityRequest,setQuantityRequest] = useState<QuantityEditRequest>()
-  const [now] = useState(() => new Date().toISOString())
   const { snapshots: saved, changes } = data.history
 
   // Today is always shown with the current numbers; saving records it.
@@ -112,8 +113,8 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
           }}>×</button>} />)}</ul>}
       </section>
       <section className="stats">
-        <Stat label="目前總負債" value={today.liabilityTotal == null ? '尚無法換算' : `NT$ ${fmt(today.liabilityTotal, 0)}`} />
-        <Stat label="目前淨資產" value={today.netWorth == null ? '尚無法換算' : `NT$ ${fmt(today.netWorth, 0)}`} note="總資產 − 總負債" />
+        <Stat label={today.liabilityEstimated ? "目前總負債（預估）" : "目前總負債"} value={today.liabilityTotal == null ? '尚無法換算' : `NT$ ${fmt(today.liabilityTotal, 0)}`} />
+        <Stat label={today.liabilityEstimated ? "目前淨資產（預估）" : "目前淨資產"} value={today.netWorth == null ? '尚無法換算' : `NT$ ${fmt(today.netWorth, 0)}`} note="總資產 − 總負債" />
       </section>
       {points.length > 0 && (
         <section className="panel daily" aria-label="每日紀錄">
@@ -138,8 +139,8 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
                   <tr key={s.date}>
                     <td>{s.date.replace(/-/g, '/')}<span className="muted small">{s.manual ? ' · 手動' : s.date === today.date ? ' · 目前' : ' · 原始快照'}</span></td>
                     <td className="num">{s.total === null ? '資料不完整' : `NT$ ${fmt(s.total, 0)}`}</td>
-                    <td className="num">{s.liabilityTotal === undefined ? '未記錄' : s.liabilityTotal === null ? '無法換算' : `NT$ ${fmt(s.liabilityTotal, 0)}`}</td>
-                    <td className="num">{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</td>
+                    <td className="num">{s.liabilityEstimated && '預估 · '}{s.liabilityTotal === undefined ? '未記錄' : s.liabilityTotal === null ? '無法換算' : `NT$ ${fmt(s.liabilityTotal, 0)}`}</td>
+                    <td className="num">{s.liabilityEstimated && '預估 · '}{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</td>
                     <td className="num">{s.accounts.length}</td>
                     <td className="num">
                       <button onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date)})}>編輯數量 {s.date}</button>

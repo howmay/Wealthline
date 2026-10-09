@@ -29,6 +29,7 @@ export interface Snapshot {
   total: number
   accounts: { id: string; name: string; value: number }[]
   categories: Record<string, number>
+  liabilityEstimated?: boolean
   liabilityTotal?: number | null // absent: not recorded by older clients; null: cannot convert
   netWorth?: number | null
 }
@@ -128,10 +129,10 @@ export function snapshotOf(data: WealthData, at: string): Snapshot {
     }
   }
   const accounts = data.accounts.map((a) => ({ id: a.id, name: a.name, value: accountBaseValue(data, a) }))
-  const totals = balanceSheet(data)
+  const totals = balanceSheet(data, at)
   return {
     date: localDate(at), at, total: accounts.reduce((s, a) => s + a.value, 0), accounts, categories,
-    ...(data.liabilities !== undefined && { liabilityTotal: totals.liabilities, netWorth: totals.net }),
+    ...(data.liabilities !== undefined && { liabilityTotal: totals.liabilities, netWorth: totals.net, ...(data.liabilities?.some(d => d.schedule) && { liabilityEstimated: true }) }),
   }
 }
 
@@ -165,7 +166,11 @@ export function totalPoints(data: WealthData, now: string): HistoricalPoint[] {
   const byDate = new Map<string, HistoricalPoint>(data.history.snapshots.map(s => [s.date, s]))
   byDate.set(today.date, today)
   for (const day of data.history.quantityDays ?? []) {
-    byDate.set(day.date, quantityPoint(day, data.history.snapshots.find(s => s.date === day.date)))
+    const original = data.history.snapshots.find(s => s.date === day.date)
+    // Today's manual asset quantities must still use today's live debt estimate.
+    // Past days retain the recorded debt (including unknown), never backfill it.
+    const basis = day.date === today.date ? { ...(original ?? today), liabilityTotal: today.liabilityTotal, netWorth: today.netWorth, liabilityEstimated: today.liabilityEstimated } : original
+    byDate.set(day.date, quantityPoint(day, basis))
   }
   return [...byDate.values()].sort((a,b) => a.date.localeCompare(b.date))
 }
@@ -206,7 +211,7 @@ export function recordSave(saved: WealthData | null, next: WealthData): WealthDa
     snapshots = [snapshotOf(saved, saved.updatedAt)]
   }
   const changes = [...next.history.changes, ...diffPositions(saved ?? { ...next, accounts: [] }, next, at)]
-  const stamped: WealthData = { ...next, version: next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [], accounts: stampAdded(saved, next, changes, at) }
+  const stamped: WealthData = { ...next, version: next.version === 4 || next.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [], accounts: stampAdded(saved, next, changes, at) }
   return {
     ...stamped,
     history: {
@@ -267,11 +272,13 @@ export function parseHistory(raw: unknown, fail: (why: string) => never): Histor
     if (typeof s.categories === 'object' && s.categories !== null) {
       for (const [k, v] of Object.entries(s.categories)) if (isNum(v)) categories[k] = v
     }
+    if (s.liabilityEstimated !== undefined && typeof s.liabilityEstimated !== 'boolean') fail(`${where}的負債預估標記不正確`)
     for (const key of ['liabilityTotal', 'netWorth']) {
       if (s[key] !== undefined && s[key] !== null && !isNum(s[key])) fail(`${where}的負債／淨資產格式不正確`)
     }
     if (typeof s.liabilityTotal === 'number' && s.liabilityTotal < 0) fail(`${where}的負債不可為負值`)
     return {
+      ...(s.liabilityEstimated !== undefined && { liabilityEstimated: s.liabilityEstimated as boolean }),
       ...(s.liabilityTotal !== undefined && { liabilityTotal: s.liabilityTotal as number | null }),
       ...(s.netWorth !== undefined && { netWorth: s.netWorth as number | null }),
       date: s.date as string,

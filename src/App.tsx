@@ -276,7 +276,7 @@ export default function App() {
   function update(next: WealthData) {
     editVersion.current++
     dirtyRef.current = true
-    setData({ ...next, version: next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [] })
+    setData({ ...next, version: next.version === 4 || next.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [] })
     setDirty(true)
   }
 

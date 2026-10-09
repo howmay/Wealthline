@@ -11,8 +11,8 @@ export interface HistoricalInstrument {
   accountId: string; account: string; category: string; country: string
   type: Position['type']; symbol: string; currency: string
 }
-// A past close or rate from Yahoo, or a unit price the user typed for that day
-// (for holdings Yahoo does not quote, such as funds or pension accounts).
+// Yahoo market quotes. Legacy manual fields remain readable but are never used
+// as valuation fallback or exposed as editable prices.
 export interface HistoricalQuote { source: 'Yahoo' | 'manual'; symbol: string; date: string; value: number }
 export interface QuantityEntry extends HistoricalInstrument {
   quantity: number | null // null: unknown, not zero
@@ -139,6 +139,7 @@ export function quantityPoint(day: QuantityDay, original?: Snapshot): Historical
   const debt = original?.liabilityTotal
   return { date: day.date, at: day.updatedAt, total, accounts: [...accounts.values()], categories, manual: true,
     ...(debt !== undefined && { liabilityTotal: debt }),
+    ...(original?.liabilityEstimated !== undefined && { liabilityEstimated: original.liabilityEstimated }),
     ...(debt !== undefined && { netWorth: total === null || debt === null ? null : total - debt }) }
 }
 export function applyQuantityDay(data: WealthData, day: QuantityDay, expected?: QuantityDay): WealthData {
@@ -146,7 +147,7 @@ export function applyQuantityDay(data: WealthData, day: QuantityDay, expected?: 
   const existing = data.history.quantityDays?.find(d => d.date === day.date)
   if (existing !== expected) throw new Error('這一天已新增或變更，請取消並重新開啟，避免覆蓋其他修改')
   const parsed = parseQuantityDays([day])[0]
-  return { ...data, version: 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
+  return { ...data, version: data.version === 4 || data.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
 }
 export function parseQuantityDays(raw: unknown): QuantityDay[] {
   if (!Array.isArray(raw)) throw new Error('歷史數量必須是陣列')

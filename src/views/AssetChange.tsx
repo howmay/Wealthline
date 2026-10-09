@@ -1,3 +1,4 @@
+import { useCalendarNow } from '../useCalendarNow'
 import { useState } from 'react'
 import { fmt, pct } from '../format'
 import { totalPoints, snapshotOf } from '../history'
@@ -18,14 +19,14 @@ const signed = (n: number) => `${n >= 0 ? '+' : '−'}${fmt(Math.abs(n), 0)}`
 
 // How the total moved: against the previous record on the hero, and over a chosen range below.
 function useAssetChange(data: WealthData) {
-  const [now] = useState(() => new Date().toISOString())
+  const now = useCalendarNow()
   const points = totalPoints(data, now)
   return { points, today: points[points.length - 1] }
 }
 
 export function ChangeSinceLast({ data }: { data: WealthData }) {
   const { points } = useAssetChange(data)
-  const [now] = useState(()=>new Date().toISOString())
+  const now = useCalendarNow()
   const today = snapshotOf(data, now)
   const previous = points.length > 1 ? points[points.length - 2] : null
   if (!previous || previous.total === null || today.total === null) return null

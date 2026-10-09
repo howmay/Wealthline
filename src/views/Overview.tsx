@@ -1,3 +1,4 @@
+import { useCalendarNow } from '../useCalendarNow'
 import { useHistoricalValuations } from '../useHistoricalValuations'
 import { balanceSheet } from '../liabilities'
 import { fmt } from '../format'
@@ -24,6 +25,8 @@ interface Props {
 }
 
 export function Overview({ data, onGoRates, onGoLiabilities, onNewAccount, onImport, onOpenAccount }: Props) {
+  const now = useCalendarNow()
+  const estimated = data.liabilities?.some(d => d.schedule)
   const historical = useHistoricalValuations(data)
   if (data.accounts.length === 0 && !data.liabilities?.length) {
     return (
@@ -44,7 +47,7 @@ export function Overview({ data, onGoRates, onGoLiabilities, onNewAccount, onImp
     )
   }
 
-  const totals = balanceSheet(data)
+  const totals = balanceSheet(data, now)
   const missing = missingRates(data)
   const byCategory = breakdown(data, (a) => a.category)
 
@@ -72,12 +75,12 @@ export function Overview({ data, onGoRates, onGoLiabilities, onNewAccount, onImp
       </section>
 
       <section className="panel stat" aria-label="總負債">
-        <span className="eyebrow">總負債</span><strong>{totals.liabilities === null ? '尚無法換算' : `NT$ ${fmt(totals.liabilities, 0)}`}</strong>
-        <span className="muted small">{data.liabilities?.length ?? 0} 筆手動記錄</span>
+        <span className="eyebrow">{estimated ? '總負債（含預估）' : '總負債'}</span><strong>{totals.liabilities === null ? '尚無法換算' : `NT$ ${fmt(totals.liabilities, 0)}`}</strong>
+        <span className="muted small">{data.liabilities?.length ?? 0} 筆{estimated ? ' · 假設按期還款；不代表銀行餘額，不會扣除現金' : '手動記錄'}</span>
         {onGoLiabilities && <button className="link" onClick={onGoLiabilities}>管理負債</button>}
       </section>
       <section className="panel stat" aria-label="淨資產">
-        <span className="eyebrow">淨資產</span><strong>{totals.net === null ? '尚無法換算' : `NT$ ${fmt(totals.net, 0)}`}</strong>
+        <span className="eyebrow">{estimated ? '淨資產（預估）' : '淨資產'}</span><strong>{totals.net === null ? '尚無法換算' : `NT$ ${fmt(totals.net, 0)}`}</strong>
         <span className="muted small">總資產 − 總負債{totals.net === null ? ' · 請檢查匯率' : ''}</span>
       </section>
       {!data.accounts.length && <section className="panel span-2"><p className="muted">尚未記錄資產，目前總資產為 0。</p><button onClick={onNewAccount}>新增資產帳戶</button></section>}

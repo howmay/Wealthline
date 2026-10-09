@@ -2339,6 +2339,8 @@ details.daily .hint {
 .loan-pages { flex-wrap: wrap; margin-top: .75rem; }
 .liability-form details { min-width: 0; }
 
+.loan-terms { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 1rem; }
+.liability-form small, .liability-list .notice, .liability-list details { overflow-wrap: anywhere; }
 .quantity-editor { margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
 .quantity-day { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
 .quantity-rows { display: grid; gap: 8px; }
