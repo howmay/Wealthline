@@ -31,17 +31,17 @@ export function PositionHistory({
   useEffect(() => {
     let live = true
     void Promise.all([
-      p.priceManual ? null : fetchHistory(p.symbol, from),
+      p.type === 'cash' || p.priceManual ? null : fetchHistory(p.symbol, from),
       p.currency === BASE_CURRENCY ? null : fetchHistory(fxSymbol(p.currency), from),
     ]).then(([prices, fx]) => live && setLoaded({ prices, fx }))
     return () => {
       live = false
     }
-  }, [p.symbol, p.currency, p.priceManual, from])
+  }, [p.type, p.symbol, p.currency, p.priceManual, from])
 
   const head = (
     <div className="panel-head">
-      <h4>{displaySymbol(p.symbol)} 每日價值</h4>
+      <h4>{p.type === 'cash' ? `${p.currency} 餘額` : displaySymbol(p.symbol)} 每日價值</h4>
       <button className="icon" aria-label="收起" title="收起" onClick={onClose}>
         ×
       </button>
@@ -60,8 +60,9 @@ export function PositionHistory({
   const first = days[0]
   const diff = days.length > 1 ? days[days.length - 1].value - first.value : null
   const notes = [
-    !p.priceManual && !loaded.prices && '抓不到歷史股價，過去的日子以當時記錄的價格計算。',
+    p.type === 'holding' && !p.priceManual && !loaded.prices && '抓不到歷史股價，過去的日子以當時記錄的價格計算。',
     p.priceManual && '這個標的是手動價格，價值只在你修改時變動。',
+    p.type === 'cash' && p.currency === BASE_CURRENCY && '台幣餘額只在你修改時變動。',
     rateFallback && '部分日期抓不到歷史匯率，以目前匯率計算。',
     !startKnown && '加入日期不明，先顯示最近一年。',
   ].filter(Boolean)
@@ -90,8 +91,8 @@ export function PositionHistory({
               <thead>
                 <tr>
                   <th>日期</th>
-                  <th className="num">數量</th>
-                  <th className="num">價格</th>
+                  <th className="num">{p.type === 'cash' ? '餘額' : '數量'}</th>
+                  {p.type === 'holding' && <th className="num">價格</th>}
                   <th className="num">匯率</th>
                   <th className="num">{BASE_CURRENCY}</th>
                 </tr>
@@ -107,9 +108,11 @@ export function PositionHistory({
                         {v.live && <span className="muted small"> 目前</span>}
                       </td>
                       <td className="num">{fmt(v.quantity, 8)}</td>
-                      <td className="num">
-                        {fmt(v.price, 4)} <span className="muted small">{p.currency}</span>
-                      </td>
+                      {p.type === 'holding' && (
+                        <td className="num">
+                          {fmt(v.price, 4)} <span className="muted small">{p.currency}</span>
+                        </td>
+                      )}
                       <td className="num">{p.currency === BASE_CURRENCY ? '—' : fmt(v.rate, 4)}</td>
                       <td className="num">{fmt(v.value, 0)}</td>
                     </tr>

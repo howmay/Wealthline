@@ -1607,6 +1607,26 @@ td.num .cell-input {
   color: var(--accent);
 }
 
+.balance-side {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.row-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.trend-toggle {
+  white-space: nowrap;
+}
+
+.trend-toggle.on {
+  color: var(--accent);
+}
+
 .position-history {
   margin: 14px 0 18px;
   padding-top: 14px;
