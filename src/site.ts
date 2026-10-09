@@ -20,9 +20,18 @@ export const AUTHOR_URL = 'https://github.com/zhChenOuO'
 export const PRIVACY_UPDATED = '2026-10-09'
 
 export const PAGES = {
-  privacy: { path: '/privacy', title: '隱私權政策', en: 'Privacy Policy' },
-  terms: { path: '/terms', title: '使用條款', en: 'Terms of Service' },
-  disclaimer: { path: '/disclaimer', title: '免責聲明', en: 'Disclaimer' },
+  privacy: {
+    path: '/privacy', title: '隱私權政策', en: 'Privacy Policy',
+    description: 'Wealthline 如何使用你的 Google 帳號資料：只要求 drive.file 權限，資料只存在你自己的 Google Drive，沒有後端資料庫。How Wealthline handles your Google user data.',
+  },
+  terms: {
+    path: '/terms', title: '使用條款', en: 'Terms of Service',
+    description: 'Wealthline 個人資產統計工具的使用條款。Terms of Service for Wealthline, the open-source personal asset tracker.',
+  },
+  disclaimer: {
+    path: '/disclaimer', title: '免責聲明', en: 'Disclaimer',
+    description: 'Wealthline 的報價、匯率與統計僅供參考，不構成投資建議。Quotes, exchange rates and totals in Wealthline are for reference only, not investment advice.',
+  },
 } as const
 export type PageKey = keyof typeof PAGES
 

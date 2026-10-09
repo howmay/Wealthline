@@ -1,0 +1,26 @@
+# Wealthline: https://wealthline.haomeh.com
+# The public pages (home, privacy, terms, disclaimer) may be crawled and indexed by anyone,
+# including AI search and assistant crawlers. The signed-in app keeps all data in each user's
+# own Google Drive, so there is nothing private on this site to crawl. App routes are sent
+# with an `X-Robots-Tag: noindex` header instead of being blocked here, so crawlers can see it.
+
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# AI search and assistant crawlers: allowed, so answers about Wealthline cite the real pages.
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: GPTBot
+User-agent: Claude-SearchBot
+User-agent: Claude-User
+User-agent: ClaudeBot
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+User-agent: CCBot
+Allow: /
+Disallow: /api/
+
+Sitemap: https://wealthline.haomeh.com/sitemap.xml

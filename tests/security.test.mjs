@@ -132,3 +132,18 @@ test('HTML responses stay revalidated even though the Worker runs first', async 
   assert.equal(response.headers.get('Cache-Control'), 'public, max-age=0, must-revalidate')
   assert.equal(response.headers.get('Cloudflare-CDN-Cache-Control'), 'no-store')
 })
+
+test('only the public pages are indexable; app routes and the API are marked noindex', async () => {
+  const env = { ASSETS: { fetch: async () => new Response('<html></html>', { headers: { 'Content-Type': 'text/html' } }) } }
+  const robots = async (path) => (await worker.fetch(new Request(`https://example.com${path}`), env)).headers.get('X-Robots-Tag')
+  for (const path of ['/', '/index.html', '/privacy', '/privacy/', '/terms.html', '/disclaimer']) assert.equal(await robots(path), null, path)
+  for (const path of ['/accounts', '/history', '/privacy/extra', '/no-such-page']) assert.equal(await robots(path), 'noindex', path)
+  globalThis.fetch = async () => { assert.fail('invalid symbols must not reach the network') }
+  assert.equal(await robots('/api/quote?symbol=%20'), 'noindex')
+})
+
+test('the Worker\'s indexable paths match the public pages in the sitemap', async () => {
+  const { PAGES } = await server.ssrLoadModule('/src/site.ts')
+  const { INDEXABLE_PATHS } = await server.ssrLoadModule('/worker/index.ts')
+  assert.deepEqual([...INDEXABLE_PATHS].sort(), ['/', ...Object.values(PAGES).map((p) => p.path)].sort())
+})

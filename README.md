@@ -72,6 +72,7 @@
 - [x] 深色／淺色模式自動跟隨系統，支援手機版面。
 - [x] 未登入首頁、隱私權政策、使用條款與免責聲明頁面（`/privacy`、`/terms`、`/disclaimer`）。
 - [x] App 圖示、PWA manifest 與 Apple touch icon。
+- [x] SEO：`sitemap.xml`、`robots.txt`（允許搜尋引擎與 AI 爬蟲讀取公開頁面）、給 AI 助理閱讀的 `llms.txt`、各頁的 canonical 與描述、首頁的 schema.org 結構化資料；登入後的 App 頁面一律標示 `noindex`。
 
 ## 規劃中的功能
 
@@ -135,7 +136,8 @@
 - 環境變數：`VITE_GOOGLE_CLIENT_ID`。
 - `wrangler.jsonc` 設定：請求先經過 `worker/index.ts` 套用 CSP、防嵌入與 HTTPS 等安全標頭，`/api/quote` 處理報價，其餘讀取 `dist/` 靜態資源；找不到的路徑回傳 `index.html`。所有請求都會執行 Worker，須留意 Worker 用量。
 - `previews` 區塊讓 Pull Request 可以自動建立預覽部署（`wrangler preview`）。
-- 建置時會預先產生 `index.html`、`privacy.html`、`terms.html`、`disclaimer.html`，不執行 JavaScript 也能讀到內容。
+- 建置時會預先產生 `index.html`、`privacy.html`、`terms.html`、`disclaimer.html`，不執行 JavaScript 也能讀到內容，同時寫出只列這四頁的 `sitemap.xml`。
+- 在 Google Search Console 提交 `https://wealthline.haomeh.com/sitemap.xml`。若 Cloudflare 開啟了「AI 爬蟲封鎖」或「受管理的 robots.txt」，它會改寫或擋掉 `robots.txt` 的設定，需依需求調整。
 - 正式網站為 `https://wealthline.haomeh.com`：在 Worker 的「網域與路由」加入 `wealthline.haomeh.com`。
 - 把正式網址加入 OAuth 用戶端的「已授權的 JavaScript 來源」，並在 OAuth 同意畫面填入首頁、隱私權政策（`/privacy`）與服務條款（`/terms`）網址。
 

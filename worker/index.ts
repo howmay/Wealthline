@@ -2,6 +2,15 @@
 // assets in dist/ (configured in wrangler.jsonc), applying security headers to both.
 import { handleApiRequest, isApiPath } from '../server/yahoo.ts'
 
+// The public pages listed in dist/sitemap.xml (written by scripts/prerender.mjs from src/site.ts).
+// Every other HTML response is the signed-in app's fallback page, which search engines should skip.
+export const INDEXABLE_PATHS = ['/', '/privacy', '/terms', '/disclaimer']
+
+function isIndexable(pathname: string): boolean {
+  const path = pathname.replace(/\.html$/, '').replace(/\/index$/, '/').replace(/(.)\/+$/, '$1')
+  return INDEXABLE_PATHS.includes(path)
+}
+
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> }
 }
@@ -17,7 +26,9 @@ export default {
     if (response.headers.get('Content-Type')?.includes('text/html')) {
       response.headers.set('Cache-Control', 'public, max-age=0, must-revalidate')
       response.headers.set('Cloudflare-CDN-Cache-Control', 'no-store')
+      if (!isIndexable(url.pathname)) response.headers.set('X-Robots-Tag', 'noindex')
     }
+    if (isApiPath(url.pathname)) response.headers.set('X-Robots-Tag', 'noindex')
     response.headers.set('Content-Security-Policy', [
       "default-src 'self'",
       // The hash is index.html's inline restore script (tests/security.test.mjs keeps them in sync).
