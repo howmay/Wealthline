@@ -2,6 +2,7 @@ import type { WealthData, Position } from './model'
 import type { Snapshot } from './history'
 import { localDate } from './history'
 import { fetchHistory, fxSymbol, type PriceHistory } from './priceHistory'
+import { fetchHistoricalFx, historicalFxError, isCryptoCurrency, USD_TWD_HISTORY } from './historicalFx'
 import { candidates } from './quotes'
 import { isSupportedCurrency } from './currencies'
 
@@ -13,7 +14,8 @@ export interface HistoricalInstrument {
 }
 // Yahoo market quotes. Legacy manual fields remain readable but are never used
 // as valuation fallback or exposed as editable prices.
-export interface HistoricalQuote { source: 'Yahoo' | 'manual'; symbol: string; date: string; value: number }
+export interface HistoricalFxLeg {source:'Yahoo';symbol:string;currency:string;date:string;value:number}
+export interface HistoricalQuote { source: 'Yahoo' | 'manual' | 'derived'; symbol: string; date: string; value: number; legs?: [HistoricalFxLeg,HistoricalFxLeg] }
 export interface QuantityEntry extends HistoricalInstrument {
   quantityAsOf?: string // query-only basis date for split conversion
   quantity: number | null // null: unknown, not zero
@@ -68,6 +70,15 @@ export function entriesForDate(data: WealthData, date: string): QuantityEntry[] 
 const age = (a: string, b: string) => (Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400000
 export function quoteOn(history: PriceHistory | null, date: string): HistoricalQuote | undefined {
   if (!history?.asTraded) return undefined
+  if(history.conversion) {
+    const {currency,asset,usd}=history.conversion
+    if(asset?.currency!=='USD' || usd?.currency!=='TWD' || asset.symbol!==`${currency}-USD` || usd.symbol!==USD_TWD_HISTORY) return undefined
+    const first=quoteOn(asset,date),second=quoteOn(usd,date)
+    if(!first || !second || first.source!=='Yahoo' || second.source!=='Yahoo') return undefined
+    const value=first.value*second.value
+    if(!Number.isFinite(value)||value<=0) return undefined
+    return {source:'derived',symbol:fxSymbol(currency),date,value,legs:[{...first,source:'Yahoo',currency:'USD'},{...second,source:'Yahoo',currency:'TWD'}]}
+  }
   const pt = history.points.filter(p => validDate(p.date) && p.date <= date && Number.isFinite(p.close) && p.close > 0).sort((a,b) => a.date.localeCompare(b.date)).at(-1)
   // A seven-calendar-day limit covers normal weekends/holidays; long suspensions
   // and absent prehistory remain unavailable. Never borrow a future close.
@@ -96,7 +107,7 @@ export function repriceEntry(e: QuantityEntry, date: string, prices: PriceHistor
   if (e.quantity === null || e.quantity === 0) return entry
   const price = e.type !== 'cash' && prices?.currency === e.currency ? quoteOn(prices, date) : undefined
   const fx = e.currency !== 'TWD' && rates?.currency === 'TWD' ? quoteOn(rates, date) : undefined
-  const error = [e.type !== 'cash' && !price && '缺少相符幣別的歷史收盤價', e.currency !== 'TWD' && !fx && '缺少歷史匯率'].filter(Boolean).join('；')
+  const error = [e.type !== 'cash' && !price && '缺少相符幣別的歷史收盤價', e.currency !== 'TWD' && !fx && historicalFxError(e.currency,date,rates)].filter(Boolean).join('；')
   return { ...entry, quantity:splitQuantity(entry,date,prices), ...(price && {price}), ...(fx && {fx}), ...(error && {error}) }
 }
 export async function valueEntries(
@@ -117,16 +128,17 @@ export async function valueEntries(
     let priceHistory: PriceHistory | null = null
     let price: HistoricalQuote | undefined
     let fx: HistoricalQuote | undefined
+    let rates:PriceHistory|null=null
     if (entry.type !== 'cash' && !price && TICKER.test(entry.symbol)) for (const symbol of candidates(entry.symbol, entry.country, entry.category.includes('加密'))) {
       const history = await get(symbol)
       if (history?.currency === entry.currency) { priceHistory = history; price = quoteOn(history, date) }
       if (price) break
     }
     if (entry.currency !== 'TWD') {
-      const history = await get(fxSymbol(entry.currency))
-      if (history?.currency === 'TWD') fx = quoteOn(history, date)
+      rates = await fetchHistoricalFx(entry.currency,date,symbol=>get(symbol))
+      if (rates?.currency === 'TWD') fx = quoteOn(rates, date)
     }
-    const error = [entry.type !== 'cash' && !price && '缺少相符幣別的歷史收盤價', entry.currency !== 'TWD' && !fx && '缺少歷史匯率'].filter(Boolean).join('；')
+    const error = [entry.type !== 'cash' && !price && '缺少相符幣別的歷史收盤價', entry.currency !== 'TWD' && !fx && historicalFxError(entry.currency,date,rates)].filter(Boolean).join('；')
     const result = { ...entry, quantity:splitQuantity(entry,date,priceHistory), ...(price && { price }), ...(fx && { fx }), ...(error && { error }) }
     return !error && entryValue(result) === null ? { ...result, error: '估值超出有效數值範圍' } : result
   }))
@@ -178,7 +190,7 @@ export function applyQuantityDay(data: WealthData, day: QuantityDay, expected?: 
   const existing = data.history.quantityDays?.find(d => d.date === day.date)
   if (existing !== expected) throw new Error('這一天已新增或變更，請取消並重新開啟，避免覆蓋其他修改')
   const parsed = parseQuantityDays([day])[0]
-  return { ...data, version: data.version === 6 || day.sparse ? 6 : data.version === 5 || data.history.holdingPeriods !== undefined ? 5 : data.version === 4 || data.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
+  return { ...data, version: data.version === 7 || parsed.entries.some(e=>e.fx?.source==='derived') ? 7 : data.version === 6 || day.sparse ? 6 : data.version === 5 || data.history.holdingPeriods !== undefined ? 5 : data.version === 4 || data.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
 }
 export function parseQuantityDays(raw: unknown): QuantityDay[] {
   if (!Array.isArray(raw)) throw new Error('歷史數量必須是陣列')
@@ -194,6 +206,16 @@ export function parseQuantityDays(raw: unknown): QuantityDay[] {
       if (e.quantity !== null && (typeof e.quantity !== 'number' || !Number.isFinite(e.quantity) || e.quantity < 0)) throw new Error('歷史數量須為非負有限數字，空白表示未知')
       const quote = (q: HistoricalQuote | undefined, isFx: boolean) => {
         if (q === undefined) return undefined
+        if(q?.source==='derived') {
+          if(!isFx || !isCryptoCurrency(e.currency) || q.symbol!==fxSymbol(e.currency) || q.date!==d.date || !Array.isArray(q.legs) || q.legs.length!==2) throw new Error('歷史換算鏈格式不正確')
+          const legs=q.legs.map((leg,i)=>{
+            if(leg?.source!=='Yahoo' || leg.symbol!==(i===0?`${e.currency}-USD`:USD_TWD_HISTORY) || leg.currency!==(i===0?'USD':'TWD') || !validDate(leg.date) || leg.date>d.date || age(d.date,leg.date)>7 || !Number.isFinite(leg.value) || leg.value<=0) throw new Error('歷史換算鏈來源或日期不正確')
+            return {source:'Yahoo' as const,symbol:leg.symbol,currency:leg.currency,date:leg.date,value:leg.value}
+          }) as [HistoricalFxLeg,HistoricalFxLeg]
+          const value=legs[0].value*legs[1].value
+          if(!Number.isFinite(value)||value<=0||!Number.isFinite(q.value)||Math.abs(value-q.value)>Math.abs(value)*1e-12) throw new Error('歷史換算鏈數值不正確')
+          return {source:'derived' as const,symbol:q.symbol,date:q.date,value,legs}
+        }
         const manual = q?.source === 'manual'
         const sourceOk = manual ? !isFx && q.symbol === e.symbol && q.date === d.date : q?.source === 'Yahoo' && typeof q.symbol === 'string' && !!q.symbol
         if (!q || !sourceOk || !validDate(q.date) || q.date > d.date || age(d.date, q.date) > 7 || !Number.isFinite(q.value) || q.value <= 0 || (isFx && q.symbol !== fxSymbol(e.currency))) throw new Error('歷史行情來源或日期不正確')

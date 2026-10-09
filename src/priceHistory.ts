@@ -4,12 +4,15 @@
 
 import { MAX_PERIOD_DAYS, createPeriodIndex, shiftDate } from './holdingPeriods'
 import { changeKey, keyOf, localDate } from './history'
-import { entryValue, instrumentKey, quoteOn, repriceEntry, type QuantityEntry } from './quantityHistory'
+import { historicalFxError } from './historicalFx'
+import { entryValue, instrumentKey, quoteOn, repriceEntry, type QuantityEntry, type HistoricalQuote } from './quantityHistory'
 import { BASE_CURRENCY, rateOf, type Account, type Position, type WealthData } from './model'
 
 export interface PriceHistory {
   symbol: string
   currency: string
+  failure?: 'not_found' | 'provider_error'
+  conversion?: {currency:string;asset:PriceHistory|null;usd:PriceHistory|null}
   asTraded?: boolean
   splits?: { date: string; ratio: number }[]
   points: { date: string; close: number }[]
@@ -22,6 +25,8 @@ export interface DayValue {
   rate: number | null
   priceDate?: string
   rateDate?: string
+  rateQuote?: HistoricalQuote
+  error?: string
   value: number | null
   live?: boolean // today, from the current numbers
 }
@@ -48,9 +53,12 @@ export async function fetchHistory(symbol: string, from: string, reload = false)
 }
 async function requestHistory(symbol: string, from: string, reload: boolean): Promise<PriceHistory | null> {
   const res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&from=${from}`, { cache: reload ? 'no-cache' : 'default' }).catch(() => null)
+  if(!res?.ok) return {symbol,currency:'',points:[],failure:res?.status===404?'not_found':'provider_error'}
   try {
-    const body = res?.ok ? await res.json() as PriceHistory : null
-    return body && Array.isArray(body.points) && typeof body.currency === 'string' && typeof body.symbol === 'string' && body.points.every(p => p && typeof p.date === 'string' && Number.isFinite(p.close) && p.close > 0) && (body.splits === undefined || Array.isArray(body.splits) && body.splits.every(s => s && typeof s.date === 'string' && Number.isFinite(s.ratio) && s.ratio > 0)) ? body : null
+    const body=await res.json() as PriceHistory
+    if(!body || !Array.isArray(body.points) || typeof body.currency!=='string' || typeof body.symbol!=='string' || !body.points.every(p=>p && typeof p.date==='string' && Number.isFinite(p.close) && p.close>0) || (body.splits!==undefined && (!Array.isArray(body.splits)||!body.splits.every(s=>s && typeof s.date==='string' && Number.isFinite(s.ratio)&&s.ratio>0)))) return null
+    // Do not accept internal conversion containers or failure flags from the network.
+    return {symbol:body.symbol,currency:body.currency,points:body.points,asTraded:body.asTraded===true,splits:body.splits}
   } catch { return null }
 }
 
@@ -100,6 +108,8 @@ function enteredDay(date: string, stored: QuantityEntry, prices: PriceHistory | 
     rate: e.currency === BASE_CURRENCY ? 1 : (e.fx?.value ?? null),
     priceDate: e.price?.date,
     rateDate: e.fx?.date,
+    rateQuote:e.fx,
+    error:e.error,
     value: entryValue(e),
   }
 }
@@ -170,7 +180,7 @@ export function positionTimeline(
   const dates = new Set<string>(start.known ? [start.date] : [])
   for (const x of lots) if (x.addedAt) dates.add(localDate(x.addedAt))
   for (const pt of quoted ? prices!.points : []) dates.add(pt.date)
-  for (const pt of fx?.points ?? []) dates.add(pt.date)
+  for (const source of [fx,fx?.conversion?.asset,fx?.conversion?.usd]) for(const pt of source?.points ?? []) dates.add(pt.date)
   for (const c of log) dates.add(localDate(c.at))
   for (const [date] of entered) dates.add(date)
 
@@ -213,7 +223,7 @@ export function positionTimeline(
     const raw = quantity === 0 ? 0 : price === null || rate === null ? null : quantity * price * rate
     const value = raw !== null && Number.isFinite(raw) ? raw : null
     if (value === null) incomplete = true
-    days.push({ date, quantity, price, rate, priceDate: quote?.date, rateDate: rateQuote?.date, value })
+    days.push({ date, quantity, price, rate, priceDate: quote?.date, rateDate: rateQuote?.date, rateQuote, error:quantity===0 ? undefined : historicalFxError(p.currency,date,fx), value })
   }
 
   const enteredToday = entered.find(([d]) => d === today)?.[1]

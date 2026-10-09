@@ -927,3 +927,26 @@ test('yellow review: overview and history compare actual last record; explicit u
  await render(ChangeSinceLast,{data:unknown});assert.match(document.body.textContent,/資料不完整，無法比較/)
  await render(HistoryView,{...props,data:unknown});assert.match(document.querySelector('.stats').textContent,/資料不完整，無法比較/);assert.doesNotMatch(document.querySelector('.stats').textContent,/尚無更早的紀錄/)
 })
+
+test('crypto cash preview shows depeg conversion legs, persists provenance, and failed refresh stays unknown',async()=>{
+ const initial=historicalFixture();initial.accounts[0].positions=[{id:'crypto',type:'cash',symbol:'',currency:'USDT',quantity:7,price:1}];initial.fxRates.USDT=999
+ let current,fail=false;const requests=[]
+ globalThis.fetch=async url=>{
+  const symbol=new URL(url,'https://synthetic.invalid').searchParams.get('symbol');requests.push(symbol)
+  if(fail&&symbol==='USDT-USD')return Response.json({error:'provider_error'},{status:502})
+  return Response.json({symbol,currency:symbol==='TWD=X'?'TWD':'USD',asTraded:true,splits:[],points:[{date:'2026-09-01',close:symbol==='TWD=X'?32:0.98}]})
+ }
+ function Harness(){const [data,setData]=useState(initial);useEffect(()=>{current=data},[data]);return createElement(HistoryView,{data,dirty:true,busy:false,onChange:setData,onSave:()=>{},onOpenAccount:()=>{}})}
+ await render(Harness);await click(button('＋ 補登歷史數量'));await chooseHistoryInstrument();await setInput(field('歷史日期'),'2026-09-01');await setInput(field('合成歷史帳戶 · USDT · USDT 當日數量'),'7');await click(button('取得歷史估值'))
+ assert.match(document.querySelector('.quantity-editor').textContent,/219\.52/)
+ assert.match(document.querySelector('.quantity-editor').textContent,/USDT-USD.*2026-09-01/)
+ assert.match(document.querySelector('.quantity-editor').textContent,/TWD=X.*2026-09-01/)
+ assert.equal(requests.includes('USDTTWD=X'),false)
+ await click(button('套用歷史數量'));assert.equal(current.version,7);assert.equal(current.history.quantityDays[0].entries[0].fx.legs.length,2)
+ const row=()=>[...document.querySelectorAll('section.daily tbody tr')].find(x=>x.textContent.includes('2026/09/01'))
+ assert.match(row().textContent,/NT\$ 220/)
+ fail=true;await click(button('重新查詢歷史行情'));assert.match(row().textContent,/資料不完整/)
+ await click(button('編輯數量 2026-09-01'));await chooseHistoryInstrument();await click(button('取得歷史估值'))
+ assert.match(document.querySelector('.quantity-editor').textContent,/USDT\/USD.*來源暫時異常/)
+ await click(button('取消歷史編輯'));assert.equal(current.history.quantityDays[0].entries[0].quantity,7)
+})

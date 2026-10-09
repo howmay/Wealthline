@@ -3,13 +3,15 @@ import { fmt } from '../format'
 import { instrumentKey } from '../quantityHistory'
 import { localDate } from '../history'
 import { BASE_CURRENCY, type Account, type Position, type WealthData } from '../model'
-import { clearHistoryCache, explicitDays, fetchHistory, fxSymbol, positionTimeline, startDate, type PriceHistory } from '../priceHistory'
+import { clearHistoryCache, explicitDays, fetchHistory, positionTimeline, startDate, type PriceHistory } from '../priceHistory'
+import { fetchHistoricalFx } from '../historicalFx'
+import { HistoricalFxValue } from './HistoricalFxValue'
 import { candidates, displaySymbol } from '../quotes'
 import { TrendChart } from './TrendChart'
 
 const day = (iso: string) => new Date(iso).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
 
-type Loaded = { prices: PriceHistory | null; fx: PriceHistory | null }
+type Loaded = { key:string; prices: PriceHistory | null; fx: PriceHistory | null }
 
 // When a holding was added and what it was worth on each day since, from past closes,
 // past exchange rates and the quantities in the change log.
@@ -31,6 +33,8 @@ export function PositionHistory({
   // Fetch far enough back for this instrument’s selected-day entries.
   const from = [startDate(data, account, p, localDate(now)).date, ...explicitDays(data, account, p).keys(), ...(data.history.holdingPeriods ?? []).filter(x=>instrumentKey(x)===instrumentKey({accountId:account.id,account:account.name,category:account.category,country:account.country,...p})).map(x=>x.start)].sort()[0]
 
+  const loadKey=JSON.stringify([p.type,p.symbol,p.currency,p.priceManual,from,generation,account.country,account.category])
+
   useEffect(() => {
     let live = true
     void Promise.all([
@@ -41,12 +45,12 @@ export function PositionHistory({
         }
         return null
       })(),
-      p.currency === BASE_CURRENCY ? null : fetchHistory(fxSymbol(p.currency), from, generation > 0),
-    ]).then(([prices, fx]) => live && setLoaded({ prices, fx }))
+      p.currency === BASE_CURRENCY ? null : fetchHistoricalFx(p.currency,from,(symbol,date)=>fetchHistory(symbol,date,generation>0)),
+    ]).then(([prices, fx]) => live && setLoaded({ key:loadKey, prices, fx }))
     return () => {
       live = false
     }
-  }, [p.type, p.symbol, p.currency, p.priceManual, from, generation, account.country, account.category])
+  }, [p.type, p.symbol, p.currency, p.priceManual, from, generation, account.country, account.category, loadKey])
 
   const head = (
     <div className="panel-head">
@@ -56,7 +60,7 @@ export function PositionHistory({
       </button>
     </div>
   )
-  if (!loaded) {
+  if (!loaded || loaded.key!==loadKey) {
     return (
       <div className="position-history">
         {head}
@@ -125,7 +129,7 @@ export function PositionHistory({
                           {v.price === null ? '未知' : fmt(v.price, 4)} <span className="muted small">{p.currency}</span><div className="muted small">{v.priceDate}</div>
                         </td>
                       )}
-                      <td className="num">{p.currency === BASE_CURRENCY ? '—' : v.rate === null ? '未知' : fmt(v.rate, 4)}</td>
+                      <td className="num">{p.currency === BASE_CURRENCY ? '—' : v.rate === null ? '未知' : fmt(v.rate, 4)}{v.rateQuote?.source==='derived' && <HistoricalFxValue quote={v.rateQuote}/>} {v.error && <div className="muted small">{v.error}</div>}</td>
                       <td className="num">{v.value === null ? '未知' : fmt(v.value, 0)}<div className="muted small">{v.rateDate && `匯率日 ${v.rateDate}`}</div></td>
                     </tr>
                   ))}

@@ -3,6 +3,7 @@ import { applyHoldingPeriod, expandPeriodDays, periodConflicts, periodQuantityOn
 import type { WealthData } from '../model'
 import { localDate } from '../history'
 import { applyQuantityDay, entriesForDate, entryValue, historyCatalog, instrumentKey, parseQuantityDays, quantityPoint, validatePastDate, valueDays, valueEntries, type QuantityDay, type QuantityEntry } from '../quantityHistory'
+import { HistoricalFxValue } from './HistoricalFxValue'
 import { fmt } from '../format'
 
 export interface QuantityEditRequest { date: string; expected?: QuantityDay; entryKey?: string }
@@ -204,7 +205,7 @@ function Valuation({ entry: e }: { entry: QuantityEntry }) {
       {e.quantity !== null && e.quantity !== 0 && (
         <>
           <div>{e.type === 'cash' ? '單位值 1' : (price ?? '缺歷史收盤價')}</div>
-          <div>{e.currency === 'TWD' ? 'TWD 匯率 1' : e.fx ? `Yahoo ${e.fx.symbol} · ${e.fx.date} 匯率 ${fmt(e.fx.value, 6)}` : '缺歷史匯率'}</div>
+          <div>{e.currency === 'TWD' ? 'TWD 匯率 1' : e.fx ? <HistoricalFxValue quote={e.fx}/> : '缺歷史匯率'}</div>
         </>
       )}
       {e.error && <p className="notice">{e.error}</p>}
