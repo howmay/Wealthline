@@ -24,11 +24,9 @@ import { SaveReview } from './views/SaveReview'
 import { Landing } from './views/Landing'
 import { Opening, type OpeningStep } from './views/Opening'
 import { LegalPage } from './views/Legal'
-import { PAGES, usePage } from './site'
+import { PAGES, goBack, navigate, usePage, usePath } from './site'
+import { TABS, parseRoute, routePath, tabPath, type Route, type Tab } from './routes'
 import { Link, Logo, PrivacyNotice, SiteFooter } from './views/Site'
-
-const TABS = { overview: '總覽', accounts: '帳戶', history: '歷史', rates: '匯率' }
-type Tab = keyof typeof TABS
 
 type Status = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'error'; text: string }
 
@@ -44,8 +42,6 @@ export default function App() {
   const dirtyRef = useRef(false)
   dirtyRef.current = dirty
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
-  const [tab, setTab] = useState<Tab>('overview')
-  const [accountsView, setAccountsView] = useState<AccountsView>({ page: 'list' })
   // Edits to balances or holdings are shown for review before they become history.
   const [reviewing, setReviewing] = useState(false)
   const [ratesError, setRatesError] = useState('')
@@ -61,6 +57,9 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false)
   // The notice pages are open to everyone; the app's own state stays mounted behind them.
   const page = usePage()
+  // Every page of the signed-in app has its own URL, so back and forward move between them.
+  const route = parseRoute(usePath())
+  const tab = route.tab
 
   // Warn before closing the tab with unsaved edits.
   useEffect(() => {
@@ -231,6 +230,7 @@ export default function App() {
       setData(null)
       setDirty(false)
       setReviewing(false)
+      navigate('/', { replace: true })
       // Local logout must finish even if Google's revoke request fails or hangs.
       if (previous) void revokeAccessToken(previous).catch(() => {})
     })
@@ -267,13 +267,16 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [missingAuto])
 
+  // An account that no longer exists (deleted, or an old link) shows the account list instead.
+  const missingAccount = !!data && 'id' in route && !data.accounts.some((a) => a.id === route.id)
+  useEffect(() => {
+    if (missingAccount) navigate('/accounts', { replace: true })
+  }, [missingAccount])
+
   const busy = status.kind === 'busy'
 
-  function go(t: Tab, view?: AccountsView) {
-    setTab(t)
-    if (view) setAccountsView(view)
-    window.scrollTo({ top: 0 })
-  }
+  const go = (r: Route, replace = false) => navigate(routePath(r), { replace })
+  const goAccounts = (view: AccountsView, replace = false) => go({ tab: 'accounts', ...view }, replace)
 
   if (page) return <LegalPage page={page} signedIn={!!user} />
 
@@ -304,7 +307,7 @@ export default function App() {
                 key={t}
                 className={t === tab ? 'active' : ''}
                 aria-current={t === tab ? 'page' : undefined}
-                onClick={() => go(t, t === 'accounts' ? { page: 'list' } : undefined)}
+                onClick={() => navigate(tabPath(t))}
               >
                 {TABS[t]}
               </button>
@@ -368,21 +371,22 @@ export default function App() {
         {data && tab === 'overview' && (
           <Overview
             data={data}
-            onGoRates={() => go('rates')}
-            onNewAccount={() => go('accounts', { page: 'new' })}
-            onImport={() => go('accounts', { page: 'list', importing: true })}
+            onGoRates={() => go({ tab: 'rates' })}
+            onNewAccount={() => goAccounts({ page: 'new' })}
+            onImport={() => goAccounts({ page: 'list', importing: true })}
             onOpenAccount={(name) => {
               const a = data.accounts.find((x) => x.name === name)
-              if (a) go('accounts', { page: 'detail', id: a.id })
+              if (a) goAccounts({ page: 'detail', id: a.id })
             }}
           />
         )}
-        {data && tab === 'accounts' && (
+        {data && route.tab === 'accounts' && (
           <Accounts
             data={data}
             onChange={update}
-            view={accountsView}
-            setView={setAccountsView}
+            view={route}
+            setView={goAccounts}
+            onBack={(fallback) => goBack(routePath({ tab: 'accounts', ...fallback }))}
             onRefreshPrices={async () => void (await refreshMarket(data))}
             priceError={priceError}
           />
@@ -394,7 +398,7 @@ export default function App() {
             busy={busy}
             onSave={requestSave}
             onChange={update}
-            onOpenAccount={(id) => go('accounts', { page: 'detail', id })}
+            onOpenAccount={(id) => goAccounts({ page: 'detail', id })}
           />
         )}
         {data && tab === 'rates' && <Rates data={data} onChange={update} onRefresh={async () => void (await refreshRates(data))} error={ratesError} />}

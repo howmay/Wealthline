@@ -41,14 +41,34 @@ const subscribe = (cb: () => void) => {
   return () => window.removeEventListener('popstate', cb)
 }
 
+export function usePath(): string {
+  return useSyncExternalStore(subscribe, () => window.location.pathname.replace(/\/+$/, '') || '/')
+}
+
 export function usePage(): PageKey | null {
-  const path = useSyncExternalStore(subscribe, () => window.location.pathname.replace(/\/+$/, ''))
+  const path = usePath()
   return (Object.keys(PAGES) as PageKey[]).find((k) => PAGES[k].path === path) ?? null
 }
 
-export function navigate(to: string) {
+// Each entry this app pushes counts how deep it is, so `goBack` knows whether the previous
+// entry is one of ours or a page from before the app was opened.
+const depth = (): number => (window.history.state as { depth?: number } | null)?.depth ?? 0
+
+export function navigate(to: string, { replace = false } = {}) {
   if (to === window.location.pathname) return
-  window.history.pushState(null, '', to)
+  if (replace) window.history.replaceState({ depth: depth() }, '', to)
+  else window.history.pushState({ depth: depth() + 1 }, '', to)
   window.dispatchEvent(new PopStateEvent('popstate'))
   window.scrollTo({ top: 0 })
+}
+
+// Whether the previous history entry is a page of this app.
+export const hasPrevious = () => depth() > 0
+
+// Returns to the page the user came from, like the browser's back button; when they arrived
+// here directly (a reload or a shared link), replaces this page with `fallback` instead.
+
+export function goBack(fallback: string) {
+  if (hasPrevious()) window.history.back()
+  else navigate(fallback, { replace: true })
 }
