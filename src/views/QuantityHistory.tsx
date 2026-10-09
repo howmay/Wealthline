@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { applyHoldingPeriod, expandPeriodDays, periodConflicts, periodQuantityOn, periodRevision, shiftDate, type HoldingPeriod } from '../holdingPeriods'
 import type { WealthData } from '../model'
 import { localDate } from '../history'
-import { applyQuantityDay, entriesForDate, entryValue, historyCatalog, instrumentKey, parseQuantityDays, quantityPoint, validatePastDate, valueEntries, type QuantityDay, type QuantityEntry } from '../quantityHistory'
+import { applyQuantityDay, entriesForDate, entryValue, historyCatalog, instrumentKey, parseQuantityDays, quantityPoint, validatePastDate, valueDays, valueEntries, type QuantityDay, type QuantityEntry } from '../quantityHistory'
 import { fmt } from '../format'
 
 export interface QuantityEditRequest { date: string; expected?: QuantityDay; entryKey?: string }
@@ -12,24 +13,30 @@ export function QuantityHistory({ data, onChange, request: editing, onRequest: s
   data: WealthData; onChange: (d: WealthData) => void; displayDays?: QuantityDay[];
   request?: QuantityEditRequest; onRequest: (request: QuantityEditRequest | undefined) => void;
 }) {
-  const [undo, setUndo] = useState<{ before: QuantityDay[] | undefined; after: QuantityDay[] } | null>(null)
+  const [undo, setUndo] = useState<{ before: {days?:QuantityDay[];periods?:HoldingPeriod[]}; after: {days?:QuantityDay[];periods?:HoldingPeriod[]} } | null>(null)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('')
   const days = data.history.quantityDays ?? []
-  const apply = (next: WealthData) => { setUndo({ before: data.history.quantityDays, after: next.history.quantityDays! }); onChange(next) }
+  const apply = (next: WealthData) => { setUndo({ before:{days:data.history.quantityDays,periods:data.history.holdingPeriods}, after:{days:next.history.quantityDays,periods:next.history.holdingPeriods} }); onChange(next) }
   const accounts = [...new Map(days.flatMap(d => d.entries.map(e => [e.accountId, e.account] as const))).entries()]
   const activeFilter = accounts.some(([id]) => id === filter) ? filter : ''
   return <section className="panel quantity-panel" aria-label="歷史持倉數量">
     <div className="panel-head"><h3>歷史持倉數量</h3>{!editing && <button onClick={() => setEditing({ date: localDate(stamp()) })}>＋ 補登歷史數量</button>}</div>
-    <p className="muted small">先選帳戶與標的，再填當日的絕對持有數量。同帳戶、同標的、同幣別合計多批次；不修改目前持倉。</p>
+    <p className="muted small">先選帳戶與標的，再選單日或持有期間、填絕對持有數量。同帳戶、同標的、同幣別合計多批次；不修改目前持倉。</p>
     {error && <p role="alert" className="banner error">{error}</p>}
     {editing ? <QuantityEditor key={`${editing.date}:${editing.entryKey ?? ''}`} data={data} date={editing.date} expected={editing.expected} entryKey={editing.entryKey}
       onCancel={() => setEditing(undefined)} onApply={next => { apply(next); setEditing(undefined) }} /> : <>
       {undo && <button onClick={() => {
-        if (data.history.quantityDays !== undo.after) { setError('歷史已變更，無法直接復原；請重新檢查。'); return }
-        onChange({ ...data, history: { ...data.history, quantityDays: undo.before ?? [] } }); setUndo(null)
+        if ((data.history.quantityDays !== undo.after.days || data.history.holdingPeriods !== undo.after.periods)) { setError('歷史已變更，無法直接復原；請重新檢查。'); return }
+        onChange({ ...data, history: { ...data.history, quantityDays: undo.before.days ?? [], holdingPeriods: undo.before.periods } }); setUndo(null)
       }}>復原上次歷史修改</button>}
-      {!days.length ? <p className="muted">尚未手動補登。舊每日快照只有總額，無法還原各持倉數量。</p> : <label className="field"><span>篩選已補登帳戶</span><select value={activeFilter} onChange={e => setFilter(e.target.value)}><option value="">全部帳戶</option>{accounts.map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label>}
+      {(data.history.holdingPeriods ?? []).map(period => <details className="quantity-day" key={period.id}>
+        <summary>{period.start} → {period.end ?? '持續持有'} · {period.symbol || period.currency}</summary>
+        <p>{period.account} · {period.currency} · 數量 {fmt(period.quantity,8)}</p>
+        <p className="muted small">開始日含、結束／賣出日不含；日曆時區 {period.timeZone}。明確數量紀錄及較晚開始的期間優先。</p>
+        <button className="danger" onClick={() => { if(confirm('移除此持有期間？會依其他期間與單日紀錄重新估算，目前持倉不變。')) apply({...data,history:{...data.history,holdingPeriods:data.history.holdingPeriods?.filter(p=>p.id!==period.id)}}) }}>移除期間 {period.start}</button>
+      </details>)}
+      {!days.length ? <p className="muted">尚未單日補登。舊每日快照只有總額，無法還原各持倉數量。</p> : <label className="field"><span>篩選已補登帳戶</span><select value={activeFilter} onChange={e => setFilter(e.target.value)}><option value="">全部帳戶</option>{accounts.map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label>}
       {[...days].reverse().filter(day => !activeFilter || day.entries.some(e => e.accountId === activeFilter)).map(day => <details className="quantity-day" key={day.date}>
         <summary>{day.date} · {day.entries.filter(e => (!activeFilter || e.accountId === activeFilter) && e.quantity !== null).length} 項已填數量</summary>
         <div className="quantity-rows">{(displayDays?.find(d => d.date === day.date)?.entries ?? day.entries).filter(e => !activeFilter || e.accountId === activeFilter).map(entry => <div className="quantity-row" key={instrumentKey(entry)}>
@@ -53,6 +60,11 @@ export function QuantityEditor({ data, date: initialDate, expected, entryKey, on
   const [accountId, setAccountId] = useState(initial?.accountId ?? '')
   const [selectedKey, setSelectedKey] = useState(entryKey ?? '')
   const [date, setDate] = useState(initialDate)
+  const [mode,setMode] = useState<'day'|'period'>('day')
+  const [end,setEnd] = useState('')
+  const [timeZone,setTimeZone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone)
+  const [periodPreview,setPeriodPreview] = useState<{period:HoldingPeriod;revision:string;conflicts:string[];days:QuantityDay[];before:WealthData}|null>(null)
+  const [confirmed,setConfirmed] = useState(false)
   const [quantity, setQuantity] = useState(() => initial ? entriesForDate(data,initialDate).find(e => instrumentKey(e) === entryKey)?.quantity?.toString() ?? '' : '')
   const [symbol, setSymbol] = useState('')
   const [currency, setCurrency] = useState('TWD')
@@ -73,10 +85,10 @@ export function QuantityEditor({ data, date: initialDate, expected, entryKey, on
   const account = accounts.get(accountId)
   const choices = catalog.filter(e => e.accountId === accountId)
   const selected = selectedKey === '__new__' && account ? { accountId, account:account.name, category:account.category, country:account.country, type, symbol:type === 'cash' ? '' : symbol.trim().toUpperCase(), currency:currency.trim().toUpperCase() } : choices.find(e => instrumentKey(e) === selectedKey)
-  const resetPreview = () => { revision.current++; setLoading(false); setPreview(null); setError('') }
+  const resetPreview = () => { revision.current++; setLoading(false); setPreview(null); setPeriodPreview(null); setConfirmed(false); setError('') }
   const loadQuantity = (key: string, onDate = date) => setQuantity(entriesForDate(latest.current,onDate).find(e => instrumentKey(e) === key)?.quantity?.toString() ?? '')
   const chooseAccount = (id: string) => { resetPreview(); setAccountId(id); setSelectedKey(''); setQuantity(''); setSymbol(''); setCurrency('TWD'); setType('holding') }
-  const chooseInstrument = (key: string) => { resetPreview(); setSelectedKey(key); loadQuantity(key) }
+  const chooseInstrument = (key: string) => { resetPreview(); setSelectedKey(key); loadQuantity(key); setTimeZone(latest.current.history.holdingPeriods?.find(p=>instrumentKey(p)===key)?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone) }
   const goToQuantity = () => {
     try {
       if (!selected) throw new Error('請先選擇標的')
@@ -92,8 +104,18 @@ export function QuantityEditor({ data, date: initialDate, expected, entryKey, on
   const prepare = async () => {
     resetPreview(); const request = revision.current
     try {
-      validatePastDate(date)
+      if (mode==='day') validatePastDate(date)
       if (!selected) throw new Error('請重新選擇帳戶與標的')
+      if (mode==='period') {
+        if(!quantity.trim()) throw new Error('持有期間請填寫絕對數量；單日模式才可留空表示未知')
+        const before=latest.current, fingerprint=periodRevision(before)
+        const period:HoldingPeriod={...selected,id:crypto.randomUUID(),updatedAt:stamp(),start:date,...(end && {end}),quantity:Number(quantity),timeZone}
+        const candidate=applyHoldingPeriod(before,period,fingerprint,true)
+        setLoading(true)
+        const days=await valueDays(expandPeriodDays(candidate))
+        if(live.current && request===revision.current) { setPeriodPreview({period,revision:fingerprint,conflicts:periodConflicts(before,period),days,before}); setStep(3) }
+        return
+      }
       if (latest.current.history.quantityDays?.find(d => d.date === date) !== baseline.current) throw new Error('這一天已變更，請取消並重新開啟，避免覆蓋其他修改')
       const entry: QuantityEntry = { ...selected, quantity:quantity.trim() ? Number(quantity) : null }
       const others = entriesForDate(latest.current,date).filter(e => instrumentKey(e) !== instrumentKey(entry))
@@ -126,22 +148,39 @@ export function QuantityEditor({ data, date: initialDate, expected, entryKey, on
       </>}
     </>}
     {step === 2 && selected && <>
-      <label className="field"><span>歷史日期</span><input type="date" max={localDate(stamp())} disabled={!!expected} value={date} onChange={e => changeDate(e.target.value)} /></label>
-      <label className="field"><span>當日絕對數量</span><input aria-label={`${nameOf({ ...selected,quantity:null })} 當日數量`} inputMode="decimal" value={quantity} onChange={e => { resetPreview(); setQuantity(e.target.value) }} /></label>
+      <label className="field"><span>補登方式</span><select value={mode} onChange={e=>{resetPreview();setMode(e.target.value as typeof mode)}}><option value="day">單日數量</option><option value="period">持有期間</option></select></label>
+      <label className="field"><span>{mode==='period' ? '開始日期（含）' : '歷史日期'}</span><input type="date" max={mode==='day' ? localDate(stamp()) : undefined} disabled={mode==='day' && !!expected} value={date} onChange={e => changeDate(e.target.value)} /></label>
+      {mode==='period' && <>
+        <label className="field"><span>結束／賣出日期（不含，選填）</span><input type="date" value={end} onChange={e=>{resetPreview();setEnd(e.target.value)}} /></label>
+        <p className="muted small">例如 9/1 買入、10/2 全部賣出：9/1–10/1 持有，10/2 收盤為 0；後續再買紀錄優先。空白表示持續持有的歷史基準，不能覆蓋目前實際持倉。</p>
+        <details><summary>期間日曆時區：{timeZone}</summary><label className="field"><span>期間日曆時區</span><input value={timeZone} onChange={e=>{resetPreview();setTimeZone(e.target.value)}} /></label></details>
+      </>}
+      <label className="field"><span>{mode==='period' ? '期間基準數量' : '當日絕對數量'}</span><input aria-label={`${nameOf({ ...selected,quantity:null })} 當日數量`} inputMode="decimal" value={quantity} onChange={e => { resetPreview(); setQuantity(e.target.value) }} /></label>
       <p className="muted small">填該日的絕對總數量，不是增減量。空白為未知，0 為確定未持有；同帳戶、同標的、同幣別合計所有批次。</p>
-      <button onClick={() => { resetPreview(); setQuantity('') }}>清除數量（未知）</button>
+      {mode==='day' && <button onClick={() => { resetPreview(); setQuantity('') }}>清除數量（未知）</button>}
     </>}
     {step === 3 && active && <>
       <p><strong>{date}</strong> · 數量 {active.quantity === null ? '未知' : fmt(active.quantity,8)}</p><Valuation entry={active} />
       <p className="notice" role="status">當日總資產：{total === null ? '資料不完整，圖表顯示缺口' : `NT$ ${fmt(total,2)}`}。只修改選定項目；同日其他已填數量保留，未填項目維持未知。</p>
       <p className="muted small">價格與匯率只取市場來源；不使用手填歷史價。負債沿用當日紀錄，沒有紀錄時保持未知。</p>
     </>}
+    {step===3 && periodPreview && <>
+      <p><strong>{periodPreview.period.start} 至 {periodPreview.period.end ?? '持續持有'}</strong> · 基準數量 {fmt(periodPreview.period.quantity,8)}</p>
+      <p className="notice" role="status">期間預覽：{periodPreview.days.length} 個日期；{periodPreview.days.filter(d=>quantityPoint(d).total===null).length} 日資料不完整。開始含、結束不含；只重建已結束日，今天仍顯示目前持倉。近十年逐日使用市場價格與匯率。</p>
+      <p className="muted small">較晚開始的期間接手後，舊期間不會恢復；單日及數量異動在同日優先，持續到下一個明確基準。期間內的加減碼請分段或保留明確數量紀錄。</p>
+      <ul className="period-preview">{periodPreview.days.filter(d=>[periodPreview.period.start,periodPreview.period.end,periodPreview.period.end ? shiftDate(periodPreview.period.end,-1):'',periodPreview.days.at(-1)?.date].includes(d.date)).map(day=>{
+        const entry=day.entries.find(e=>instrumentKey(e)===instrumentKey(periodPreview.period))!
+        const old=periodQuantityOn(periodPreview.before,periodPreview.period,day.date)?.quantity ?? entriesForDate(periodPreview.before,day.date).find(e=>instrumentKey(e)===instrumentKey(periodPreview.period))?.quantity
+        return <li key={day.date}><strong>{day.date}</strong><p>數量 {old ?? '未知'} → {entry.quantity ?? '未知'}</p><Valuation entry={entry}/></li>
+      })}</ul>
+      {!!periodPreview.conflicts.length && <><details open><summary>需確認的重疊／明確紀錄（{periodPreview.conflicts.length}）</summary><ul>{periodPreview.conflicts.map((message,i)=><li key={i}>{message}</li>)}</ul></details><label><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> 我已核對差異，同意依上述優先順序套用；原紀錄保留。</label></>}
+    </>}
     {error && <p role="alert" className="banner error">{error}</p>}
     <div className="quantity-actions">
       {step === 0 && <button className="primary" disabled={!account} onClick={() => setStep(1)}>下一步：選標的</button>}
       {step === 1 && <button className="primary" disabled={!selected} onClick={goToQuantity}>下一步：填數量</button>}
       {step === 2 && <button className="primary" disabled={loading} onClick={() => void prepare()}>{loading ? '取得歷史行情中…' : '取得歷史估值'}</button>}
-      {step === 3 && <button className="primary" onClick={() => { try { if (preview) onApply(applyQuantityDay(latest.current,preview,baseline.current)) } catch (e) { setError(e instanceof Error ? e.message : '無法套用') } }}>套用歷史數量</button>}
+      {step === 3 && <button className="primary" onClick={() => { try { if(periodPreview) onApply(applyHoldingPeriod(latest.current,periodPreview.period,periodPreview.revision,confirmed)); else if (preview) onApply(applyQuantityDay(latest.current,preview,baseline.current)) } catch (e) { setError(e instanceof Error ? e.message : '無法套用') } }}>套用歷史數量</button>}
       {step > 0 && <button onClick={() => { resetPreview(); setStep(step - 1) }}>{step === 3 ? '返回修改' : '上一步'}</button>}
       <button onClick={() => { revision.current++; onCancel() }}>取消歷史編輯</button>
     </div>

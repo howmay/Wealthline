@@ -801,3 +801,49 @@ test('wizard offers recorded instruments from removed accounts and gives an empt
  await click(button('下一步：填數量'))
  assert.ok(field('歷史日期')) // an invalid draft date cannot trap the user on instrument selection
 })
+
+test('period wizard validates sale date, confirms overlap, preserves current positions, and supports undo',async()=>{
+ const initial=historicalFixture();let current
+ function Harness(){const [data,setData]=useState(initial);useEffect(()=>{current=data},[data]);return createElement(HistoryView,{data,dirty:true,busy:false,onChange:setData,onSave:()=>{},onOpenAccount:()=>{}})}
+ await render(Harness)
+ const enter=async(start,end,quantity)=>{
+  await click(button('＋ 補登歷史數量'));await chooseHistoryInstrument();await selectValue('補登方式','period')
+  await setInput(field('開始日期（含）'),start);await setInput(field('結束／賣出日期（不含，選填）'),end)
+  await setInput(field('合成歷史帳戶 · TWD · TWD 當日數量'),quantity)
+ }
+ await enter('2026-10-01','2026-10-01','100');await click(button('取得歷史估值'))
+ assert.match(document.querySelector('[role="alert"]').textContent,/晚於開始日/)
+ await setInput(field('結束／賣出日期（不含，選填）'),'2026-10-02');await click(button('取得歷史估值'))
+ assert.match(document.querySelector('[role="status"]').textContent,/結束不含/)
+ await click(button('返回修改'));assert.equal(field('結束／賣出日期（不含，選填）').value,'2026-10-02')
+ await click(button('取得歷史估值'));await click(button('套用歷史數量'))
+ assert.equal(current.version,5);assert.equal(current.history.holdingPeriods.length,1);assert.deepEqual(current.accounts,initial.accounts)
+ await enter('2026-10-01','','200');await click(button('取得歷史估值'));await click(button('套用歷史數量'))
+ assert.equal(current.history.holdingPeriods.length,1);assert.match(document.querySelector('[role="alert"]').textContent,/確認重疊/)
+ await click(document.querySelector('.quantity-editor input[type="checkbox"]'));await click(button('套用歷史數量'))
+ assert.equal(current.history.holdingPeriods.length,2)
+ await click(button('復原上次歷史修改'));assert.equal(current.history.holdingPeriods.length,1)
+ globalThis.confirm=()=>true
+ await click(button('移除期間 2026-10-01'));assert.equal(current.history.holdingPeriods.length,0)
+ await click(button('復原上次歷史修改'));assert.equal(current.history.holdingPeriods.length,1)
+})
+
+test('period preview rejects edits arriving after preview and cancellation ignores delayed quote results',async()=>{
+ const data=historicalFixture();let applied=0
+ const props={data,dirty:true,busy:false,onChange:()=>applied++,onSave:()=>{},onOpenAccount:()=>{}}
+ await render(HistoryView,props);await click(button('＋ 補登歷史數量'));await chooseHistoryInstrument();await selectValue('補登方式','period')
+ await setInput(field('開始日期（含）'),'2026-10-01');await setInput(field('合成歷史帳戶 · TWD · TWD 當日數量'),'100')
+ await click(button('取得歷史估值'))
+ const newer={...data,accounts:[{...data.accounts[0],name:'已修改帳戶'}]}
+ await render(HistoryView,{...props,data:newer});await click(button('套用歷史數量'))
+ assert.equal(applied,0);assert.match(document.querySelector('[role="alert"]').textContent,/重新預覽期間/)
+ await click(button('取消歷史編輯'))
+ const stock={...data,accounts:[{...data.accounts[0],positions:[{id:'stock',type:'holding',symbol:'DELAY',currency:'TWD',quantity:1,price:10}]}]}
+ let release
+ globalThis.fetch=()=>new Promise(resolve=>{release=resolve})
+ await render(HistoryView,{...props,data:stock});await click(button('＋ 補登歷史數量'));await chooseHistoryInstrument('history-account','DELAY');await selectValue('補登方式','period')
+ await setInput(field('開始日期（含）'),'2026-10-01');await setInput(field('合成歷史帳戶 · DELAY · TWD 當日數量'),'10');await click(button('取得歷史估值'))
+ await click(button('取消歷史編輯'))
+ await act(async()=>release(Response.json({symbol:'DELAY',currency:'TWD',asTraded:true,splits:[],points:[]})))
+ assert.equal(applied,0);assert.equal(document.querySelector('.quantity-editor'),null)
+})

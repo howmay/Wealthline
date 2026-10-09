@@ -25,6 +25,7 @@ interface Props {
 
 export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount }: Props) {
   const historical = useHistoricalValuations(data)
+  const [visibleDays, setVisibleDays] = useState(30)
   const [mode, setMode] = useState<Mode>('total')
   const [accountFilter, setAccountFilter] = useState('')
   const now = useCalendarNow()
@@ -45,6 +46,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
 
   return (
     <>
+      {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
       <div className="page-head">
         <div>
           <h2>歷史</h2>
@@ -57,8 +59,8 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
         )}
       </div>
 
-      {!!data.history.quantityDays?.length && <div className="row"><button disabled={historical.loading} onClick={historical.refresh}>{historical.loading ? '查詢歷史行情中…' : '重新查詢歷史行情'}</button><span className="muted small">市場資料可能延遲；依實際行情日期估值，不以儲存價格兜底。</span></div>}
-      <QuantityHistory data={data} onChange={onChange} request={quantityRequest} onRequest={setQuantityRequest} displayDays={historical.data.history.quantityDays}/>
+      {!!(data.history.quantityDays?.length || data.history.holdingPeriods?.length) && <div className="row"><button disabled={historical.loading} onClick={historical.refresh}>{historical.loading ? '查詢歷史行情中…' : '重新查詢歷史行情'}</button><span className="muted small">市場資料可能延遲；依實際行情日期估值，不以儲存價格兜底。</span></div>}
+      <QuantityHistory data={data} onChange={onChange} request={quantityRequest} onRequest={setQuantityRequest} displayDays={historical.data.history.valuedQuantityDays ?? historical.data.history.quantityDays}/>
       <section className="stats">
         <Stat label="目前總資產" value={`NT$ ${fmt(today.total, 0)}`} note={savedToday && !dirty ? '今天已記錄' : '儲存後記錄為今天'} />
         <Stat label="較上次紀錄" base={previous} total={today.total} />
@@ -135,9 +137,9 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
                 </tr>
               </thead>
               <tbody>
-                {[...points].reverse().map((s) => (
+                {[...points].reverse().slice(0,visibleDays).map((s) => (
                   <tr key={s.date}>
-                    <td data-label="日期"><span className="daily-cell-value">{s.date.replace(/-/g, '/')}<span className="muted small">{s.manual ? ' · 手動' : s.date === today.date ? ' · 目前' : ' · 原始快照'}</span></span></td>
+                    <td data-label="日期"><span className="daily-cell-value">{s.date.replace(/-/g, '/')}<span className="muted small">{s.periodDerived ? ' · 期間推算' : s.manual ? ' · 手動' : s.date === today.date ? ' · 目前' : ' · 原始快照'}</span></span></td>
                     <td className="num" data-label="總資產"><span className="daily-cell-value">{s.total === null ? '資料不完整' : `NT$ ${fmt(s.total, 0)}`}</span></td>
                     <td className="num" data-label="總負債"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.liabilityTotal === undefined ? '未記錄' : s.liabilityTotal === null ? '無法換算' : `NT$ ${fmt(s.liabilityTotal, 0)}`}</span></td>
                     <td className="num" data-label="淨資產"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</span></td>
@@ -161,6 +163,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
               </tbody>
             </table>
           </div>
+          {points.length > visibleDays && <button onClick={()=>setVisibleDays(n=>n+30)}>顯示更早 30 日（尚有 {points.length-visibleDays} 日）</button>}
           {saved.some((s) => s.date === today.date) && (
             <p className="muted small hint">未補登的今天會顯示目前值；已補登日期優先採手動數量估值。移除手動補登可恢復原始快照。</p>
           )}

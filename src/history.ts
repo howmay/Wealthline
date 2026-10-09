@@ -1,6 +1,7 @@
 // History kept inside the data file: every edit to a balance or holding, and one
 // value snapshot per day, so the user can see how their assets change over time.
 
+import { expandPeriodDays, parseHoldingPeriods, type HoldingPeriod } from './holdingPeriods'
 import { parseQuantityDays, quantityPoint, validDate, type QuantityDay, type HistoricalPoint } from './quantityHistory'
 import { balanceSheet, parseLiability, type Liability } from './liabilities'
 import { accountBaseValue, baseValue, type Account, type Position, type WealthData } from './model'
@@ -60,6 +61,8 @@ export function revertLiabilityChange(saved: WealthData | null, data: WealthData
 export interface History {
   changes: Change[]
   quantityDays?: QuantityDay[]
+  holdingPeriods?: HoldingPeriod[]
+  valuedQuantityDays?: QuantityDay[] // query-only; never persisted
   liabilityChanges?: LiabilityChange[]
   snapshots: Snapshot[]
 }
@@ -165,7 +168,7 @@ export function totalPoints(data: WealthData, now: string): HistoricalPoint[] {
   const today = snapshotOf(data, now)
   const byDate = new Map<string, HistoricalPoint>(data.history.snapshots.map(s => [s.date, s]))
   byDate.set(today.date, today)
-  for (const day of data.history.quantityDays ?? []) {
+  for (const day of data.history.valuedQuantityDays ?? expandPeriodDays(data,now)) {
     const original = data.history.snapshots.find(s => s.date === day.date)
     // Today's manual asset quantities must still use today's live debt estimate.
     // Past days retain the recorded debt (including unknown), never backfill it.
@@ -211,10 +214,11 @@ export function recordSave(saved: WealthData | null, next: WealthData): WealthDa
     snapshots = [snapshotOf(saved, saved.updatedAt)]
   }
   const changes = [...next.history.changes, ...diffPositions(saved ?? { ...next, accounts: [] }, next, at)]
-  const stamped: WealthData = { ...next, version: next.version === 4 || next.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [], accounts: stampAdded(saved, next, changes, at) }
+  const stamped: WealthData = { ...next, version: next.version === 5 || next.history.holdingPeriods !== undefined ? 5 : next.version === 4 || next.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [], accounts: stampAdded(saved, next, changes, at) }
   return {
     ...stamped,
     history: {
+      ...(next.history.holdingPeriods !== undefined && { holdingPeriods: next.history.holdingPeriods }),
       ...(next.history.quantityDays !== undefined && { quantityDays: next.history.quantityDays }),
       changes,
       liabilityChanges: [...(next.history.liabilityChanges ?? []), ...diffLiabilities(saved, next, at)],
@@ -297,5 +301,7 @@ export function parseHistory(raw: unknown, fail: (why: string) => never): Histor
   if (snapshots.some(s => !validDate(s.date)) || new Set(snapshots.map(s => s.date)).size !== snapshots.length) fail('每日紀錄日期無效或重複')
   let quantityDays: QuantityDay[] | undefined
   try { if (h.quantityDays !== undefined) quantityDays = parseQuantityDays(h.quantityDays) } catch (e) { fail(e instanceof Error ? e.message : '歷史數量格式不正確') }
-  return { changes, liabilityChanges, ...(quantityDays !== undefined && { quantityDays }), snapshots: snapshots.sort((x, y) => x.date.localeCompare(y.date)) }
+  let holdingPeriods: HoldingPeriod[] | undefined
+  try { if (h.holdingPeriods !== undefined) holdingPeriods = parseHoldingPeriods(h.holdingPeriods) } catch (e) { fail(e instanceof Error ? e.message : '持有期間格式不正確') }
+  return { changes, liabilityChanges, ...(holdingPeriods !== undefined && {holdingPeriods}), ...(quantityDays !== undefined && { quantityDays }), snapshots: snapshots.sort((x, y) => x.date.localeCompare(y.date)) }
 }

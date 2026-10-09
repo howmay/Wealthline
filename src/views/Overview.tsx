@@ -53,6 +53,7 @@ export function Overview({ data, onGoRates, onGoLiabilities, onNewAccount, onImp
 
   return (
     <div className="overview">
+      {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
       <section className="panel hero">
         <span className="eyebrow">總資產</span>
         <div className="hero-figure">
@@ -86,7 +87,7 @@ export function Overview({ data, onGoRates, onGoLiabilities, onNewAccount, onImp
       {!data.accounts.length && <section className="panel span-2"><p className="muted">尚未記錄資產，目前總資產為 0。</p><button onClick={onNewAccount}>新增資產帳戶</button></section>}
       {data.accounts.length > 0 && <>
       <AssetChange data={historical.data} />
-      {!!data.history.quantityDays?.length && <div className="span-2"><button disabled={historical.loading} onClick={historical.refresh}>{historical.loading ? '查詢歷史行情中…' : '重新查詢歷史行情'}</button></div>}
+      {!!(data.history.quantityDays?.length || data.history.holdingPeriods?.length) && <div className="span-2"><button disabled={historical.loading} onClick={historical.refresh}>{historical.loading ? '查詢歷史行情中…' : '重新查詢歷史行情'}</button></div>}
 
       <section className="panel span-2">
         <h3>資產配置</h3>
