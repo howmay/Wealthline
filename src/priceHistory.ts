@@ -2,7 +2,7 @@
 // daily closes and exchange rates come from /api/history, and the quantity held on
 // each day comes from the change log. Nothing here is written to Drive.
 
-import { MAX_PERIOD_DAYS, createPeriodIndex, shiftDate } from './holdingPeriods'
+import { MAX_PERIOD_DAYS, resolveCompletion, createPeriodIndex, shiftDate } from './holdingPeriods'
 import { changeKey, keyOf, localDate } from './history'
 import { historicalFxError } from './historicalFx'
 import { entryValue, instrumentKey, quoteOn, repriceEntry, type QuantityEntry, type HistoricalQuote } from './quantityHistory'
@@ -140,6 +140,13 @@ export function positionTimeline(
     (c) => c.currency === p.currency && (!c.before || !c.after || c.before.quantity !== c.after.quantity),
   )
   const enteredByDate=explicitDays(data,account,p)
+  const rawEntered=new Map(enteredByDate)
+  const completionDates=new Set<string>()
+  for(const day of data.history.quantityDays ?? []) if(day.completion) {
+    completionDates.add(day.date)
+    const identity={accountId:account.id,account:account.name,category:account.category,country:account.country,type:p.type,symbol:p.type==='cash'?'':p.symbol,currency:p.currency}
+    enteredByDate.set(day.date,resolveCompletion(data,day).entries.find(e=>instrumentKey(e)===instrumentKey(identity)) ?? {...identity,quantity:0})
+  }
   const inventoryDates=new Set((data.history.quantityDays ?? []).filter(d=>d.inventory).map(d=>d.date))
   const entered = [...enteredByDate].sort(([a], [b]) => a.localeCompare(b))
   const identity = {accountId:account.id,account:account.name,category:account.category,country:account.country,type:p.type,symbol:p.symbol,currency:p.currency}
@@ -158,7 +165,7 @@ export function positionTimeline(
     }
     // A recorded day's total was worked out from the logged count, so an entered
     // quantity stops there and the daily records and this chart agree.
-    const last = entered.filter(([d]) => d <= date && !inventoryDates.has(d)).at(-1)
+    const last = [...rawEntered].sort(([a],[b])=>a.localeCompare(b)).filter(([d]) => d <= date && !inventoryDates.has(d)).at(-1)
     if (last && !(logged && logged.recorded > last[0]) && !recordedDays.some((d) => d > last[0] && d <= date)) {
       const [recorded, e] = last
       return e.quantity === null ? undefined : { quantity: e.quantity, recorded }
@@ -195,7 +202,7 @@ export function positionTimeline(
   let incomplete = false
   for (const date of [...dates].sort()) {
     if (date >= today) continue
-    const inventoryEntry=inventoryDates.has(date) ? enteredByDate.get(date) : undefined
+    const inventoryEntry=(inventoryDates.has(date) || completionDates.has(date)) ? enteredByDate.get(date) : undefined
     if(inventoryEntry) {
       const day=enteredDay(date,inventoryEntry,prices,fx)
       if(day.value===null) incomplete=true

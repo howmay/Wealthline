@@ -1,7 +1,7 @@
 import type { WealthData } from './model'
 import { calendarDate, validateTimeZone } from './loanSchedule'
 import { localDate } from './history'
-import { historyCatalog, instrumentKey, parseQuantityDays, validDate, type HistoricalInstrument, type QuantityDay } from './quantityHistory'
+import { historyCatalog, instrumentKey, parseQuantityDays, validDate, type HistoricalInstrument, type QuantityDay, type QuantityEntry } from './quantityHistory'
 
 export interface HoldingPeriod extends HistoricalInstrument {
   id: string
@@ -108,20 +108,37 @@ export function applyHoldingPeriod(data: WealthData, period: HoldingPeriod, expe
   validatePeriodInput(period,now)
   if(periodConflicts(data,period).length && !confirmed) throw new Error('請先確認重疊期間與明確數量紀錄的差異')
   const holdingPeriods=parseHoldingPeriods([...(data.history.holdingPeriods ?? []),period])
-  const next:WealthData={...data,version:data.version===8?8:data.version===7?7:data.version===6?6:5,history:{...data.history,holdingPeriods}}
+  const next:WealthData={...data,version:data.version===9?9:data.version===8?8:data.version===7?7:data.version===6?6:5,history:{...data.history,holdingPeriods}}
   expandPeriodDays(next,now) // bound work before accepting the edit
   return next
+}
+// Resolve only known destination evidence; generated catalog nulls are never evidence.
+export function destinationEvidence(data:WealthData,date:string):QuantityEntry[] {
+  const lookup=createPeriodIndex(data)
+  const catalog=historyCatalog(data)
+  return catalog.flatMap<QuantityEntry>(identity=>{
+    const state=lookup(identity,date)
+    if(state) return [{...identity,quantity:state.quantity,quantityAsOf:state.basisDate}]
+    const ambiguous=catalog.some(other=>other.accountId===identity.accountId && other.type===identity.type && other.symbol===identity.symbol && other.currency!==identity.currency)
+    const changes=ambiguous ? [] : data.history.changes.filter(c=>instrumentKey({...c,symbol:c.type==='cash'?'':c.symbol})===instrumentKey(identity) && localDate(c.at)===date).sort((a,b)=>a.at.localeCompare(b.at))
+    return changes.length ? [{...identity,quantity:changes.at(-1)!.after?.quantity ?? 0}] : []
+  })
+}
+export function resolveCompletion(_data:WealthData,day:QuantityDay):QuantityDay {
+  if(!day.completion) return day
+  return {...day,entries:[...day.entries,...day.completion.entries]}
 }
 export function expandPeriodDays(data: WealthData, now = new Date().toISOString()): QuantityDay[] {
   const periods=data.history.holdingPeriods ?? []
   const rawDays=data.history.quantityDays ?? []
   const catalog=historyCatalog(data)
   const complete=(day:QuantityDay):QuantityDay=>{
+    if(day.completion) return resolveCompletion(data,day)
     if(day.inventory || !day.sparse) return day
     const entries=new Map(day.entries.map(e=>[instrumentKey(e),e]))
     return {...day,entries:catalog.map(identity=>entries.get(instrumentKey(identity)) ?? {...identity,quantity:null})}
   }
-  if(!periods.length) return rawDays.some(d=>d.sparse) ? rawDays.map(complete) : rawDays
+  if(!periods.length) return rawDays.some(d=>d.sparse || d.completion) ? rawDays.map(complete) : rawDays
   const today=localDate(now), from=periods.map(p=>p.start).sort()[0]
   const start=from < shiftDate(today,-MAX_PERIOD_DAYS) ? shiftDate(today,-MAX_PERIOD_DAYS) : from
   const result=new Map(rawDays.map(d=>[d.date,complete(d)]))
@@ -141,7 +158,7 @@ export function expandPeriodDays(data: WealthData, now = new Date().toISOString(
   for(let date=start;date<today;date=shiftDate(date,1)) {
     // Original snapshots remain authoritative. Explicit single-day edits alone can
     // replace them; generated periods only fill previously unrecorded dates.
-    if(result.get(date)?.inventory || snapshots.has(date) && !result.has(date)) continue
+    if(result.get(date)?.completion || result.get(date)?.inventory || snapshots.has(date) && !result.has(date)) continue
     const existing=new Map((result.get(date)?.entries ?? []).map(e=>[instrumentKey(e),e]))
     let missingEvidence=false, explicitUnknown=false
     const entries=catalog.map(identity=>{

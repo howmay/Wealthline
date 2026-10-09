@@ -1,3 +1,4 @@
+import { removalMessage } from '../historyCompletion'
 import { useCalendarNow } from '../useCalendarNow'
 import { useState, type ReactNode } from 'react'
 import { useHistoricalValuations } from '../useHistoricalValuations'
@@ -154,6 +155,21 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
                     <td className="num" data-label="帳戶數"><span className="daily-cell-value">{s.accounts.length}</span></td>
                     <td className="num daily-actions">
                       <button data-history-entry={`day:${s.date}`} disabled={!!quantityRequest} onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date),focusKey:`day:${s.date}`})}>{data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} {s.date}</button>
+                      {data.history.quantityDays?.some(d=>d.date===s.date) && <button className="danger" disabled={!!quantityRequest} onClick={()=>{
+                        if(confirm(removalMessage(data,s.date))) {
+                          onChange({...data,history:{...data.history,quantityDays:data.history.quantityDays?.filter(d=>d.date!==s.date)}})
+                          requestAnimationFrame(()=>{
+                            const target=[...document.querySelectorAll<HTMLElement>('[data-history-entry]')].find(e=>e.dataset.historyEntry===`day:${s.date}`) ?? document.querySelector<HTMLElement>('[data-history-entry="new"]')
+                            target?.focus()
+                          })
+                        }
+                      }}>移除補登 {s.date}</button>}
+                      {s.periodDerived && <button disabled={!!quantityRequest} onClick={()=>{
+                        const section=document.querySelector<HTMLElement>('[aria-label="歷史持倉數量"]')
+                        section?.querySelectorAll<HTMLDetailsElement>('[data-period-management]').forEach(d=>{d.open=true})
+                        section?.scrollIntoView?.({block:'start'})
+                        section?.querySelector<HTMLElement>('[data-period-management] summary')?.focus()
+                      }}>管理持有期間</button>}
                       {!s.manual && !s.periodDerived && saved.some(x=>x.date===s.date) && <button
                         className="icon"
                         aria-label={`刪除 ${s.date} 的紀錄`}
