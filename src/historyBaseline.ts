@@ -29,8 +29,8 @@ export function quantityBaselines(data:WealthData,now=new Date().toISOString()):
   return candidates.map(b=>{
     let error=''
     if(b.entries.some(e=>e.quantity===null || !Number.isFinite(e.quantity) || e.quantity<0)) error='來源含未知或無效數量，請先補齊來源；不會補成 0。'
-    else if(b.kind==='day' && !b.verified && !b.entries.length) error='來源沒有持倉數量清單。'
-    else if(b.kind==='day' && !b.verified && data.history.snapshots.find(s=>s.date===b.date)?.accounts.some(a=>a.value!==0 && !b.accounts.some(x=>x.id===a.id))) error='來源缺少原快照中有資產的帳戶數量，不能作完整基底。'
+    else if(b.kind==='day' && !b.verified) error='這是部分或未驗證的歷史清單，不能作完整基底。請改用目前完整持倉，或已保存的完整回補清單。'
+
     return {...b,error}
   })
 }
@@ -40,6 +40,7 @@ export function baselineDay(source:QuantityBaseline,date:string,entries:Quantity
   validatePastDate(date,now)
   if(date===source.date) throw new Error('目的日必須與來源日不同；此流程不修改來源。')
   if(source.error) throw new Error(source.error)
+  if(source.kind==='day' && !source.verified) throw new Error('未驗證的歷史清單不能作完整基底')
   const byKey=new Map(entries.map(e=>[instrumentKey(e),e]))
   if(entries.length!==source.entries.length || byKey.size!==source.entries.length || source.entries.some(e=>!byKey.has(instrumentKey(e)))) throw new Error('來源項目已改變，請重新選取基底')
   return parseQuantityDays([{date,updatedAt:now,entries:source.entries.map(e=>({...quantityOnly(e),quantity:byKey.get(instrumentKey(e))!.quantity})),inventory:{accounts:source.accounts,source:{kind:source.kind,date:source.date}}}])[0]

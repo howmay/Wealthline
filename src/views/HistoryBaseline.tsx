@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useHistoryExit } from '../useHistoryExit'
 import { useCalendarNow } from '../useCalendarNow'
 import type { WealthData } from '../model'
 import { createPeriodIndex } from '../holdingPeriods'
@@ -55,13 +56,14 @@ export function HistoryBaseline({data,onApply,onCancel}:{data:WealthData;onApply
   const removed=previous?.entries.filter(e=>!preview?.day.entries.some(x=>instrumentKey(x)===instrumentKey(e))) ?? []
   const missingAccounts=snapshot?.accounts.filter(a=>!preview?.day.inventory?.accounts.some(x=>x.id===a.id)) ?? []
   const total=preview ? quantityPoint(preview.day,snapshot).total : null
-  const cancel=()=>{request.current++;onCancel()}
-  return <div className="quantity-editor form baseline-editor" ref={region} role="region" aria-label="沿用持倉回補" onKeyDown={e=>{if(e.key==='Escape'){e.stopPropagation();cancel()}}}>
+  const changed=!!date || complete || confirmed || !!preview || loading || !!source?.entries.some(e=>values[instrumentKey(e)]!==e.quantity?.toString())
+  const exit=useHistoryExit(changed,()=>{request.current++;onCancel()})
+  return <div className="quantity-editor form baseline-editor" ref={region} role="region" aria-label="沿用持倉回補" onKeyDown={exit.onKeyDown}>
     <p className="eyebrow">完整清單回補 · 只影響目的日</p>
     <h4 tabIndex={-1}>{preview?'確認回補差異':'沿用某日持倉，只修改差異'}</h4>
     {!preview ? <>
-      <label className="field"><span>持倉基底來源</span><select value={sourceId} onChange={e=>select(e.target.value)}><option value="">請選擇來源</option>{sources.map(s=><option key={s.id} value={s.id}>{s.kind==='current'?'目前持倉（含未儲存修改）':s.date} · {s.entries.length} 項{s.error?' · 數量不完整':!s.verified?' · 需確認清單完整':''}</option>)}</select></label>
-      <p className="muted small">只沿用數量／餘額，總額快照不能作持倉基底。選擇目前持倉時，以今天畫面上的完整清單為來源。</p>
+      <label className="field"><span>持倉基底來源</span><select value={sourceId} onChange={e=>select(e.target.value)}><option value="">請選擇來源</option>{sources.map(s=><option key={s.id} value={s.id}>{s.kind==='current'?'目前持倉（含未儲存修改）':s.date} · {s.entries.length} 項{s.error?' · 不可作完整基底':''}</option>)}</select></label>
+      <p className="muted small">只沿用數量／餘額。總額快照及部分／未驗證的歷史清單不能作持倉基底。選擇目前持倉時，以今天畫面上的完整清單為來源。</p>
       {source && <>
         <p className="quantity-selection">來源：{source.kind==='current'?'目前持倉 · ':''}{source.date}<br/>{source.accounts.length} 個帳戶 · {source.entries.length} 項數量</p>
         {source.error ? <p role="alert" className="notice">{source.error}</p> : <>
@@ -90,7 +92,7 @@ export function HistoryBaseline({data,onApply,onCancel}:{data:WealthData;onApply
       <div className="quantity-actions"><button className="primary" disabled={!confirmed} onClick={()=>{try{onApply(applyBaseline(latest.current,preview.day,sourceId,preview.revision,confirmed))}catch(e){setError(e instanceof Error?e.message:'無法套用')}}}>套用完整回補</button><button onClick={reset}>返回調整差異</button></div>
     </>}
     {error&&<p role="alert" className="banner error">{error}</p>}
-    <div className="quantity-actions"><button onClick={cancel}>取消回補</button></div>
+    <div className="quantity-actions"><button onClick={exit.close}>取消回補</button></div>
     <p className="muted small">套用後仍需「儲存變更」才會寫入 Drive。</p>
   </div>
 }

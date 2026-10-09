@@ -234,7 +234,8 @@ export function parseQuantityDays(raw: unknown): QuantityDay[] {
       const x=d.inventory
       if(!x || d.sparse || !Array.isArray(x.accounts) || !x.source || !['current','day'].includes(x.source.kind) || !validDate(x.source.date)) throw new Error('完整持倉基底格式不正確')
       if(x.accounts.some(a=>!a || typeof a.id!=='string' || !a.id.trim() || typeof a.name!=='string' || !a.name.trim()) || new Set(x.accounts.map(a=>a.id)).size!==x.accounts.length) throw new Error('完整持倉帳戶範圍不正確')
-      if(entries.some(e=>!x.accounts.some(a=>a.id===e.accountId) || e.quantity===null)) throw new Error('完整持倉不可缺少數量或帳戶範圍')
+      if(entries.some(e=>e.quantity===null)) throw new Error('完整回補清單的數量不可留空；當時未持有請填 0。')
+      if(entries.some(e=>!x.accounts.some(a=>a.id===e.accountId))) throw new Error('此帳戶不在這天的完整回補範圍。請取消編輯，使用「沿用持倉回補差異」重新回補此日期以擴大範圍；不必刪除原紀錄。')
       inventory={accounts:x.accounts.map(a=>({id:a.id,name:a.name})),source:{kind:x.source.kind,date:x.source.date}}
     }
     return { date: d.date, updatedAt:d.updatedAt, entries, ...(d.sparse && {sparse:true as const}), ...(inventory && {inventory}) }

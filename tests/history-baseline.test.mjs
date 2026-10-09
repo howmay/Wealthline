@@ -10,9 +10,9 @@ after(()=>server.close())
 const now='2026-10-09T12:00:00Z',date='2026-09-01'
 const fixture=()=>{
  const accounts=['A','B','C','D','E'].map((id,i)=>({id,name:`合成帳戶 ${id}`,kind:'investment',country:'US',category:'其他',positions:[{id:`p${id}`,type:id==='B'?'holding':'cash',symbol:id==='B'?'TEST':'',currency:id==='B'?'USD':'TWD',quantity:[100,2,0,3,4][i],price:999}]}))
- const d={...m.emptyData(),version:7,accounts,fxRates:{USD:999}}
+ const d={...m.emptyData(),version:8,accounts,fxRates:{USD:999}}
  const entries=b.quantityBaselines(d,now)[0].entries
- d.history.quantityDays=[{date:'2026-10-09',updatedAt:now,sparse:true,entries}]
+ d.history.quantityDays=[{date:'2026-10-09',updatedAt:now,inventory:{accounts:accounts.map(a=>({id:a.id,name:a.name})),source:{kind:'day',date:'2026-10-08'}},entries}]
  return d
 }
 const source=d=>b.quantityBaselines(d,now).find(x=>x.id==='day:2026-10-09')
@@ -61,8 +61,8 @@ test('missing quantities and snapshot-only sources are blocked; zero and explici
  assert.equal(q.quantityPoint({...allZero,entries:await q.valueEntries(allZero.entries,date,()=>assert.fail('zero should not fetch'))}).total,0)
 })
 test('unknown original snapshot coverage blocks an unverified source and current lots aggregate by currency',()=>{
- const d=fixture();d.history.snapshots=[{date:'2026-10-09',at:now,total:999,accounts:[{id:'missing',name:'合成缺項',value:999}],categories:{其他:999}}]
- assert.match(source(d).error,/缺少/)
+ const d=fixture();delete d.history.quantityDays[0].inventory;d.history.quantityDays[0].sparse=true;d.history.snapshots=[{date:'2026-10-09',at:now,total:999,accounts:[{id:'missing',name:'合成缺項',value:999}],categories:{其他:999}}]
+ assert.match(source(d).error,/未驗證/)
  d.accounts[0].positions.push({...d.accounts[0].positions[0],id:'lot2',quantity:5},{...d.accounts[0].positions[0],id:'usd',currency:'USD',quantity:2})
  const current=b.quantityBaselines(d,now)[0];assert.equal(current.entries.find(e=>e.accountId==='A'&&e.currency==='TWD').quantity,105);assert.equal(current.entries.find(e=>e.accountId==='A'&&e.currency==='USD').quantity,2)
 })
@@ -81,9 +81,9 @@ test('v8 complete scope survives save/reload, normal edits and async saves while
  assert.equal(reloaded.version,8);assert.deepEqual(reloaded.history.quantityDays[0].inventory,day.inventory)
  const edited=q.applyQuantityDay(reloaded,{...reloaded.history.quantityDays[0],entries:reloaded.history.quantityDays[0].entries.map(e=>({...e,quantity:0}))},reloaded.history.quantityDays[0]);assert.equal(edited.version,8);assert.ok(edited.history.quantityDays[0].inventory)
  assert.equal(s.finishSave({...d},d,reloaded).version,8)
- for(const version of [1,2,3,4,5,6,7])assert.equal(m.parseWealthData({...d,version}).version,version)
+ for(const version of [1,2,3,4,5,6,7]) { const legacy=structuredClone(d);delete legacy.history.quantityDays[0].inventory;assert.equal(m.parseWealthData({...legacy,version}).version,version) }
  for(const mutate of [x=>x.sparse=true,x=>x.entries[0].quantity=null,x=>x.inventory.accounts=[],x=>x.inventory.source.date='invalid']){
-  const bad=structuredClone(day);mutate(bad);assert.throws(()=>q.parseQuantityDays([bad]),/完整持倉/)
+  const bad=structuredClone(day);mutate(bad);assert.throws(()=>q.parseQuantityDays([bad]),/完整持倉|完整回補/)
  }
 })
 test('source quotes and split basis never transfer and missing destination markets remain unknown',async()=>{
@@ -91,4 +91,16 @@ test('source quotes and split basis never transfer and missing destination marke
  const day=copy(d);assert.equal(day.entries[1].price,undefined);assert.equal(day.entries[1].quantityAsOf,undefined)
  const entries=await q.valueEntries(day.entries,date,async()=>null)
  assert.equal(q.quantityPoint({...day,entries}).total,null);assert.equal(entries[1].quantity,2)
+})
+
+test('review: sparse and legacy unverified sources cannot become complete even without snapshots or with same-account omissions',()=>{
+ for(const sparse of [true,undefined]) {
+  const d=fixture();delete d.history.quantityDays[0].inventory;d.history.quantityDays[0].sparse=sparse;d.history.quantityDays[0].entries=d.history.quantityDays[0].entries.slice(0,1)
+  d.accounts[0].positions.push({id:'missing',type:'cash',symbol:'',currency:'USD',quantity:500000,price:1})
+  const src=source(d);assert.match(src.error,/部分或未驗證/);assert.equal(src.verified,false)
+  assert.throws(()=>b.baselineDay(src,date,src.entries,now),/不能作完整基底/)
+  assert.throws(()=>b.baselineDay({...src,error:''},date,src.entries,now),/未驗證/)
+  assert.equal(d.accounts[0].positions[1].quantity,500000);assert.equal(d.history.quantityDays.length,1)
+ }
+ assert.equal(source(fixture()).error,'');assert.equal(b.quantityBaselines(fixture(),now)[0].error,'')
 })

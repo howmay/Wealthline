@@ -153,7 +153,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
                     <td className="num" data-label="淨資產"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</span></td>
                     <td className="num" data-label="帳戶數"><span className="daily-cell-value">{s.accounts.length}</span></td>
                     <td className="num daily-actions">
-                      <button disabled={!!quantityRequest} onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date)})}>{data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} {s.date}</button>
+                      <button data-history-entry={`day:${s.date}`} disabled={!!quantityRequest} onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date),focusKey:`day:${s.date}`})}>{data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} {s.date}</button>
                       {!s.manual && !s.periodDerived && saved.some(x=>x.date===s.date) && <button
                         className="icon"
                         aria-label={`刪除 ${s.date} 的紀錄`}
