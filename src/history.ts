@@ -125,6 +125,13 @@ function upsert(snapshots: Snapshot[], s: Snapshot): Snapshot[] {
   return [...snapshots.filter((x) => x.date !== s.date), s].sort((x, y) => x.date.localeCompare(y.date))
 }
 
+// Saved days plus today at the current numbers, oldest first. Today is always live;
+// a save records it.
+export function totalPoints(data: WealthData, now: string): Snapshot[] {
+  const today = snapshotOf(data, now)
+  return [...data.history.snapshots.filter((s) => s.date !== today.date), today]
+}
+
 // The edits a save would record, for review before saving.
 export const pendingChanges = (saved: WealthData | null, data: WealthData): Change[] =>
   diffPositions(saved ?? { ...data, accounts: [] }, data, new Date().toISOString())
