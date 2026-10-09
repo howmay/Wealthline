@@ -23,7 +23,11 @@ export interface QuantityEntry extends HistoricalInstrument {
   fx?: HistoricalQuote
   error?: string
 }
-export interface QuantityDay { date: string; updatedAt: string; entries: QuantityEntry[]; sparse?: true; periodDerived?: boolean; quantityEvidence?: 'complete' | 'incomplete' | 'explicit-unknown' }
+export interface CompleteInventory {
+  accounts: {id:string;name:string}[]
+  source: {kind: 'current' | 'day'; date:string}
+}
+export interface QuantityDay { inventory?: CompleteInventory; date: string; updatedAt: string; entries: QuantityEntry[]; sparse?: true; periodDerived?: boolean; quantityEvidence?: 'complete' | 'incomplete' | 'explicit-unknown' }
 export type HistoricalPoint = Omit<Snapshot, 'total' | 'accounts' | 'categories'> & {
   total: number | null
   accounts: { id: string; name: string; value: number | null }[]
@@ -164,7 +168,7 @@ export function isUnrecordedPartialDay(day: QuantityDay) {
   return day.periodDerived === true && day.quantityEvidence === 'incomplete'
 }
 export function quantityPoint(day: QuantityDay, original?: Snapshot): HistoricalPoint {
-  const accounts = new Map<string, { id: string; name: string; value: number | null }>()
+  const accounts = new Map<string, { id: string; name: string; value: number | null }>((day.inventory?.accounts ?? []).map(a=>[a.id,{...a,value:0}]))
   const categories: Record<string, number | null> = Object.create(null)
   let total: number | null = 0
   for (const entry of day.entries) {
@@ -178,7 +182,7 @@ export function quantityPoint(day: QuantityDay, original?: Snapshot): Historical
   }
   // Unknown legacy inventory in an original snapshot must not disappear; an account
   // that was empty that day has nothing to add.
-  if (original?.accounts.some(a => !accounts.has(a.id) && a.value !== 0) || !day.entries.length || !Number.isFinite(total)) total = null
+  if ((!day.inventory && (original?.accounts.some(a => !accounts.has(a.id) && a.value !== 0) || !day.entries.length)) || !Number.isFinite(total)) total = null
   const debt = original?.liabilityTotal
   return { date: day.date, at: day.updatedAt, total, accounts: [...accounts.values()], categories, manual: !day.periodDerived, ...(day.periodDerived && {periodDerived:true}),
     ...(debt !== undefined && { liabilityTotal: debt }),
@@ -190,7 +194,7 @@ export function applyQuantityDay(data: WealthData, day: QuantityDay, expected?: 
   const existing = data.history.quantityDays?.find(d => d.date === day.date)
   if (existing !== expected) throw new Error('這一天已新增或變更，請取消並重新開啟，避免覆蓋其他修改')
   const parsed = parseQuantityDays([day])[0]
-  return { ...data, version: data.version === 7 || parsed.entries.some(e=>e.fx?.source==='derived') ? 7 : data.version === 6 || day.sparse ? 6 : data.version === 5 || data.history.holdingPeriods !== undefined ? 5 : data.version === 4 || data.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
+  return { ...data, version: data.version === 8 || parsed.inventory ? 8 : data.version === 7 || parsed.entries.some(e=>e.fx?.source==='derived') ? 7 : data.version === 6 || day.sparse ? 6 : data.version === 5 || data.history.holdingPeriods !== undefined ? 5 : data.version === 4 || data.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
 }
 export function parseQuantityDays(raw: unknown): QuantityDay[] {
   if (!Array.isArray(raw)) throw new Error('歷史數量必須是陣列')
@@ -225,7 +229,16 @@ export function parseQuantityDays(raw: unknown): QuantityDay[] {
       return { accountId:e.accountId, account:e.account, category:e.category, country:e.country, type:e.type, symbol:e.symbol, currency:e.currency, quantity:e.quantity, ...(price && {price}), ...(fx && {fx}), ...(typeof e.error === 'string' && {error:e.error}) }
     })
     if (new Set(entries.map(instrumentKey)).size !== entries.length) throw new Error('同日同帳戶同持倉幣別不可重複')
-    return { date: d.date, updatedAt:d.updatedAt, entries, ...(d.sparse && {sparse:true as const}) }
+    let inventory:CompleteInventory|undefined
+    if(d.inventory!==undefined) {
+      const x=d.inventory
+      if(!x || d.sparse || !Array.isArray(x.accounts) || !x.source || !['current','day'].includes(x.source.kind) || !validDate(x.source.date)) throw new Error('完整持倉基底格式不正確')
+      if(x.accounts.some(a=>!a || typeof a.id!=='string' || !a.id.trim() || typeof a.name!=='string' || !a.name.trim()) || new Set(x.accounts.map(a=>a.id)).size!==x.accounts.length) throw new Error('完整持倉帳戶範圍不正確')
+      if(entries.some(e=>e.quantity===null)) throw new Error('完整回補清單的數量不可留空；當時未持有請填 0。')
+      if(entries.some(e=>!x.accounts.some(a=>a.id===e.accountId))) throw new Error('此帳戶不在這天的完整回補範圍。請取消編輯，使用「沿用持倉回補差異」重新回補此日期以擴大範圍；不必刪除原紀錄。')
+      inventory={accounts:x.accounts.map(a=>({id:a.id,name:a.name})),source:{kind:x.source.kind,date:x.source.date}}
+    }
+    return { date: d.date, updatedAt:d.updatedAt, entries, ...(d.sparse && {sparse:true as const}), ...(inventory && {inventory}) }
   })
   if (new Set(days.map(d=>d.date)).size !== days.length) throw new Error('歷史數量日期不可重複')
   return days.sort((a,b)=>a.date.localeCompare(b.date))

@@ -2438,3 +2438,17 @@ section.daily .scroll { max-width: 100%; overflow-x: auto; }
   .history-page .quantity-panel > .panel-head { align-items: stretch; }
   .history-page .quantity-panel > .panel-head button { white-space: normal; }
 }
+
+.history-entry-actions { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.history-entry-actions button { white-space: normal; }
+.baseline-account { min-width: 0; margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 10px; }
+.baseline-account legend { max-width: 100%; overflow-wrap: anywhere; font-weight: 600; }
+.baseline-account .field + .field { margin-top: 16px; }
+.baseline-confirm { display: flex; align-items: flex-start; gap: 10px; margin: 20px 0; line-height: 1.6; }
+.baseline-confirm input[type="checkbox"] { flex: 0 0 20px; width: 20px; min-height: 20px; height: 20px; margin-top: 3px; }
+.baseline-confirm span { min-width: 0; }
+@media (max-width: 600px) {
+  .history-entry-actions { display: grid; grid-template-columns: minmax(0,1fr); }
+  .baseline-account { padding: 12px; }
+  .baseline-editor > button { width: 100%; white-space: normal; }
+}

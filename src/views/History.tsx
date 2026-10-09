@@ -147,13 +147,13 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
               <tbody>
                 {[...points].reverse().slice(0,visibleDays).map((s) => (
                   <tr key={s.date}>
-                    <td data-label="日期"><span className="daily-cell-value">{s.date.replace(/-/g, '/')}<span className="muted small">{s.periodDerived ? ' · 期間推算' : s.manual ? ' · 手動' : s.date === today.date ? ' · 目前' : ' · 原始快照'}</span></span></td>
+                    <td data-label="日期"><span className="daily-cell-value">{s.date.replace(/-/g, '/')}<span className="muted small">{s.periodDerived ? ' · 期間推算' : s.manual ? (data.history.quantityDays?.find(d=>d.date===s.date)?.inventory ? ' · 完整回補' : ' · 手動') : s.date === today.date ? ' · 目前' : ' · 原始快照'}</span></span></td>
                     <td className="num" data-label="總資產"><span className="daily-cell-value">{s.total === null ? '資料不完整' : `NT$ ${fmt(s.total, 0)}`}</span></td>
                     <td className="num" data-label="總負債"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.liabilityTotal === undefined ? '未記錄' : s.liabilityTotal === null ? '無法換算' : `NT$ ${fmt(s.liabilityTotal, 0)}`}</span></td>
                     <td className="num" data-label="淨資產"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</span></td>
                     <td className="num" data-label="帳戶數"><span className="daily-cell-value">{s.accounts.length}</span></td>
                     <td className="num daily-actions">
-                      <button disabled={!!quantityRequest} onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date)})}>{data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} {s.date}</button>
+                      <button data-history-entry={`day:${s.date}`} disabled={!!quantityRequest} onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date),focusKey:`day:${s.date}`})}>{data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} {s.date}</button>
                       {!s.manual && !s.periodDerived && saved.some(x=>x.date===s.date) && <button
                         className="icon"
                         aria-label={`刪除 ${s.date} 的紀錄`}

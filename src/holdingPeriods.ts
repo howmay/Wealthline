@@ -62,7 +62,7 @@ export function createPeriodIndex(data: WealthData) {
     const group=groups.get(instrumentKey({...c,symbol:c.type==='cash'?'':c.symbol}))
     if(group) group.events.push({date:dateInZone(c.at,group.zone),rank:2,order:Date.parse(c.at),quantity:c.after?.quantity ?? 0})
   }
-  for(const day of data.history.quantityDays ?? []) for(const entry of day.entries) {
+  for(const day of data.history.quantityDays ?? []) for(const entry of day.inventory ? [] : day.entries) {
     const group=groups.get(instrumentKey(entry))
     if(group) group.events.push({date:day.date,rank:3,order:0,quantity:entry.quantity})
   }
@@ -94,7 +94,7 @@ export function periodConflicts(data: WealthData, p: HoldingPeriod): string[] {
   for (const old of data.history.holdingPeriods ?? []) if (instrumentKey(old)===key && (!old.end || old.end >= p.start) && (!p.end || old.start <= p.end)) messages.push(`期間 ${old.start} 至 ${old.end ?? '持續持有'}：${old.quantity} → 新基準 ${p.quantity}；按較晚開始日接手，同日以後新增者優先，原紀錄保留`)
   for (const day of data.history.quantityDays ?? []) {
     const e=day.entries.find(e=>instrumentKey(e)===key)
-    if(e && day.date>=p.start) messages.push(`單日 ${day.date}：${e.quantity ?? '未知'}（保留且優先；不改為期間數量 ${p.quantity}）${e.quantity===null ? '：未知會中斷期間直到下一個明確事件；舊紀錄無法判別是佔位或刻意清除，請確認並編輯此項。' : ''}`)
+    if(e && day.date>=p.start) messages.push(day.inventory ? `完整回補 ${day.date}：${e.quantity}（只在該日優先，不改變期間延續數量）` : `單日 ${day.date}：${e.quantity ?? '未知'}（保留且優先；不改為期間數量 ${p.quantity}）${e.quantity===null ? '：未知會中斷期間直到下一個明確事件；舊紀錄無法判別是佔位或刻意清除，請確認並編輯此項。' : ''}`)
   }
   for(const c of data.history.changes) if(c.accountId===p.accountId && c.type===p.type && c.currency===p.currency && (c.type==='cash'||c.symbol.toUpperCase()===p.symbol.toUpperCase()) && (!c.before||!c.after||c.before.quantity!==c.after.quantity)) {
     const date=calendarDate(c.at,p.timeZone)
@@ -108,7 +108,7 @@ export function applyHoldingPeriod(data: WealthData, period: HoldingPeriod, expe
   validatePeriodInput(period,now)
   if(periodConflicts(data,period).length && !confirmed) throw new Error('請先確認重疊期間與明確數量紀錄的差異')
   const holdingPeriods=parseHoldingPeriods([...(data.history.holdingPeriods ?? []),period])
-  const next:WealthData={...data,version:data.version===7?7:data.version===6?6:5,history:{...data.history,holdingPeriods}}
+  const next:WealthData={...data,version:data.version===8?8:data.version===7?7:data.version===6?6:5,history:{...data.history,holdingPeriods}}
   expandPeriodDays(next,now) // bound work before accepting the edit
   return next
 }
@@ -117,7 +117,7 @@ export function expandPeriodDays(data: WealthData, now = new Date().toISOString(
   const rawDays=data.history.quantityDays ?? []
   const catalog=historyCatalog(data)
   const complete=(day:QuantityDay):QuantityDay=>{
-    if(!day.sparse) return day
+    if(day.inventory || !day.sparse) return day
     const entries=new Map(day.entries.map(e=>[instrumentKey(e),e]))
     return {...day,entries:catalog.map(identity=>entries.get(instrumentKey(identity)) ?? {...identity,quantity:null})}
   }
@@ -141,7 +141,7 @@ export function expandPeriodDays(data: WealthData, now = new Date().toISOString(
   for(let date=start;date<today;date=shiftDate(date,1)) {
     // Original snapshots remain authoritative. Explicit single-day edits alone can
     // replace them; generated periods only fill previously unrecorded dates.
-    if(snapshots.has(date) && !result.has(date)) continue
+    if(result.get(date)?.inventory || snapshots.has(date) && !result.has(date)) continue
     const existing=new Map((result.get(date)?.entries ?? []).map(e=>[instrumentKey(e),e]))
     let missingEvidence=false, explicitUnknown=false
     const entries=catalog.map(identity=>{
