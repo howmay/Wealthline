@@ -23,6 +23,7 @@ export function QuantityHistory({ data, onChange, request: editing, onRequest: s
   return <section className="panel quantity-panel" aria-label="歷史持倉數量">
     <div className="panel-head"><h3>歷史持倉數量</h3>{!editing && <button onClick={() => setEditing({ date: localDate(stamp()) })}>＋ 補登歷史數量</button>}</div>
     <p className="muted small">先選帳戶與標的，再選單日或持有期間、填絕對持有數量。同帳戶、同標的、同幣別合計多批次；不修改目前持倉。</p>
+    {days.some(d=>d.entries.some(e=>e.quantity===null)) && <p className="notice">既有未知數量會保留並中斷對應持有期間。舊資料無法判別佔位或刻意清除，請逐項核對，不會自動移除。</p>}
     {error && <p role="alert" className="banner error">{error}</p>}
     {editing ? <QuantityEditor key={`${editing.date}:${editing.entryKey ?? ''}`} data={data} date={editing.date} expected={editing.expected} entryKey={editing.entryKey}
       onCancel={() => setEditing(undefined)} onApply={next => { apply(next); setEditing(undefined) }} /> : <>
@@ -70,6 +71,7 @@ export function QuantityEditor({ data, date: initialDate, expected, entryKey, on
   const [currency, setCurrency] = useState('TWD')
   const [type, setType] = useState<'holding' | 'cash'>('holding')
   const [preview, setPreview] = useState<QuantityDay | null>(null)
+  const [total, setTotal] = useState<number|null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const baseline = useRef(expected ?? data.history.quantityDays?.find(d => d.date === initialDate))
@@ -118,17 +120,22 @@ export function QuantityEditor({ data, date: initialDate, expected, entryKey, on
       }
       if (latest.current.history.quantityDays?.find(d => d.date === date) !== baseline.current) throw new Error('這一天已變更，請取消並重新開啟，避免覆蓋其他修改')
       const entry: QuantityEntry = { ...selected, quantity:quantity.trim() ? Number(quantity) : null }
-      const others = entriesForDate(latest.current,date).filter(e => instrumentKey(e) !== instrumentKey(entry))
+      const others = (latest.current.history.quantityDays?.find(d=>d.date===date)?.entries ?? []).filter(e => instrumentKey(e) !== instrumentKey(entry))
       const rows = [...others,entry]
-      const candidate = { date, updatedAt:stamp(), entries:rows }
+      const candidate = { date, updatedAt:stamp(), entries:rows, sparse:true as const }
       parseQuantityDays([candidate]); setLoading(true)
-      const entries = await valueEntries(rows,date)
-      if (live.current && revision.current === request) { setPreview({ ...candidate,entries }); setStep(3) }
+      const projectedData={...latest.current,history:{...latest.current.history,quantityDays:[...(latest.current.history.quantityDays ?? []).filter(d=>d.date!==date),candidate]}}
+      const projected=expandPeriodDays(projectedData).find(d=>d.date===date) ?? candidate
+      const entries = await valueEntries(projected.entries,date)
+      if (live.current && revision.current === request) {
+        setTotal(quantityPoint({...candidate,entries},latest.current.history.snapshots.find(s=>s.date===date)).total)
+        // Query the complete preview, but persist changes only to the chosen target.
+        setPreview({...candidate,entries:rows.map(row=>instrumentKey(row)===instrumentKey(entry) ? entries.find(e=>instrumentKey(e)===instrumentKey(entry))! : row)});setStep(3)
+      }
     } catch (e) { if (live.current && revision.current === request) setError(e instanceof Error ? e.message : '無法取得歷史行情') }
     finally { if (live.current && revision.current === request) setLoading(false) }
   }
   const active = preview?.entries.find(e => selected && instrumentKey(e) === instrumentKey(selected))
-  const total = preview ? quantityPoint(preview,data.history.snapshots.find(s => s.date === date)).total : null
   const steps = ['選帳戶','選標的','日期與數量','預覽確認']
   return <div ref={editor} className="quantity-editor form" role="region" aria-label="編輯歷史數量">
     <p className="eyebrow">步驟 {step + 1}／4</p><h4 tabIndex={-1}>{steps[step]}</h4>
@@ -166,7 +173,7 @@ export function QuantityEditor({ data, date: initialDate, expected, entryKey, on
     </>}
     {step===3 && periodPreview && <>
       <p><strong>{periodPreview.period.start} 至 {periodPreview.period.end ?? '持續持有'}</strong> · 基準數量 {fmt(periodPreview.period.quantity,8)}</p>
-      <p className="notice" role="status">期間預覽：{periodPreview.days.length} 個日期；{periodPreview.days.filter(d=>quantityPoint(d).total===null).length} 日資料不完整。開始含、結束不含；只重建已結束日，今天仍顯示目前持倉。近十年逐日使用市場價格與匯率。</p>
+      <p className="notice" role="status">期間預覽：{periodPreview.days.length} 個日期；{periodPreview.days.filter(d=>quantityPoint(d).total===null).length} 日資料不完整。開始含、結束不含；只重建已結束日，今天仍顯示目前持倉。近十年逐日使用市場價格與匯率。已有原始快照保留原值；需要修正該日請使用單日補登。</p>
       <p className="muted small">較晚開始的期間接手後，舊期間不會恢復；單日及數量異動在同日優先，持續到下一個明確基準。期間內的加減碼請分段或保留明確數量紀錄。</p>
       <ul className="period-preview">{periodPreview.days.filter(d=>[periodPreview.period.start,periodPreview.period.end,periodPreview.period.end ? shiftDate(periodPreview.period.end,-1):'',periodPreview.days.at(-1)?.date].includes(d.date)).map(day=>{
         const entry=day.entries.find(e=>instrumentKey(e)===instrumentKey(periodPreview.period))!

@@ -46,6 +46,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
 
   return (
     <>
+      {historical.status && <p className="muted small" aria-live="polite">{historical.status}</p>}
       {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
       <div className="page-head">
         <div>
@@ -59,7 +60,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
         )}
       </div>
 
-      {!!(data.history.quantityDays?.length || data.history.holdingPeriods?.length) && <div className="row"><button disabled={historical.loading} onClick={historical.refresh}>{historical.loading ? '查詢歷史行情中…' : '重新查詢歷史行情'}</button><span className="muted small">市場資料可能延遲；依實際行情日期估值，不以儲存價格兜底。</span></div>}
+      {!!(data.history.quantityDays?.length || data.history.holdingPeriods?.length) && <div className="row"><button disabled={historical.loading} onClick={historical.refresh}>{historical.loading ? '查詢歷史行情中…' : '重新查詢歷史行情'}</button><span className="muted small">原始快照保留原值，期間推算只補沒有快照的日期；單日補登優先。市場資料可能延遲；依實際行情日期估值，不以儲存價格兜底。</span></div>}
       <QuantityHistory data={data} onChange={onChange} request={quantityRequest} onRequest={setQuantityRequest} displayDays={historical.data.history.valuedQuantityDays ?? historical.data.history.quantityDays}/>
       <section className="stats">
         <Stat label="目前總資產" value={`NT$ ${fmt(today.total, 0)}`} note={savedToday && !dirty ? '今天已記錄' : '儲存後記錄為今天'} />
@@ -146,12 +147,12 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
                     <td className="num" data-label="帳戶數"><span className="daily-cell-value">{s.accounts.length}</span></td>
                     <td className="num daily-actions">
                       <button onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date)})}>編輯數量 {s.date}</button>
-                      {!s.manual && saved.some(x=>x.date===s.date) && <button
+                      {!s.manual && !s.periodDerived && saved.some(x=>x.date===s.date) && <button
                         className="icon"
                         aria-label={`刪除 ${s.date} 的紀錄`}
-                        title="刪除這天的紀錄"
+                        title="刪除這天的原始快照"
                         onClick={() => {
-                          if (!confirm(`刪除 ${s.date.replace(/-/g, '/')} 的每日紀錄？`)) return
+                          if (!confirm(`刪除 ${s.date.replace(/-/g, '/')} 的原始快照？期間推算可能仍會顯示這天。`)) return
                           onChange({ ...data, history: { ...data.history, snapshots: saved.filter((x) => x.date !== s.date) } })
                         }}
                       >

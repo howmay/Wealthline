@@ -624,7 +624,7 @@ test('quantity edits during Drive save remain dirty while committed history meta
  assert.match(document.querySelector('[aria-label="歷史持倉數量"]').textContent,/2025-10-04/)
  await click(button('儲存變更'))
  assert.equal(drive.writes,2)
- assert.equal(drive.uploaded.version,3)
+ assert.equal(drive.uploaded.version,6)
  assert.equal(drive.uploaded.history.quantityDays[0].entries[0].quantity,100)
  assert.equal(drive.uploaded.accounts[0].positions[0].quantity,900)
  await drive.finish()
@@ -745,6 +745,7 @@ test('single-instrument update preserves every other entry and date, including t
  const result=changed.history.quantityDays.find(d=>d.date===date)
  assert.equal(result.entries.find(e=>e.accountId==='history-account').quantity,6)
  assert.equal(result.entries.find(e=>e.accountId==='b').quantity,8)
+ assert.deepEqual(result.entries.find(e=>e.accountId==='b'),day.entries.find(e=>e.accountId==='b'))
  assert.deepEqual(changed.history.quantityDays[0],data.history.quantityDays[0])
  assert.deepEqual(changed.accounts,data.accounts)
 })
@@ -846,4 +847,60 @@ test('period preview rejects edits arriving after preview and cancellation ignor
  await click(button('取消歷史編輯'))
  await act(async()=>release(Response.json({symbol:'DELAY',currency:'TWD',asTraded:true,splits:[],points:[]})))
  assert.equal(applied,0);assert.equal(document.querySelector('.quantity-editor'),null)
+})
+
+test('review: single-target UI writes no placeholder for another account period, and retained snapshots are labelled',async()=>{
+ const data=historicalFixture();const first=data.accounts[0]
+ data.accounts.push({...first,id:'b',name:'另一合成帳戶'})
+ data.history.holdingPeriods=[{id:'range',accountId:first.id,account:first.name,category:first.category,country:first.country,type:'cash',symbol:'',currency:'TWD',quantity:10,start:'2026-09-01',timeZone:'Asia/Taipei',updatedAt:'2026-10-09T12:00:00Z'}]
+ const {snapshotOf}=await server.ssrLoadModule('/src/history.ts')
+ data.history.snapshots=[snapshotOf(data,'2026-10-05T12:00:00Z')]
+ let current=data
+ function Harness(){const [value,setValue]=useState(data);useEffect(()=>{current=value},[value]);return createElement(HistoryView,{data:value,dirty:true,busy:false,onChange:setValue,onSave:()=>{},onOpenAccount:()=>{}})}
+ await render(Harness)
+ const snapshotRow=[...document.querySelectorAll('section.daily tbody tr')].find(x=>x.textContent.includes('2026/10/05'))
+ assert.match(snapshotRow.textContent,/原始快照/);assert.doesNotMatch(snapshotRow.textContent,/資料不完整/)
+ const derivedRow=[...document.querySelectorAll('section.daily tbody tr')].find(x=>x.textContent.includes('2026/10/04'))
+ assert.match(derivedRow.textContent,/期間推算/);assert.equal(derivedRow.querySelector('button[title]'),null)
+ await click(button('＋ 補登歷史數量'));await chooseHistoryInstrument('b');await setInput(field('歷史日期'),'2026-09-15');await setInput(field('另一合成帳戶 · TWD · TWD 當日數量'),'3');await click(button('取得歷史估值'));assert.match(document.querySelector('[role="status"]').textContent,/NT\$ 13/);await click(button('套用歷史數量'))
+ assert.equal(current.history.quantityDays[0].entries.length,1);assert.equal(current.history.quantityDays[0].entries[0].accountId,'b');assert.equal(current.version,6)
+ const {periodQuantityOn}=await server.ssrLoadModule('/src/holdingPeriods.ts')
+ assert.equal(periodQuantityOn(current,data.history.holdingPeriods[0],'2026-09-20').quantity,10)
+ assert.equal(current.history.snapshots,data.history.snapshots)
+})
+
+test('review: unrelated edits retain values; refresh retains same-target values, failures and late responses are safe',async()=>{
+ const {useHistoricalValuations,historicalProjectionKey}=await server.ssrLoadModule('/src/useHistoricalValuations.ts')
+ const data=historicalFixture();data.accounts[0].positions=[{id:'test',type:'holding',symbol:'TEST',currency:'TWD',quantity:1,price:10}]
+ const identity={accountId:'history-account',account:'合成歷史帳戶',category:data.accounts[0].category,country:'TW',type:'holding',symbol:'TEST',currency:'TWD'}
+ data.history.holdingPeriods=[{...identity,id:'range',start:'2026-10-01',quantity:2,timeZone:'Asia/Taipei',updatedAt:'2026-10-09T12:00:00Z'}]
+ let state,hold=false,calls=0;const pending=[],renders=[]
+ globalThis.fetch=async url=>{calls++;const symbol=new URL(url,'https://synthetic.invalid').searchParams.get('symbol');if(hold && symbol!=='USDTWD=X')return new Promise(resolve=>pending.push({symbol,resolve}));return Response.json({symbol,currency:'TWD',asTraded:true,splits:[],points:[{date:'2026-10-01',close:10},{date:'2026-10-08',close:10}]})}
+ function Probe({data}){const value=useHistoricalValuations(data);useEffect(()=>{state=value;const e=value.data.history.valuedQuantityDays?.[0]?.entries[0];renders.push({loading:value.loading,symbol:e?.symbol,quantity:e?.quantity,price:e?.price?.value})});return null}
+ await render(Probe,{data});assert.equal(renders.at(-1).price,10);renders.length=0
+ const metadata={...data,fxUpdatedAt:'new',fxRates:{USD:999}}
+ assert.equal(historicalProjectionKey(data,'2026-10-09'),historicalProjectionKey(metadata,'2026-10-09'))
+ await render(Probe,{data:metadata});assert.ok(renders.every(x=>!x.loading&&x.price===10));assert.equal(calls,1)
+ hold=true;await act(async()=>state.refresh());assert.equal(renders.at(-1).price,10);assert.match(state.status,/暫顯示上次/)
+ await act(async()=>pending.shift().resolve(new Response('',{status:500})));assert.equal(renders.at(-1).price,undefined);assert.match(state.status,/保持未知/)
+ const fresh={...data,history:{...data.history,holdingPeriods:[{...data.history.holdingPeriods[0],quantity:4}]}}
+ await render(Probe,{data:fresh});assert.equal(renders.at(-1).quantity,4)
+ // Different target/currency cannot borrow the old target's value. Resolve B before A.
+ const a={...fresh,accounts:[{...data.accounts[0],positions:[{...data.accounts[0].positions[0],symbol:'AAA'}]}],history:{...fresh.history,holdingPeriods:[{...fresh.history.holdingPeriods[0],symbol:'AAA'}]}}
+ await render(Probe,{data:a});assert.equal(renders.at(-1).price,undefined)
+ const b={...a,accounts:[{...a.accounts[0],positions:[{...a.accounts[0].positions[0],symbol:'BBB',currency:'USD'}]}],history:{...a.history,holdingPeriods:[{...a.history.holdingPeriods[0],symbol:'BBB',currency:'USD'}]}}
+ await render(Probe,{data:b});assert.equal(renders.at(-1).price,undefined)
+ const response=(symbol,currency,close)=>Response.json({symbol,currency,asTraded:true,splits:[],points:[{date:'2026-10-01',close}]})
+ await act(async()=>pending.find(x=>x.symbol==='BBB').resolve(response('BBB','USD',25)))
+ assert.equal(renders.at(-1).symbol,'BBB');assert.equal(renders.at(-1).quantity,4);assert.equal(renders.at(-1).price,25);assert.equal(state.loading,false)
+ await act(async()=>pending.find(x=>x.symbol==='AAA').resolve(response('AAA','TWD',999)))
+ assert.equal(renders.at(-1).symbol,'BBB');assert.equal(renders.at(-1).price,25)
+ // A true quantity correction recalculates against the cached quote, with no stale count.
+ const corrected={...b,history:{...b.history,holdingPeriods:[{...b.history.holdingPeriods[0],quantity:7}]}}
+ await render(Probe,{data:corrected});assert.equal(renders.at(-1).quantity,7);assert.equal(renders.at(-1).price,25)
+ // Unmounting while an explicit refresh is pending cannot publish its response.
+ await act(async()=>state.refresh());const last=pending.at(-1);const beforeUnmount=renders.length
+ await act(async()=>root.unmount());root=null
+ await act(async()=>last.resolve(response('BBB','USD',40)))
+ assert.equal(renders.length,beforeUnmount)
 })

@@ -2,7 +2,7 @@
 // daily closes and exchange rates come from /api/history, and the quantity held on
 // each day comes from the change log. Nothing here is written to Drive.
 
-import { MAX_PERIOD_DAYS, periodQuantityOn, shiftDate } from './holdingPeriods'
+import { MAX_PERIOD_DAYS, createPeriodIndex, shiftDate } from './holdingPeriods'
 import { changeKey, keyOf, localDate } from './history'
 import { entryValue, instrumentKey, quoteOn, repriceEntry, type QuantityEntry } from './quantityHistory'
 import { BASE_CURRENCY, rateOf, type Account, type Position, type WealthData } from './model'
@@ -131,6 +131,7 @@ export function positionTimeline(
   const entered = [...explicitDays(data, account, p)].sort(([a], [b]) => a.localeCompare(b))
   const identity = {accountId:account.id,account:account.name,category:account.category,country:account.country,type:p.type,symbol:p.symbol,currency:p.currency}
   const periods = (data.history.holdingPeriods ?? []).filter(x=>instrumentKey(x)===instrumentKey(identity))
+  const periodLookup = createPeriodIndex(data)
   const recordedDays = data.history.snapshots.map((s) => s.date)
 
   // Units held at the end of `date` and the day that count was recorded;
@@ -181,7 +182,7 @@ export function positionTimeline(
   let incomplete = false
   for (const date of [...dates].sort()) {
     if (date >= today) continue
-    const periodState = periodQuantityOn(data,identity,date)
+    const periodState = periodLookup(identity,date)
     if (periodState) {
       const day=enteredDay(date,{...identity,quantity:periodState.quantity,quantityAsOf:periodState.basisDate},prices,fx)
       if(day.value===null) incomplete=true

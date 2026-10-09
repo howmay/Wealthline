@@ -170,6 +170,7 @@ export function totalPoints(data: WealthData, now: string): HistoricalPoint[] {
   byDate.set(today.date, today)
   for (const day of data.history.valuedQuantityDays ?? expandPeriodDays(data,now)) {
     const original = data.history.snapshots.find(s => s.date === day.date)
+    if (day.periodDerived && original) continue
     // Today's manual asset quantities must still use today's live debt estimate.
     // Past days retain the recorded debt (including unknown), never backfill it.
     const basis = day.date === today.date ? { ...(original ?? today), liabilityTotal: today.liabilityTotal, netWorth: today.netWorth, liabilityEstimated: today.liabilityEstimated } : original
@@ -214,7 +215,7 @@ export function recordSave(saved: WealthData | null, next: WealthData): WealthDa
     snapshots = [snapshotOf(saved, saved.updatedAt)]
   }
   const changes = [...next.history.changes, ...diffPositions(saved ?? { ...next, accounts: [] }, next, at)]
-  const stamped: WealthData = { ...next, version: next.version === 5 || next.history.holdingPeriods !== undefined ? 5 : next.version === 4 || next.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [], accounts: stampAdded(saved, next, changes, at) }
+  const stamped: WealthData = { ...next, version: next.version === 6 ? 6 : next.version === 5 || next.history.holdingPeriods !== undefined ? 5 : next.version === 4 || next.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [], accounts: stampAdded(saved, next, changes, at) }
   return {
     ...stamped,
     history: {

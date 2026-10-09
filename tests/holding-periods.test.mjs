@@ -96,3 +96,82 @@ test('v1–v5 round trips and save races retain raw intervals without persisting
  assert.deepEqual(merged.history.holdingPeriods,current.history.holdingPeriods);assert.equal(merged.history.snapshots,saved.history.snapshots);assert.equal(merged.version,5)
  assert.deepEqual(merged.accounts.map(a=>a.positions.map(x=>x.quantity)),[[99]])
 })
+
+test('review: period projection preserves known snapshots, while explicit day overrides and removal restores',async()=>{
+ const d=fixture();d.accounts.push({id:'b',name:'合成B',kind:'bank',category:'現金',country:'TW',positions:[{id:'cash',type:'cash',symbol:'',currency:'TWD',quantity:1000,price:1}]})
+ d.accounts[0].positions[0].quantity=10
+ d.history.snapshots=['05','06','07','08'].map(day=>h.snapshotOf(d,`2026-10-${day}T12:00:00Z`))
+ d.history.holdingPeriods=[period({start:'2026-10-01',end:'2026-10-03'})]
+ const values=await q.valueDays(p.expandPeriodDays(d,now),async()=>prices())
+ const totals=h.totalPoints({...d,history:{...d.history,valuedQuantityDays:values}},now)
+ for(const date of ['2026-10-05','2026-10-06','2026-10-07','2026-10-08']){
+  const row=totals.find(x=>x.date===date);assert.equal(row.total,1100);assert.equal(row.periodDerived,undefined)
+ }
+ assert.equal(totals.find(x=>x.date==='2026-10-04').periodDerived,true)
+ const original=d.history.snapshots
+ const edited=q.applyQuantityDay(d,{...explicit('2026-10-05',0),sparse:true})
+ assert.equal(h.totalPoints(edited,now).find(x=>x.date==='2026-10-05').manual,true)
+ assert.equal(h.totalPoints(edited,now).find(x=>x.date==='2026-10-05').total,null)
+ const removed={...edited,history:{...edited.history,quantityDays:[]}}
+ assert.equal(h.totalPoints(removed,now).find(x=>x.date==='2026-10-05').total,1100)
+ assert.equal(removed.history.snapshots,original)
+ // Defensive precedence even if stale query output includes a derived day.
+ const stale={...d,history:{...d.history,valuedQuantityDays:[{...explicit('2026-10-05',null),periodDerived:true}]}}
+ assert.equal(h.totalPoints(stale,now).find(x=>x.date==='2026-10-05').total,1100)
+})
+
+test('review: sparse single-day entries leave other intervals unchanged and preserve legacy null intent',()=>{
+ const d=withPeriod({start:'2026-09-01',end:undefined})
+ const other={...identity,accountId:'b',account:'合成B',quantity:3}
+ d.accounts.push({...d.accounts[0],id:'b',name:'合成B'})
+ const updated=q.applyQuantityDay(d,{date:'2026-09-15',updatedAt:now,sparse:true,entries:[other]})
+ assert.equal(updated.version,6);assert.equal(count(updated,'2026-09-20'),10)
+ assert.deepEqual(updated.history.quantityDays[0].entries,[other])
+ assert.equal(p.expandPeriodDays(updated,now).find(x=>x.date==='2026-09-15').entries.find(x=>x.accountId==='a').quantity,10)
+ const legacy={...d,history:{...d.history,quantityDays:[explicit('2026-09-15',null)]}}
+ assert.equal(count(legacy,'2026-09-20'),null)
+ assert.match(p.periodConflicts(legacy,period({start:'2026-09-01'})).join(' '),/未知會中斷期間.*舊紀錄無法判別/)
+ const parsed=m.parseWealthData(JSON.parse(JSON.stringify(updated)))
+ assert.equal(parsed.version,6);assert.equal(parsed.history.quantityDays[0].sparse,true)
+ const persisted=h.recordSave(d,{...updated,updatedAt:now})
+ assert.equal(persisted.version,6);assert.equal(s.finishSave({...updated},d,persisted).version,6)
+ assert.deepEqual(m.parseWealthData(JSON.parse(JSON.stringify(legacy))).history.quantityDays,legacy.history.quantityDays)
+})
+
+test('review: sparse day without periods cannot falsely sum only its selected instrument',()=>{
+ const d=fixture();d.accounts.push({...d.accounts[0],id:'b'})
+ const next=q.applyQuantityDay(d,{...explicit('2026-10-01',0),sparse:true})
+ const projected=p.expandPeriodDays(next,now)[0]
+ assert.equal(projected.entries.length,2);assert.equal(q.quantityPoint(projected).total,null)
+ assert.equal(next.history.quantityDays[0].entries.length,1)
+})
+
+test('review: scale indexes timezone events once instead of once per day and instrument',()=>{
+ const d=fixture();d.accounts[0].positions=Array.from({length:15},(_,i)=>({...d.accounts[0].positions[0],id:`pos${i}`,symbol:`TEST${i}`}))
+ d.history.holdingPeriods=d.accounts[0].positions.map((x,i)=>period({id:`p${i}`,symbol:x.symbol,start:'2025-10-01',end:undefined}))
+ d.history.changes=d.accounts[0].positions.flatMap(x=>Array.from({length:20},(_,i)=>({...identity,symbol:x.symbol,at:`2026-09-${String(i+1).padStart(2,'0')}T12:00:00Z`,before:{quantity:i,price:10},after:{quantity:i+1,price:10}})))
+ const Original=Intl.DateTimeFormat;let constructions=0
+ Intl.DateTimeFormat=function(...args){constructions++;return new Original(...args)}
+ const start=performance.now();let rows
+ try{rows=p.expandPeriodDays(d,now)}finally{Intl.DateTimeFormat=Original}
+ assert.equal(rows.length,373);assert.equal(rows[0].entries.length,15)
+ assert.ok(constructions<=2,`formatter constructions: ${constructions}`)
+ assert.ok(performance.now()-start<2000,'373-day projection must stay under generous 2s regression budget')
+ assert.ok(rows.at(-1).entries.every(x=>x.quantity===20))
+ const index=p.createPeriodIndex(d)
+ for(const date of ['2026-09-20','2025-10-01','2026-09-01']) assert.equal(index({...identity,symbol:'TEST0'},date).quantity,date==='2026-09-20'?20:date==='2026-09-01'?1:10)
+})
+
+test('review: same-account other symbol and explicit unknown stay isolated across round trip',()=>{
+ const d=withPeriod({start:'2026-09-01',end:undefined})
+ d.accounts[0].positions.push({...d.accounts[0].positions[0],id:'other',symbol:'OTHER'})
+ const x={...identity,symbol:'OTHER',quantity:3}
+ const edited=q.applyQuantityDay(d,{date:'2026-09-15',updatedAt:now,sparse:true,entries:[x]})
+ assert.equal(count(edited,'2026-09-20'),10)
+ const existing=edited.history.quantityDays[0]
+ const cleared=q.applyQuantityDay(edited,{...existing,entries:[x,{...identity,quantity:null}]},existing)
+ const round=m.parseWealthData(JSON.parse(JSON.stringify(cleared)))
+ assert.equal(count(round,'2026-09-20'),null)
+ assert.equal(round.history.quantityDays[0].entries.find(e=>e.symbol==='OTHER').quantity,3)
+ assert.equal(round.accounts[0].positions[0].quantity,99)
+})

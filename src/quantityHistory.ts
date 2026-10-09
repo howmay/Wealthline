@@ -21,7 +21,7 @@ export interface QuantityEntry extends HistoricalInstrument {
   fx?: HistoricalQuote
   error?: string
 }
-export interface QuantityDay { date: string; updatedAt: string; entries: QuantityEntry[]; periodDerived?: boolean }
+export interface QuantityDay { date: string; updatedAt: string; entries: QuantityEntry[]; sparse?: true; periodDerived?: boolean }
 export type HistoricalPoint = Omit<Snapshot, 'total' | 'accounts' | 'categories'> & {
   total: number | null
   accounts: { id: string; name: string; value: number | null }[]
@@ -29,7 +29,7 @@ export type HistoricalPoint = Omit<Snapshot, 'total' | 'accounts' | 'categories'
   periodDerived?: boolean
   manual?: boolean
 }
-export const instrumentKey = (p: HistoricalInstrument) => JSON.stringify([p.accountId, p.type, p.type === 'cash' ? '' : p.symbol.toUpperCase(), p.currency])
+export const instrumentKey = <T extends Pick<HistoricalInstrument,'accountId'|'type'|'symbol'|'currency'>>(p: T) => JSON.stringify([p.accountId, p.type, p.type === 'cash' ? '' : p.symbol.toUpperCase(), p.currency])
 export function validDate(date: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= '0001-01-01' && Number.isFinite(Date.parse(`${date}T00:00:00Z`)) && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date
 }
@@ -172,13 +172,14 @@ export function applyQuantityDay(data: WealthData, day: QuantityDay, expected?: 
   const existing = data.history.quantityDays?.find(d => d.date === day.date)
   if (existing !== expected) throw new Error('這一天已新增或變更，請取消並重新開啟，避免覆蓋其他修改')
   const parsed = parseQuantityDays([day])[0]
-  return { ...data, version: data.version === 5 || data.history.holdingPeriods !== undefined ? 5 : data.version === 4 || data.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
+  return { ...data, version: data.version === 6 || day.sparse ? 6 : data.version === 5 || data.history.holdingPeriods !== undefined ? 5 : data.version === 4 || data.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
 }
 export function parseQuantityDays(raw: unknown): QuantityDay[] {
   if (!Array.isArray(raw)) throw new Error('歷史數量必須是陣列')
   const days = raw.map((value): QuantityDay => {
     const d = value as QuantityDay
     if (!d || !validDate(d.date) || !Number.isFinite(Date.parse(d.updatedAt)) || !Array.isArray(d.entries)) throw new Error('歷史數量日期或資料格式不正確')
+    if (d.sparse !== undefined && d.sparse !== true) throw new Error('單日紀錄範圍不正確')
     const entries = d.entries.map((e): QuantityEntry => {
       const named = [e?.accountId, e?.account, e?.category, e?.country, e?.currency].every((x) => typeof x === 'string' && x.trim())
       // A holding's symbol is whatever the account uses for it, ticker or not.
@@ -196,7 +197,7 @@ export function parseQuantityDays(raw: unknown): QuantityDay[] {
       return { accountId:e.accountId, account:e.account, category:e.category, country:e.country, type:e.type, symbol:e.symbol, currency:e.currency, quantity:e.quantity, ...(price && {price}), ...(fx && {fx}), ...(typeof e.error === 'string' && {error:e.error}) }
     })
     if (new Set(entries.map(instrumentKey)).size !== entries.length) throw new Error('同日同帳戶同持倉幣別不可重複')
-    return { date: d.date, updatedAt:d.updatedAt, entries }
+    return { date: d.date, updatedAt:d.updatedAt, entries, ...(d.sparse && {sparse:true as const}) }
   })
   if (new Set(days.map(d=>d.date)).size !== days.length) throw new Error('歷史數量日期不可重複')
   return days.sort((a,b)=>a.date.localeCompare(b.date))

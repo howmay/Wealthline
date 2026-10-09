@@ -53,6 +53,7 @@ export function Overview({ data, onGoRates, onGoLiabilities, onNewAccount, onImp
 
   return (
     <div className="overview">
+      {historical.status && <p className="muted small" aria-live="polite">{historical.status}</p>}
       {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
       <section className="panel hero">
         <span className="eyebrow">總資產</span>
