@@ -95,7 +95,8 @@ export function positionTimeline(
   }
 
   // Trading days from the price history; a hand-priced holding changes only on its edits.
-  const dates = new Set<string>([start.date])
+  // With an unknown start, the first day is simply the first price or rate on record.
+  const dates = new Set<string>(start.known ? [start.date] : [])
   if (!manual) for (const pt of prices!.points) dates.add(pt.date)
   else if (fx && p.currency !== BASE_CURRENCY) for (const pt of fx.points) dates.add(pt.date)
   for (const c of log) dates.add(localDate(c.at))

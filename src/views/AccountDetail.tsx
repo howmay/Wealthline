@@ -68,15 +68,23 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack, onRe
           <div className="balance" key={p.id}>
             <span className="ccy-badge">{p.currency}</span>
             <NumberInput className="amount-input" value={p.quantity} onCommit={(v) => setPosition({ ...p, quantity: v })} aria-label={`${p.currency} 餘額`} />
-            <span className="muted num">
-              {p.currency === BASE_CURRENCY
-                ? ''
-                : Number.isFinite(baseValue(data, p))
-                  ? `≈ ${BASE_CURRENCY} ${fmt(baseValue(data, p), 0)}`
-                  : '尚未設定匯率'}
+            <span className="balance-side">
+              <span className="muted num">
+                {p.currency === BASE_CURRENCY
+                  ? ''
+                  : Number.isFinite(baseValue(data, p))
+                    ? `≈ ${BASE_CURRENCY} ${fmt(baseValue(data, p), 0)}`
+                    : '尚未設定匯率'}
+              </span>
+              <TrendToggle open={open === p.id} onClick={() => setOpen(open === p.id ? null : p.id)} />
             </span>
           </div>
         ))}
+        {cash
+          .filter((p) => p.id === open)
+          .map((p) => (
+            <PositionHistory key={p.id} data={data} account={a} position={p} onClose={() => setOpen(null)} />
+          ))}
       </section>
 
       {(a.kind === 'investment' || holdings.length > 0) && (
@@ -127,6 +135,7 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack, onRe
                           <strong>{displaySymbol(p.symbol)}</strong>
                         </button>
                         {p.name && p.name !== p.symbol && <div className="muted small ellipsis">{p.name}</div>}
+                        {p.addedAt && <div className="muted small">{shortDay(p.addedAt)} 加入</div>}
                       </td>
                       <td className="num">
                         <NumberInput className="cell-input" value={p.quantity} onCommit={(v) => setPosition({ ...p, quantity: v })} size={10} />
@@ -138,7 +147,8 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack, onRe
                         {fmt(positionValue(p))} <span className="muted small">{p.currency}</span>
                       </td>
                       <td className="num">{fmt(baseValue(data, p), 0)}</td>
-                      <td>
+                      <td className="row-actions">
+                        <TrendToggle open={open === p.id} onClick={() => setOpen(open === p.id ? null : p.id)} />
                         <button
                           className="icon"
                           aria-label="刪除"
@@ -169,6 +179,17 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack, onRe
         </section>
       )}
     </>
+  )
+}
+
+const shortDay = (iso: string) => new Date(iso).toLocaleDateString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric' })
+
+// Opens or closes a balance's or holding's daily value chart.
+function TrendToggle({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button className={`ghost small trend-toggle${open ? ' on' : ''}`} aria-expanded={open} onClick={onClick}>
+      {open ? '收起走勢' : '每日走勢'}
+    </button>
   )
 }
 

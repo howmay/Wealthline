@@ -10,7 +10,15 @@ export interface Series {
 
 const HEIGHT = 260
 const PAD = { top: 12, right: 16, bottom: 28, left: 60 }
-const compact = new Intl.NumberFormat('zh-TW', { notation: 'compact', maximumFractionDigits: 1 })
+const compact = (digits: number) => new Intl.NumberFormat('zh-TW', { notation: 'compact', maximumFractionDigits: digits })
+// Enough digits that no two axis labels read the same.
+function axisFormat(ticks: number[]): Intl.NumberFormat {
+  for (let digits = 1; digits < 4; digits++) {
+    const f = compact(digits)
+    if (new Set(ticks.map((t) => f.format(t))).size === ticks.length) return f
+  }
+  return compact(4)
+}
 
 function niceTicks(min: number, max: number, count = 4): number[] {
   if (min === max) {
@@ -56,6 +64,7 @@ export function TrendChart({ dates, series, area = false }: { dates: string[]; s
   const ticks = niceTicks(Math.min(...all), Math.max(...all))
   const lo = ticks[0]
   const hi = ticks[ticks.length - 1]
+  const axis = axisFormat(ticks)
   const innerW = Math.max(width - PAD.left - PAD.right, 1)
   const innerH = HEIGHT - PAD.top - PAD.bottom
   const x = (i: number) => PAD.left + (t1 === t0 ? innerW / 2 : ((times[i] - t0) / (t1 - t0)) * innerW)
@@ -93,7 +102,7 @@ export function TrendChart({ dates, series, area = false }: { dates: string[]; s
             <g key={t}>
               <line className="grid" x1={PAD.left} x2={width - PAD.right} y1={y(t)} y2={y(t)} />
               <text className="axis" x={PAD.left - 8} y={y(t)} dy="0.32em" textAnchor="end">
-                {compact.format(t)}
+                {axis.format(t)}
               </text>
             </g>
           ))}
