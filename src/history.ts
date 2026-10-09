@@ -1,6 +1,7 @@
 // History kept inside the data file: every edit to a balance or holding, and one
 // value snapshot per day, so the user can see how their assets change over time.
 
+import { parseQuantityDays, quantityPoint, validDate, type QuantityDay, type HistoricalPoint } from './quantityHistory'
 import { balanceSheet, parseLiability, type Liability } from './liabilities'
 import { accountBaseValue, baseValue, type Account, type Position, type WealthData } from './model'
 
@@ -57,6 +58,7 @@ export function revertLiabilityChange(saved: WealthData | null, data: WealthData
 
 export interface History {
   changes: Change[]
+  quantityDays?: QuantityDay[]
   liabilityChanges?: LiabilityChange[]
   snapshots: Snapshot[]
 }
@@ -156,11 +158,16 @@ function upsert(snapshots: Snapshot[], s: Snapshot): Snapshot[] {
   return [...snapshots.filter((x) => x.date !== s.date), s].sort((x, y) => x.date.localeCompare(y.date))
 }
 
-// Saved days plus today at the current numbers, oldest first. Today is always live;
-// a save records it.
-export function totalPoints(data: WealthData, now: string): Snapshot[] {
+// Shared history source: original snapshots plus current today, with explicit
+// quantity days taking precedence. Unknown totals remain gaps, not zeros.
+export function totalPoints(data: WealthData, now: string): HistoricalPoint[] {
   const today = snapshotOf(data, now)
-  return [...data.history.snapshots.filter((s) => s.date !== today.date), today]
+  const byDate = new Map<string, HistoricalPoint>(data.history.snapshots.map(s => [s.date, s]))
+  byDate.set(today.date, today)
+  for (const day of data.history.quantityDays ?? []) {
+    byDate.set(day.date, quantityPoint(day, data.history.snapshots.find(s => s.date === day.date)))
+  }
+  return [...byDate.values()].sort((a,b) => a.date.localeCompare(b.date))
 }
 
 // The edits a save would record, for review before saving.
@@ -199,14 +206,15 @@ export function recordSave(saved: WealthData | null, next: WealthData): WealthDa
     snapshots = [snapshotOf(saved, saved.updatedAt)]
   }
   const changes = [...next.history.changes, ...diffPositions(saved ?? { ...next, accounts: [] }, next, at)]
-  const stamped: WealthData = { ...next, version: 2, liabilities: next.liabilities ?? [], accounts: stampAdded(saved, next, changes, at) }
+  const stamped: WealthData = { ...next, version: next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [], accounts: stampAdded(saved, next, changes, at) }
   return {
     ...stamped,
     history: {
+      ...(next.history.quantityDays !== undefined && { quantityDays: next.history.quantityDays }),
       changes,
       liabilityChanges: [...(next.history.liabilityChanges ?? []), ...diffLiabilities(saved, next, at)],
       snapshots: next.accounts.length || next.liabilities?.length || snapshots.length || saved?.accounts.length || saved?.liabilities?.length
-        ? upsert(snapshots, snapshotOf(stamped, at)) : snapshots,
+        ? next.history.quantityDays?.some(d => d.date === localDate(at)) ? snapshots : upsert(snapshots, snapshotOf(stamped, at)) : snapshots,
     },
   }
 }
@@ -277,5 +285,8 @@ export function parseHistory(raw: unknown, fail: (why: string) => never): Histor
       categories,
     }
   })
-  return { changes, liabilityChanges, snapshots: snapshots.sort((x, y) => x.date.localeCompare(y.date)) }
+  if (snapshots.some(s => !validDate(s.date)) || new Set(snapshots.map(s => s.date)).size !== snapshots.length) fail('每日紀錄日期無效或重複')
+  let quantityDays: QuantityDay[] | undefined
+  try { if (h.quantityDays !== undefined) quantityDays = parseQuantityDays(h.quantityDays) } catch (e) { fail(e instanceof Error ? e.message : '歷史數量格式不正確') }
+  return { changes, liabilityChanges, ...(quantityDays !== undefined && { quantityDays }), snapshots: snapshots.sort((x, y) => x.date.localeCompare(y.date)) }
 }

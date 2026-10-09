@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import { fmt, pct } from '../format'
-import { localDate, snapshotOf, type Change, type Snapshot } from '../history'
+import { localDate, snapshotOf, totalPoints, type Change } from '../history'
 import { CATEGORIES, type WealthData } from '../model'
 import { displaySymbol } from '../quotes'
 import { LiabilityChangeRow } from './LiabilityChange'
+import { QuantityHistory, type QuantityEditRequest } from './QuantityHistory'
+import type { HistoricalPoint } from '../quantityHistory'
 import { TrendChart, type Series } from './TrendChart'
 
 const MODES = { total: '總資產', account: '依帳戶', category: '依類別' }
@@ -22,21 +24,14 @@ interface Props {
 export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount }: Props) {
   const [mode, setMode] = useState<Mode>('total')
   const [accountFilter, setAccountFilter] = useState('')
+  const [quantityRequest,setQuantityRequest] = useState<QuantityEditRequest>()
   const [now] = useState(() => new Date().toISOString())
   const { snapshots: saved, changes } = data.history
-
-  if (data.accounts.length === 0 && !data.liabilities?.length && saved.length === 0 && !data.history.liabilityChanges?.length) {
-    return (
-      <section className="panel empty">
-        <p className="muted">還沒有資產或負債紀錄。建立帳戶或負債並儲存後，這裡會開始累積每天的變化。</p>
-      </section>
-    )
-  }
 
   // Today is always shown with the current numbers; saving records it.
   const today = snapshotOf({ ...data, liabilities: data.liabilities ?? [] }, now)
   const savedToday = saved.some((s) => s.date === today.date)
-  const points = [...saved.filter((s) => s.date !== today.date), today]
+  const points = totalPoints(data, now)
   const dates = points.map((s) => s.date)
   const previous = points.length > 1 ? points[points.length - 2] : null
   const first = points.length > 1 ? points[0] : null
@@ -50,7 +45,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
       <div className="page-head">
         <div>
           <h2>歷史</h2>
-          <p className="muted">每天第一次登入和每次儲存，都會記下當天的資產、負債與淨資產；儲存時也會記下餘額、持倉與負債異動。</p>
+          <p className="muted">每日紀錄直接展開，可按帳戶補登或修正當日持倉數量。手動補登受保護，不會被自動快照覆蓋。</p>
         </div>
         {!savedToday && !dirty && (data.accounts.length > 0 || !!data.liabilities?.length) && (
           <button className="primary" onClick={onSave} disabled={busy}>
@@ -59,6 +54,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
         )}
       </div>
 
+      <QuantityHistory data={data} onChange={onChange} request={quantityRequest} onRequest={setQuantityRequest}/>
       <section className="stats">
         <Stat label="目前總資產" value={`NT$ ${fmt(today.total, 0)}`} note={savedToday && !dirty ? '今天已記錄' : '儲存後記錄為今天'} />
         <Stat label="較上次紀錄" base={previous} total={today.total} />
@@ -116,12 +112,12 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
         <Stat label="目前總負債" value={today.liabilityTotal == null ? '尚無法換算' : `NT$ ${fmt(today.liabilityTotal, 0)}`} />
         <Stat label="目前淨資產" value={today.netWorth == null ? '尚無法換算' : `NT$ ${fmt(today.netWorth, 0)}`} note="總資產 − 總負債" />
       </section>
-      {saved.length > 0 && (
-        <details className="panel daily">
-          <summary>
+      {points.length > 0 && (
+        <section className="panel daily" aria-label="每日紀錄">
+          <div className="panel-head">
             <h3>每日紀錄</h3>
-            <span className="muted small">{saved.length} 天 · 走勢圖的資料來源，數字不對的那天可以刪掉</span>
-          </summary>
+            <span className="muted small">{points.length} 天 · 與走勢圖共用資料；未知值不視為零。表格可左右滑動</span>
+          </div>
           <div className="scroll">
             <table className="data">
               <thead>
@@ -135,25 +131,26 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
                 </tr>
               </thead>
               <tbody>
-                {[...saved].reverse().map((s) => (
+                {[...points].reverse().map((s) => (
                   <tr key={s.date}>
-                    <td>{s.date.replace(/-/g, '/')}</td>
-                    <td className="num">NT$ {fmt(s.total, 0)}</td>
+                    <td>{s.date.replace(/-/g, '/')}<span className="muted small">{s.manual ? ' · 手動' : s.date === today.date ? ' · 目前' : ' · 原始快照'}</span></td>
+                    <td className="num">{s.total === null ? '資料不完整' : `NT$ ${fmt(s.total, 0)}`}</td>
                     <td className="num">{s.liabilityTotal === undefined ? '未記錄' : s.liabilityTotal === null ? '無法換算' : `NT$ ${fmt(s.liabilityTotal, 0)}`}</td>
                     <td className="num">{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</td>
                     <td className="num">{s.accounts.length}</td>
                     <td className="num">
-                      <button
+                      <button onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date)})}>編輯數量 {s.date}</button>
+                      {!s.manual && saved.some(x=>x.date===s.date) && <button
                         className="icon"
                         aria-label={`刪除 ${s.date} 的紀錄`}
                         title="刪除這天的紀錄"
                         onClick={() => {
                           if (!confirm(`刪除 ${s.date.replace(/-/g, '/')} 的每日紀錄？`)) return
-                          onChange({ ...data, history: { ...data.history, snapshots: saved.filter((x) => x !== s) } })
+                          onChange({ ...data, history: { ...data.history, snapshots: saved.filter((x) => x.date !== s.date) } })
                         }}
                       >
                         ×
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 ))}
@@ -161,16 +158,16 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
             </table>
           </div>
           {saved.some((s) => s.date === today.date) && (
-            <p className="muted small hint">今天的紀錄會在每次儲存時更新為當下的數字。</p>
+            <p className="muted small hint">未補登的今天會顯示目前值；已補登日期優先採手動數量估值。移除手動補登可恢復原始快照。</p>
           )}
-        </details>
+        </section>
       )}
     </>
   )
 }
 
-function Stat({ label, value, note, base, total }: { label: string; value?: string; note?: string; base?: Snapshot | null; total?: number }) {
-  if (base === null) {
+function Stat({ label, value, note, base, total }: { label: string; value?: string; note?: string; base?: HistoricalPoint | null; total?: number }) {
+  if (base === null || base?.total === null) {
     return (
       <div className="panel stat">
         <span className="eyebrow">{label}</span>
@@ -203,11 +200,11 @@ function Stat({ label, value, note, base, total }: { label: string; value?: stri
 }
 
 // One line per entity in a fixed color slot; past the eighth, the rest fold into 其餘.
-function seriesFor(mode: Mode, points: Snapshot[], accountNames: Map<string, string>): Series[] {
+function seriesFor(mode: Mode, points: HistoricalPoint[], accountNames: Map<string, string>): Series[] {
   if (mode === 'total') return [{ key: 'total', label: '總資產', color: 'var(--s1)', values: points.map((p) => p.total) }]
 
-  const valueOf = (p: Snapshot, key: string) =>
-    mode === 'account' ? (p.accounts.find((a) => a.id === key)?.value ?? 0) : (p.categories[key] ?? 0)
+  const valueOf = (p: HistoricalPoint, key: string) =>
+    p.total === null ? null : mode === 'account' ? (p.accounts.find((a) => a.id === key)?.value ?? 0) : (p.categories[key] ?? 0)
   const keys = new Set<string>()
   for (const p of points) for (const k of mode === 'account' ? p.accounts.map((a) => a.id) : Object.keys(p.categories)) keys.add(k)
 
@@ -216,7 +213,7 @@ function seriesFor(mode: Mode, points: Snapshot[], accountNames: Map<string, str
   const order =
     mode === 'category'
       ? [...CATEGORIES, ...[...keys].filter((k) => !CATEGORIES.includes(k)).sort()]
-      : [...keys].sort((a, b) => valueOf(latest, b) - valueOf(latest, a))
+      : [...keys].sort((a, b) => (valueOf(latest, b) ?? 0) - (valueOf(latest, a) ?? 0))
   const own = order.slice(0, SLOTS).filter((k) => keys.has(k))
   const rest = [...keys].filter((k) => !own.includes(k))
   const series: Series[] = own.map((k) => ({
@@ -230,7 +227,7 @@ function seriesFor(mode: Mode, points: Snapshot[], accountNames: Map<string, str
       key: '__rest',
       label: `其餘 ${rest.length} 個`,
       color: 'var(--other)',
-      values: points.map((p) => rest.reduce((s, k) => s + valueOf(p, k), 0)),
+      values: points.map((p) => p.total === null ? null : rest.reduce((s, k) => s + (valueOf(p, k) ?? 0), 0)),
     })
   }
   return series

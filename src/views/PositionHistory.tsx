@@ -26,12 +26,12 @@ export function PositionHistory({
   const [now] = useState(() => new Date().toISOString())
   const [shown, setShown] = useState(10)
   const [loaded, setLoaded] = useState<Loaded | null>(null)
-  const from = startDate(data, account, p, localDate(now)).date
+  const from = [startDate(data, account, p, localDate(now)).date, ...(data.history.quantityDays ?? []).map(d=>d.date)].sort()[0]
 
   useEffect(() => {
     let live = true
     void Promise.all([
-      p.type === 'cash' || p.priceManual ? null : fetchHistory(p.symbol, from),
+      p.type === 'cash' ? null : fetchHistory(p.symbol, from),
       p.currency === BASE_CURRENCY ? null : fetchHistory(fxSymbol(p.currency), from),
     ]).then(([prices, fx]) => live && setLoaded({ prices, fx }))
     return () => {
@@ -58,13 +58,13 @@ export function PositionHistory({
 
   const { days, startKnown, rateFallback } = positionTimeline(data, account, p, loaded.prices, loaded.fx, now)
   const first = days[0]
-  const diff = days.length > 1 ? days[days.length - 1].value - first.value : null
+  const diff = days.length > 1 && days[days.length - 1].value !== null && first.value !== null ? days[days.length - 1].value! - first.value : null
   const notes = [
-    p.type === 'holding' && !p.priceManual && !loaded.prices && '抓不到歷史股價，過去的日子以當時記錄的價格計算。',
-    p.priceManual && '這個標的是手動價格，價值只在你修改時變動。',
+    p.type === 'holding' && !loaded.prices && '缺少歷史股價，對應日期不估值。',
+    '同帳戶同標的同幣別合計所有批次；歷史行情統一使用 Yahoo，不套用手動現價。',
     p.type === 'cash' && p.currency === BASE_CURRENCY && '台幣餘額只在你修改時變動。',
-    rateFallback && '部分日期抓不到歷史匯率，以目前匯率計算。',
-    !startKnown && '加入日期不明，先顯示最近一年。',
+    rateFallback && '部分日期缺少歷史價格、匯率或拆股後數量，顯示未知；不以目前值補算。',
+    !startKnown && '加入日期不明，不重建未知持倉；可至歷史頁補登。',
   ].filter(Boolean)
 
   return (
@@ -107,14 +107,14 @@ export function PositionHistory({
                         {v.date.replace(/-/g, '/')}
                         {v.live && <span className="muted small"> 目前</span>}
                       </td>
-                      <td className="num">{fmt(v.quantity, 8)}</td>
+                      <td className="num">{v.quantity === null ? '未知' : fmt(v.quantity, 8)}</td>
                       {p.type === 'holding' && (
                         <td className="num">
-                          {fmt(v.price, 4)} <span className="muted small">{p.currency}</span>
+                          {v.price === null ? '未知' : fmt(v.price, 4)} <span className="muted small">{p.currency}</span><div className="muted small">{v.priceDate}</div>
                         </td>
                       )}
-                      <td className="num">{p.currency === BASE_CURRENCY ? '—' : fmt(v.rate, 4)}</td>
-                      <td className="num">{fmt(v.value, 0)}</td>
+                      <td className="num">{p.currency === BASE_CURRENCY ? '—' : v.rate === null ? '未知' : fmt(v.rate, 4)}</td>
+                      <td className="num">{v.value === null ? '未知' : fmt(v.value, 0)}<div className="muted small">{v.rateDate && `匯率日 ${v.rateDate}`}</div></td>
                     </tr>
                   ))}
               </tbody>
@@ -127,7 +127,7 @@ export function PositionHistory({
           )}
         </>
       ) : (
-        <p className="muted small">還沒有這個幣別的匯率，設定匯率後就能看到它的台幣價值。</p>
+        <p className="muted small">沒有可驗證的歷史數量或行情；請至歷史頁補登。</p>
       )}
     </div>
   )

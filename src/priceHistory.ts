@@ -3,20 +3,25 @@
 // each day comes from the change log. Nothing here is written to Drive.
 
 import { changeKey, keyOf, localDate, type PositionState } from './history'
+import { quoteOn, instrumentKey, entryValue } from './quantityHistory'
 import { BASE_CURRENCY, rateOf, type Account, type Position, type WealthData } from './model'
 
 export interface PriceHistory {
   symbol: string
   currency: string
+  asTraded?: boolean
+  splits?: { date: string; ratio: number }[]
   points: { date: string; close: number }[]
 }
 
 export interface DayValue {
   date: string
-  quantity: number
-  price: number
-  rate: number
-  value: number
+  quantity: number | null
+  price: number | null
+  rate: number | null
+  priceDate?: string
+  rateDate?: string
+  value: number | null
   live?: boolean // today, from the current numbers
 }
 
@@ -29,7 +34,10 @@ export interface PositionTimeline {
 
 export async function fetchHistory(symbol: string, from: string): Promise<PriceHistory | null> {
   const res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&from=${from}`).catch(() => null)
-  return res?.ok ? ((await res.json()) as PriceHistory) : null
+  try {
+    const body = res?.ok ? await res.json() as PriceHistory : null
+    return body && Array.isArray(body.points) && typeof body.currency === 'string' && typeof body.symbol === 'string' && body.points.every(p => p && typeof p.date === 'string' && Number.isFinite(p.close) && p.close > 0) && (body.splits === undefined || Array.isArray(body.splits) && body.splits.every(s => s && typeof s.date === 'string' && Number.isFinite(s.ratio) && s.ratio > 0)) ? body : null
+  } catch { return null }
 }
 
 // Yahoo's symbol for the base-currency price of one unit of `currency`.
@@ -48,72 +56,60 @@ export function startDate(data: WealthData, account: Account, p: Position, today
 const logFor = (data: WealthData, account: Account, p: Position) =>
   data.history.changes.filter((c) => c.accountId === account.id && changeKey(c) === keyOf(p)).sort((a, b) => a.at.localeCompare(b.at))
 
-// The latest value on or before `date` in a list sorted by date.
-function asOf(points: { date: string; close: number }[], date: string): number | undefined {
-  let found: number | undefined
-  for (const pt of points) {
-    if (pt.date > date) break
-    found = pt.close
-  }
-  return found
-}
-
+// Historical values never use today's prices or rates. Legacy changes identify
+// aggregate instrument quantities, not lots; unknown prehistory remains unknown.
 export function positionTimeline(
-  data: WealthData,
-  account: Account,
-  p: Position,
-  prices: PriceHistory | null,
-  fx: PriceHistory | null,
-  now: string,
+  data: WealthData, account: Account, p: Position,
+  prices: PriceHistory | null, fx: PriceHistory | null, now: string,
 ): PositionTimeline {
   const today = localDate(now)
   const start = startDate(data, account, p, today)
-  const log = logFor(data, account, p)
-  const current: PositionState = { quantity: p.quantity, price: p.price }
-  // What was held at the end of `date`: the last logged edit by then; before the first
-  // edit, what that edit started from; with no log at all, what is held now.
-  const stateOn = (date: string): PositionState | null => {
-    let s: PositionState | null | undefined
-    for (const c of log) {
-      if (localDate(c.at) > date) break
-      s = c.after
-    }
-    if (s !== undefined) return s
-    return log.length ? log[0].before : current
+  const mixedCurrency = account.positions.some(x => keyOf(x) === keyOf(p) && x.currency !== p.currency)
+  const log = mixedCurrency ? [] : logFor(data, account, p).filter(c => c.currency === p.currency)
+  const explicit = (data.history.quantityDays ?? []).flatMap(d => {
+    const entry = d.entries.find(e => instrumentKey(e) === instrumentKey({accountId:account.id,account:account.name,category:account.category,country:account.country,...p}))
+    return entry ? [{date:d.date,entry}] : []
+  })
+  const stateOn = (date:string): PositionState | null | undefined => {
+    let state: PositionState | null | undefined
+    for(const c of log) {if(localDate(c.at)>date)break;state=c.after}
+    return state
   }
-
-  const manual = p.priceManual || !prices?.points.length
-  const sameCurrency = !manual && prices!.currency === p.currency
-  const currentRate = rateOf(data, p.currency)
-  let rateFallback = false
-  const rateOn = (date: string) => {
-    if (p.currency === BASE_CURRENCY) return 1
-    const r = fx ? asOf(fx.points, date) : undefined
-    if (r) return r
-    rateFallback = true
-    return currentRate
+  const dates = new Set<string>()
+  for(const pt of prices?.points ?? []) dates.add(pt.date)
+  for(const pt of fx?.points ?? []) dates.add(pt.date)
+  for(const c of log) dates.add(localDate(c.at))
+  for(const d of explicit) dates.add(d.date)
+  const days: DayValue[]=[]
+  let rateFallback=false
+  for(const date of [...dates].sort()) {
+    if(date>=today)continue
+    const manual = explicit.find(d=>d.date===date)?.entry
+    if(manual){days.push({date,quantity:manual.quantity,price:manual.type==='cash'?1:manual.price?.value??null,rate:manual.currency==='TWD'?1:manual.fx?.value??null,priceDate:manual.price?.date,rateDate:manual.fx?.date,value:entryValue(manual)});continue}
+    if(date<start.date)continue
+    const state=stateOn(date)
+    if(state===undefined)continue
+    const quantity=state?.quantity??0
+    const quote=prices?.currency===p.currency?quoteOn(prices,date):undefined
+    const rateQuote=fx?.currency===BASE_CURRENCY?quoteOn(fx,date):undefined
+    const price=p.type==='cash'?1:quote?.value??null
+    const rate=p.currency===BASE_CURRENCY?1:rateQuote?.value??null
+    // Never carry a logged quantity across a split without an explicit quantity
+    // for that date: splits change units, and legacy logs are not transactions.
+    const last=log.filter(c=>localDate(c.at)<=date).at(-1)
+    const splitUnknown=!!last && prices?.splits?.some(s=>s.date>localDate(last.at)&&s.date<=date)
+    const value=quantity===0?0:splitUnknown||price===null||rate===null?null:quantity*price*rate
+    if(value===null)rateFallback=true
+    days.push({date,quantity:splitUnknown?null:quantity,price,rate,priceDate:quote?.date,rateDate:rateQuote?.date,value:value!==null&&Number.isFinite(value)?value:null})
   }
-
-  // Trading days from the price history; a hand-priced holding changes only on its edits.
-  // With an unknown start, the first day is simply the first price or rate on record.
-  const dates = new Set<string>(start.known ? [start.date] : [])
-  if (!manual) for (const pt of prices!.points) dates.add(pt.date)
-  else if (fx && p.currency !== BASE_CURRENCY) for (const pt of fx.points) dates.add(pt.date)
-  for (const c of log) dates.add(localDate(c.at))
-
-  const days: DayValue[] = []
-  for (const date of [...dates].sort()) {
-    if (date < start.date || date >= today) continue
-    const s = stateOn(date)
-    if (!s || s.quantity === 0) continue
-    const price = sameCurrency ? asOf(prices!.points, date) : s.price
-    if (price === undefined) continue
-    const rate = rateOn(date)
-    if (!Number.isFinite(rate)) continue
-    days.push({ date, quantity: s.quantity, price, rate, value: s.quantity * price * rate })
+  const manualToday=explicit.find(d=>d.date===today)?.entry
+  if(manualToday)days.push({date:today,quantity:manualToday.quantity,price:manualToday.type==='cash'?1:manualToday.price?.value??null,rate:manualToday.currency==='TWD'?1:manualToday.fx?.value??null,priceDate:manualToday.price?.date,rateDate:manualToday.fx?.date,value:entryValue(manualToday)})
+  else {
+    const group=account.positions.filter(x=>keyOf(x)===keyOf(p)&&x.currency===p.currency)
+    const quantity=group.reduce((sum,x)=>sum+x.quantity,0)
+    const rate=rateOf(data,p.currency)
+    const value=group.reduce((sum,x)=>sum+x.quantity*x.price*rate,0)
+    days.push({date:today,quantity,price:p.price,rate:Number.isFinite(rate)?rate:null,value:Number.isFinite(value)?value:null,live:true})
   }
-  if (Number.isFinite(currentRate)) {
-    days.push({ date: today, quantity: p.quantity, price: p.price, rate: currentRate, value: p.quantity * p.price * currentRate, live: true })
-  }
-  return { days, startKnown: start.known, rateFallback }
+  return {days,startKnown:start.known,rateFallback}
 }

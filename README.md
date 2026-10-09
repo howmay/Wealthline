@@ -175,6 +175,8 @@
 
 負債版使用資料格式 `version: 2`，可讀取原本 `version: 1` 的資料，下一次儲存才升級。舊版程式不支援 v2，應使用新版程式開啟，避免舊版忽略負債欄位後覆存。詳見 [負債資料與驗證說明](docs/liabilities.md)。
 
+歷史頁可按帳戶／標的補登某日的絕對持有數量；價格與匯率取統一的 Yahoo 歷史來源，缺資料保留未知。手動紀錄使用 schema v3，保留 v1／v2 讀取相容，不修改目前持倉。詳見 [歷史數量、行情政策與驗證限制](docs/quantity-history.md)。
+
 ## 審查與回報
 
 - 一般問題與建議：[GitHub Issues](https://github.com/howmay/Wealthline/issues)。

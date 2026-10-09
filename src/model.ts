@@ -69,7 +69,7 @@ export interface Account {
 }
 
 export interface WealthData {
-  version: 1 | 2
+  version: 1 | 2 | 3
   updatedAt: string
   // How many TWD one unit of each currency is worth.
   fxRates: Record<string, number>
@@ -158,7 +158,7 @@ export function parseWealthData(raw: unknown): WealthData {
     throw new Error(`Drive 中的資料檔格式不正確：${why}。請修正或刪除該檔案後重新登入。`)
   }
   const obj = (typeof raw === 'object' && raw !== null ? raw : fail('不是 JSON 物件')) as Record<string, unknown>
-  if (obj.version !== 1 && obj.version !== 2) fail(`不支援的版本 ${String(obj.version)}`)
+  if (obj.version !== 1 && obj.version !== 2 && obj.version !== 3) fail(`不支援的版本 ${String(obj.version)}`)
   if (!Array.isArray(obj.accounts)) fail('缺少 accounts 陣列')
 
   const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v.trim() : fallback)
@@ -203,14 +203,17 @@ export function parseWealthData(raw: unknown): WealthData {
     }
   })
 
-  if ((obj.version === 2 || obj.liabilities !== undefined) && !Array.isArray(obj.liabilities)) fail('負債資料必須是陣列')
+  if (new Set(accounts.map(a => a.id)).size !== accounts.length) fail('帳戶識別碼重複')
+  for (const a of accounts) if (new Set(a.positions.map(p => p.id)).size !== a.positions.length) fail('同帳戶持倉識別碼重複')
+
+  if ((obj.version !== 1 || obj.liabilities !== undefined) && !Array.isArray(obj.liabilities)) fail('負債資料必須是陣列')
   const liabilities = obj.liabilities === undefined ? undefined : (obj.liabilities as unknown[]).map((d) => {
     try { return parseLiability(d) } catch (e) { return fail(e instanceof Error ? e.message : '負債格式不正確') }
   })
   if (liabilities && new Set(liabilities.map((d) => d.id)).size !== liabilities.length) fail('負債識別碼重複')
   const fxManual = Array.isArray(obj.fxManual) ? obj.fxManual.filter((c): c is string => typeof c === 'string') : []
   return {
-    version: obj.version as 1 | 2,
+    version: obj.version as 1 | 2 | 3,
     updatedAt: str(obj.updatedAt) || new Date().toISOString(),
     fxRates,
     fxManual,

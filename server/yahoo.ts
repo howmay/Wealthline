@@ -33,27 +33,31 @@ export interface PriceHistory {
   symbol: string
   currency: string
   points: { date: string; close: number }[] // exchange-local YYYY-MM-DD, oldest first
+  asTraded: true
+  splits: { date: string; ratio: number }[]
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const MAX_YEARS = 10
 
-// Daily closes since `from`. Yahoo's closes are adjusted for splits, not dividends.
+// Yahoo closes are split-adjusted. Restore nominal historical per-share closes
+// using all subsequent split events, so an actual historical share count is valid.
 export async function yahooHistory(symbol: string, from: string): Promise<PriceHistory | null> {
   if (!SYMBOL.test(symbol) || !DATE.test(from)) return null
-  const start = Math.max(Date.parse(`${from}T00:00:00Z`), Date.now() - MAX_YEARS * 365 * 86400_000)
-  if (!Number.isFinite(start)) return null
-  const period1 = Math.floor(start / 1000) - 86400
+  const start = Date.parse(`${from}T00:00:00Z`)
+  if (!Number.isFinite(start) || new Date(start).toISOString().slice(0, 10) !== from || start > Date.now() + 86400_000 || start < Date.now() - MAX_YEARS * 366 * 86400_000) return null
+  const period1 = Math.floor(start / 1000) - 8 * 86400
   const period2 = Math.floor(Date.now() / 1000)
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d`
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d&events=splits`
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (we-wealth quote lookup)' } })
   if (!res.ok) return null
   const body = (await res.json()) as {
     chart?: {
       result?: {
-        meta?: { currency?: string; symbol?: string; gmtoffset?: number }
+        meta?: { currency?: string; symbol?: string; gmtoffset?: number; exchangeTimezoneName?: string }
         timestamp?: number[]
         indicators?: { quote?: { close?: (number | null)[] }[] }
+        events?: { splits?: Record<string, { date: number; numerator: number; denominator: number }> }
       }[]
     }
   }
@@ -61,12 +65,23 @@ export async function yahooHistory(symbol: string, from: string): Promise<PriceH
   const closes = r?.indicators?.quote?.[0]?.close ?? []
   if (!r?.meta?.currency || !r.timestamp) return null
   const offset = r.meta.gmtoffset ?? 0
+  const dateOf = (t: number) => r.meta?.exchangeTimezoneName
+    ? new Intl.DateTimeFormat('en-CA', { timeZone: r.meta.exchangeTimezoneName, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t * 1000))
+    : new Date((t + offset) * 1000).toISOString().slice(0, 10)
+  const splits = Object.values(r.events?.splits ?? {}).map(s => ({ date: dateOf(s.date), ratio: s.numerator / s.denominator }))
+  if (splits.some(s => !Number.isFinite(s.ratio) || s.ratio <= 0)) return null
   const byDate = new Map<string, number>()
   r.timestamp.forEach((t, i) => {
     const c = closes[i]
-    if (typeof c === 'number' && c > 0) byDate.set(new Date((t + offset) * 1000).toISOString().slice(0, 10), c)
+    const date = dateOf(t)
+    if (date >= dateOf(Date.now() / 1000)) return // Today's daily candle is not a completed close.
+    const factor = splits.filter(s => s.date > date).reduce((f,s) => f * s.ratio, 1)
+    const close = typeof c === 'number' ? c * factor : NaN
+    if (Number.isFinite(close) && close > 0) byDate.set(date, close)
   })
   return {
+    asTraded: true,
+    splits,
     symbol: r.meta.symbol ?? symbol,
     currency: r.meta.currency.toUpperCase(),
     points: [...byDate].map(([date, close]) => ({ date, close })).sort((a, b) => a.date.localeCompare(b.date)),
