@@ -21,7 +21,7 @@ export function SaveReview({ changes, busy, canRevert, onRevert, onConfirm, onCa
   const big = changes.filter((c) => c.before && c.after && changeRatio(c) >= 0.5).length
 
   return (
-    <dialog ref={ref} className="review" onCancel={onCancel} aria-labelledby="review-title">
+    <dialog ref={ref} className="review" onCancel={(event) => { event.preventDefault(); if (!busy) onCancel() }} aria-labelledby="review-title">
       <h3 id="review-title">確認要儲存的變更</h3>
       <p className="muted small">
         以下 {changes.length} 項會記錄到歷史，原本的數字會保留。打錯的可以按「復原」改回去。

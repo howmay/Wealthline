@@ -3,15 +3,9 @@
 // Stablecoins and crypto used as a currency: CoinGecko simple price.
 
 import { BASE_CURRENCY } from './model'
+import { CRYPTO_IDS } from './currencies'
 
 const FIAT_URL = `https://open.er-api.com/v6/latest/${BASE_CURRENCY}`
-const CRYPTO_IDS: Record<string, string> = {
-  USDT: 'tether',
-  USDC: 'usd-coin',
-  BTC: 'bitcoin',
-  ETH: 'ethereum',
-  SOL: 'solana',
-}
 
 export interface FetchedRates {
   rates: Record<string, number> // TWD per 1 unit

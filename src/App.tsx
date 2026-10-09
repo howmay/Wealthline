@@ -11,8 +11,9 @@ import {
   type AccessToken,
   type UserProfile,
 } from './google/auth'
-import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData, type DriveFile } from './google/drive'
+import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData, type DriveFile, type DriveVersion } from './google/drive'
 import { applyFetchedRates, emptyData, missingRates, parseWealthData, ratesStale, usedCurrencies, type WealthData } from './model'
+import { finishSave } from './saveState'
 import { localDate, pendingChanges, recordSave, revertChange } from './history'
 import { applyQuotes, fetchHoldingQuotes } from './quotes'
 import { fetchRates } from './rates'
@@ -32,7 +33,10 @@ type Status = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'error
 
 export default function App() {
   const token = useRef<AccessToken | null>(null)
-  const fileId = useRef<string | undefined>(undefined)
+  const driveVersion = useRef<DriveVersion | undefined>(undefined)
+  const savingRef = useRef(false)
+  const [saving, setSaving] = useState(false)
+  const editVersion = useRef(0)
   const sessionVersion = useRef(0)
   // The version last read from or written to Drive; each save records what changed since it.
   const saved = useRef<WealthData | null>(null)
@@ -104,7 +108,7 @@ export default function App() {
     token.current = t
     storeSession({ profile: p, token: t })
     setUser(p)
-    fileId.current = file?.fileId
+    driveVersion.current = file ? { fileId: file.fileId, etag: file.etag } : undefined
     saved.current = file?.data ?? null
     const loaded = file?.data ?? emptyData()
     setData(loaded)
@@ -157,30 +161,25 @@ export default function App() {
     const version = sessionVersion.current
     const at = new Date().toISOString()
     const last = saved.current
-    if (!last || !market.accounts.length || dirtyRef.current) return
+    if (!last || !market.accounts.length || dirtyRef.current || savingRef.current) return
     if (last.history.snapshots.some((s) => s.date === localDate(at))) return
     // A value without its exchange rate would record a wrong day.
     if (missingRates(market).length) return
     const next = recordSave(last, { ...market, updatedAt: at })
+    savingRef.current = true
+    setSaving(true)
     try {
-      fileId.current = await saveData(await validToken(), next, fileId.current)
-    } catch {
-      return // Not worth an error: the next save records today anyway.
+      const result = await saveData(await validToken(), next, driveVersion.current)
+      if (version !== sessionVersion.current) return
+      driveVersion.current = result
+      saved.current = next
+      setData((d) => d ? finishSave(d, market, next) : d)
+    } catch (e) {
+      if (version === sessionVersion.current) setStatus({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
+    } finally {
+      savingRef.current = false
+      setSaving(false)
     }
-    if (version !== sessionVersion.current) return
-    saved.current = next
-    // Keep any edits made while it was saving; only the history and the new stamps are added.
-    const stamps = new Map(next.accounts.flatMap((a) => a.positions.map((p) => [p.id, p.addedAt])))
-    setData((d) =>
-      d
-        ? {
-            ...d,
-            // An edit meanwhile (say, a deleted history entry) wins; that save records today again.
-            history: dirtyRef.current ? d.history : next.history,
-            accounts: d.accounts.map((a) => ({ ...a, positions: a.positions.map((p) => (p.addedAt ? p : { ...p, addedAt: stamps.get(p.id) })) })),
-          }
-        : d,
-    )
   }
 
   // Restore the session after a reload while this tab's token is still valid.
@@ -222,7 +221,7 @@ export default function App() {
       sessionVersion.current++
       clearSession()
       token.current = null
-      fileId.current = undefined
+      driveVersion.current = undefined
       saved.current = null
       setReturning(null)
       setRefreshing(false)
@@ -235,16 +234,33 @@ export default function App() {
       if (previous) void revokeAccessToken(previous).catch(() => {})
     })
 
-  const save = () =>
-    run('儲存到 Google Drive…', async () => {
-      if (!data) return
-      const next = recordSave(saved.current, { ...data, updatedAt: new Date().toISOString() })
-      fileId.current = await saveData(await validToken(), next, fileId.current)
-      saved.current = next
-      setData(next)
-      setDirty(false)
+  const save = async () => {
+    if (!data || savingRef.current) return
+    savingRef.current = true
+    setSaving(true)
+    const submitted = data
+    const edits = editVersion.current
+    const session = sessionVersion.current
+    try {
+      await run('儲存到 Google Drive…', async () => {
+        const next = recordSave(saved.current, { ...submitted, updatedAt: new Date().toISOString() })
+        const result = await saveData(await validToken(), next, driveVersion.current)
+        if (session !== sessionVersion.current) return
+        driveVersion.current = result
+        saved.current = next
+        setData((current) => current ? finishSave(current, submitted, next) : current)
+        const stillDirty = edits !== editVersion.current
+        dirtyRef.current = stillDirty
+        setDirty(stillDirty)
+        setReviewing(false)
+      })
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+      // A failed save must reveal its error and backup action outside the dialog.
       setReviewing(false)
-    })
+    }
+  }
 
   const requestSave = () => {
     if (data && pendingChanges(saved.current, data).length) setReviewing(true)
@@ -256,6 +272,8 @@ export default function App() {
   }, [reviewing, pending.length])
 
   function update(next: WealthData) {
+    editVersion.current++
+    dirtyRef.current = true
     setData(next)
     setDirty(true)
   }
@@ -273,7 +291,7 @@ export default function App() {
     if (missingAccount) navigate('/accounts', { replace: true })
   }, [missingAccount])
 
-  const busy = status.kind === 'busy'
+  const busy = saving || status.kind === 'busy'
 
   const go = (r: Route, replace = false) => navigate(routePath(r), { replace })
   const goAccounts = (view: AccountsView, replace = false) => go({ tab: 'accounts', ...view }, replace)
@@ -318,10 +336,12 @@ export default function App() {
               <button className="primary save" onClick={requestSave} disabled={busy}>
                 {busy ? '儲存中…' : '儲存變更'}
               </button>
-            ) : refreshing ? (
+            ) : refreshing || saving ? (
               <span className="refreshing" role="status">
-                <span className="spinner" aria-hidden /> 更新報價
+                <span className="spinner" aria-hidden /> {saving ? '儲存中…' : '更新報價'}
               </span>
+            ) : status.kind === 'error' ? (
+              <span className="muted">同步未完成</span>
             ) : (
               <span className="synced" title={`我的雲端硬碟 / ${FOLDER_NAME} / ${DATA_FILE_NAME}`}>
                 <span aria-hidden>✓</span> 已同步
@@ -359,14 +379,24 @@ export default function App() {
             if (next) update(next)
           }}
           onConfirm={save}
-          onCancel={() => setReviewing(false)}
+          onCancel={() => { if (!savingRef.current) setReviewing(false) }}
         />
       )}
 
       <main className="content view-enter" key={tab}>
         <PrivacyNotice />
         {status.kind === 'busy' && !data && <p className="muted">{status.text}</p>}
-        {status.kind === 'error' && <p className="banner error">{status.text}</p>}
+        {status.kind === 'error' && <div className="banner error" role="alert">
+          <p>{status.text}</p>
+          {data && <button onClick={() => {
+            const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+            const link = document.createElement('a')
+            link.href = url
+            link.download = 'we-wealth-local-backup.json'
+            link.click()
+            setTimeout(() => URL.revokeObjectURL(url), 1000)
+          }}>下載本機資料備份</button>}
+        </div>}
 
         {data && tab === 'overview' && (
           <Overview
