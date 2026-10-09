@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { after, before, beforeEach, test } from 'node:test'
 import { createServer } from 'vite'
 
@@ -95,9 +97,20 @@ test('HTML responses prevent framing and restrict script execution', async () =>
   })
   const csp = response.headers.get('Content-Security-Policy') ?? ''
   assert.match(csp, /frame-ancestors 'none'/)
-  assert.match(csp, /script-src 'self' https:\/\/accounts\.google\.com\/gsi\/client/)
+  assert.match(csp, /script-src 'self' 'sha256-[^']+' https:\/\/accounts\.google\.com\/gsi\/client/)
   assert.ok(!csp.split(';').find((part) => part.includes('script-src'))?.includes('unsafe-inline'))
   assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff')
+})
+
+test('the CSP allows exactly the inline scripts in index.html', async () => {
+  const response = await worker.fetch(new Request('https://example.com/'), {
+    ASSETS: { fetch: async () => new Response('<html></html>', { headers: { 'Content-Type': 'text/html' } }) },
+  })
+  const allowed = [...(response.headers.get('Content-Security-Policy') ?? '').matchAll(/'sha256-([^']+)'/g)].map((m) => m[1])
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+  const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => createHash('sha256').update(m[1]).digest('base64'))
+  assert.ok(inline.length > 0)
+  assert.deepEqual(allowed.sort(), inline.sort())
 })
 
 test('legacy plaintext Drive files remain readable', async () => {

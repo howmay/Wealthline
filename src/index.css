@@ -1992,3 +1992,264 @@ details.daily .hint {
     grid-column: 1;
   }
 }
+
+/* Signing in: the screen between Google's dialog and the app. */
+.opening {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: radial-gradient(ellipse at 50% 35%, var(--accent-wash), transparent 60%), var(--page);
+  animation: fade-in 0.3s ease-out backwards;
+}
+
+.opening-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  width: min(320px, 100%);
+  text-align: center;
+}
+
+.opening-logo {
+  border-radius: 17px;
+  box-shadow: 0 10px 30px -10px rgba(74, 58, 167, 0.55);
+  animation: logo-breathe 2.4s ease-in-out infinite;
+}
+
+.opening-line {
+  stroke-dasharray: 100;
+  animation: line-draw 1.8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.opening-area {
+  animation: area-fill 1.8s ease-in-out infinite;
+}
+
+.opening-dot {
+  transform-origin: 49.5px 19.5px;
+  animation: dot-pop 1.8s ease-in-out infinite;
+}
+
+.opening-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.opening-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-align: left;
+}
+
+.opening-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: color 0.3s;
+}
+
+.opening-steps li.active {
+  color: var(--ink);
+}
+
+.opening-steps li.done {
+  color: var(--good);
+}
+
+.opening-mark {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--hairline);
+  position: relative;
+  transition: border-color 0.3s, background 0.3s;
+}
+
+.opening-steps li.active .opening-mark {
+  border-color: var(--hairline);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+.opening-steps li.done .opening-mark {
+  border-color: var(--good);
+  background: var(--good);
+}
+
+.opening-steps li.done .opening-mark::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 7px;
+  border: solid var(--surface);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.opening-bar {
+  width: 100%;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+
+.opening-bar span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #3a8ef0, #4a3aa7);
+  animation: bar-slide 1.3s ease-in-out infinite;
+}
+
+/* The app arrives: the frame fades in and the page content rises into place.
+   Only opacity on the frame and no lasting transform, so sticky and fixed elements still work. */
+.app-enter {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  animation: fade-in 0.35s ease-out backwards;
+}
+
+.view-enter > * {
+  animation: rise-in 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+.view-enter > :nth-child(2) {
+  animation-delay: 0.04s;
+}
+
+.view-enter > :nth-child(3) {
+  animation-delay: 0.08s;
+}
+
+.view-enter > :nth-child(n + 4) {
+  animation-delay: 0.12s;
+}
+
+.refreshing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--hairline);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes line-draw {
+  0% {
+    stroke-dashoffset: 100;
+  }
+  55%,
+  80% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -100;
+  }
+}
+
+@keyframes area-fill {
+  0%,
+  20% {
+    opacity: 0;
+  }
+  55%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes dot-pop {
+  0%,
+  45% {
+    transform: scale(0);
+  }
+  58% {
+    transform: scale(1.25);
+  }
+  66%,
+  85% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(0);
+  }
+}
+
+@keyframes logo-breathe {
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes bar-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .opening,
+  .opening-logo,
+  .opening-line,
+  .opening-area,
+  .opening-dot,
+  .app-enter,
+  .view-enter > * {
+    animation: none;
+  }
+
+  .opening-steps li.active .opening-mark,
+  .spinner,
+  .opening-bar span {
+    animation-duration: 2.4s;
+  }
+}
