@@ -1129,6 +1129,12 @@ a.button.ghost {
   grid-column: 1 / -1;
 }
 
+/* The landing page's .hero is a two-column grid; the overview's total card is a plain stack. */
+.overview .hero {
+  display: block;
+  padding: 18px 20px;
+}
+
 .hero-figure {
   font-size: clamp(2rem, 6vw, 2.9rem);
   font-weight: 700;
@@ -1143,6 +1149,36 @@ a.button.ghost {
   color: var(--ink-2);
   margin-right: 6px;
   vertical-align: 0.6em;
+}
+
+.hero-change {
+  margin: 0 0 6px;
+}
+
+.hero-change strong {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.hero-change strong small {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.change-figure {
+  margin: 0 0 8px;
+}
+
+.change-figure strong {
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.change-figure strong small {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink-2);
 }
 
 .alloc-bar {

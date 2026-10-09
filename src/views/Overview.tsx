@@ -9,6 +9,7 @@ import {
   type WealthData,
 } from '../model'
 import { colorize } from '../chartColors'
+import { AssetChange, ChangeSinceLast } from './AssetChange'
 import { Allocation, RankBars } from './charts'
 
 interface Props {
@@ -49,6 +50,7 @@ export function Overview({ data, onGoRates, onNewAccount, onImport, onOpenAccoun
           <small>NT$</small>
           {fmt(byCategory.total, 0)}
         </div>
+        <ChangeSinceLast data={data} />
         <p className="muted">
           {data.accounts.length} 個帳戶
           {data.fxUpdatedAt && ` · 匯率更新於 ${new Date(data.fxUpdatedAt).toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' })}`}
@@ -62,6 +64,8 @@ export function Overview({ data, onGoRates, onNewAccount, onImport, onOpenAccoun
           </p>
         )}
       </section>
+
+      <AssetChange data={data} />
 
       <section className="panel span-2">
         <h3>資產配置</h3>
