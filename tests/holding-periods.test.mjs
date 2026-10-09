@@ -214,9 +214,28 @@ test('yellow review: genuine price/FX failure, explicit unknown and known zero r
  assert.equal(unknown.find(x=>x.date==='2026-10-06').manual,true)
  assert.equal(unknown.find(x=>x.date==='2026-10-08').total,null)
  assert.equal(unknownValues.find(x=>x.date==='2026-10-08').quantityEvidence,'explicit-unknown')
- // Mixed absent inventory and a real market error must not erase the market gap.
+ // Absent inventory already makes the total unknown; a market error on the same day
+ // adds nothing, so the day stays omitted rather than reappearing as a gap.
  const mixed=withPeriod({start:'2026-10-01',end:undefined});mixed.accounts.push({...mixed.accounts[0],id:'b'})
  const mixedValues=await q.valueDays(p.expandPeriodDays(mixed,now),async()=>null)
- assert.equal(q.isUnrecordedPartialDay(mixedValues.at(-1)),false)
- assert.equal(h.totalPoints({...mixed,history:{...mixed.history,valuedQuantityDays:mixedValues}},now).find(x=>x.date==='2026-10-08').total,null)
+ assert.ok(mixedValues.at(-1).entries.some(e=>e.error))
+ assert.equal(q.isUnrecordedPartialDay(mixedValues.at(-1)),true)
+ assert.equal(h.totalPoints({...mixed,history:{...mixed.history,valuedQuantityDays:mixedValues}},now).find(x=>x.date==='2026-10-08'),undefined)
+})
+
+test('yellow review: uncovered dates stay omitted while quotes load or fail',async()=>{
+ const d=withPeriod({start:'2026-10-01',end:undefined})
+ d.accounts[0].positions[0].quantity=10
+ d.accounts.push({id:'b',name:'合成B',kind:'bank',category:'現金',country:'TW',positions:[{id:'cash',type:'cash',symbol:'',currency:'TWD',quantity:1000,price:1}]})
+ d.history.snapshots=['05','06'].map(x=>h.snapshotOf(d,`2026-10-${x}T12:00:00Z`))
+ const raw=p.expandPeriodDays(d,now)
+ const expected=[['2026-10-05',1100],['2026-10-06',1100],['2026-10-09',1100]]
+ const totals=values=>h.totalPoints({...d,history:{...d.history,valuedQuantityDays:values}},now).map(x=>[x.date,x.total])
+ // While loading, the hook shows entries repriced without market data.
+ const loading=raw.map(day=>({...day,entries:day.entries.map(e=>q.repriceEntry(e,day.date,null,null))}))
+ assert.ok(loading.find(x=>x.date==='2026-10-08').entries.some(e=>e.error))
+ assert.deepEqual(totals(loading),expected)
+ // Offline, provider failure, or an instrument without Yahoo history.
+ assert.deepEqual(totals(await q.valueDays(raw,async()=>null)),expected)
+ assert.deepEqual(totals(await q.valueDays(raw,async()=>{throw new Error('offline')})),expected)
 })

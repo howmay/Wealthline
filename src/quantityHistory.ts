@@ -145,10 +145,11 @@ export async function valueDays(days: QuantityDay[], fetcher = fetchHistory): Pr
     entries: await valueEntries(day.entries, day.date, shared).catch(() => day.entries.map((e) => repriceEntry(e, day.date, null, null))),
   })))
 }
-// Projection-only coverage, recorded before market lookup can turn a known count
-// into unknown (e.g. unavailable split data). Never hide explicit unknown or price gaps.
+// Projection-only coverage, recorded before market lookup. An incomplete day has no
+// total whatever the quotes say, so loading or failed quotes must not bring it back.
+// Explicit unknowns and complete days with price gaps keep their own evidence class.
 export function isUnrecordedPartialDay(day: QuantityDay) {
-  return day.periodDerived === true && day.quantityEvidence === 'incomplete' && !day.entries.some(e=>e.error)
+  return day.periodDerived === true && day.quantityEvidence === 'incomplete'
 }
 export function quantityPoint(day: QuantityDay, original?: Snapshot): HistoricalPoint {
   const accounts = new Map<string, { id: string; name: string; value: number | null }>()
