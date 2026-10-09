@@ -2,6 +2,7 @@
 // daily closes and exchange rates come from /api/history, and the quantity held on
 // each day comes from the change log. Nothing here is written to Drive.
 
+import { MAX_PERIOD_DAYS, createPeriodIndex, shiftDate } from './holdingPeriods'
 import { changeKey, keyOf, localDate } from './history'
 import { entryValue, instrumentKey, quoteOn, repriceEntry, type QuantityEntry } from './quantityHistory'
 import { BASE_CURRENCY, rateOf, type Account, type Position, type WealthData } from './model'
@@ -128,6 +129,9 @@ export function positionTimeline(
     (c) => c.currency === p.currency && (!c.before || !c.after || c.before.quantity !== c.after.quantity),
   )
   const entered = [...explicitDays(data, account, p)].sort(([a], [b]) => a.localeCompare(b))
+  const identity = {accountId:account.id,account:account.name,category:account.category,country:account.country,type:p.type,symbol:p.symbol,currency:p.currency}
+  const periods = (data.history.holdingPeriods ?? []).filter(x=>instrumentKey(x)===instrumentKey(identity))
+  const periodLookup = createPeriodIndex(data)
   const recordedDays = data.history.snapshots.map((s) => s.date)
 
   // Units held at the end of `date` and the day that count was recorded;
@@ -170,10 +174,20 @@ export function positionTimeline(
   for (const c of log) dates.add(localDate(c.at))
   for (const [date] of entered) dates.add(date)
 
+  if (periods.length) {
+    const earliest=periods.map(x=>x.start).sort()[0], lower=shiftDate(today,-MAX_PERIOD_DAYS)
+    for(let date=earliest<lower?lower:earliest;date<today;date=shiftDate(date,1)) dates.add(date)
+  }
   const days: DayValue[] = []
   let incomplete = false
   for (const date of [...dates].sort()) {
     if (date >= today) continue
+    const periodState = periodLookup(identity,date)
+    if (periodState) {
+      const day=enteredDay(date,{...identity,quantity:periodState.quantity,quantityAsOf:periodState.basisDate},prices,fx)
+      if(day.value===null) incomplete=true
+      days.push(day);continue
+    }
     const entry = entered.find(([d]) => d === date)?.[1]
     if (entry) {
       const day = enteredDay(date, entry, prices, fx)

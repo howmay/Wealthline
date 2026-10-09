@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fmt } from '../format'
+import { instrumentKey } from '../quantityHistory'
 import { localDate } from '../history'
 import { BASE_CURRENCY, type Account, type Position, type WealthData } from '../model'
 import { clearHistoryCache, explicitDays, fetchHistory, fxSymbol, positionTimeline, startDate, type PriceHistory } from '../priceHistory'
@@ -28,7 +29,7 @@ export function PositionHistory({
   const [shown, setShown] = useState(10)
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   // Fetch far enough back for this instrument’s selected-day entries.
-  const from = [startDate(data, account, p, localDate(now)).date, ...explicitDays(data, account, p).keys()].sort()[0]
+  const from = [startDate(data, account, p, localDate(now)).date, ...explicitDays(data, account, p).keys(), ...(data.history.holdingPeriods ?? []).filter(x=>instrumentKey(x)===instrumentKey({accountId:account.id,account:account.name,category:account.category,country:account.country,...p})).map(x=>x.start)].sort()[0]
 
   useEffect(() => {
     let live = true

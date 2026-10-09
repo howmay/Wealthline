@@ -69,7 +69,7 @@ export interface Account {
 }
 
 export interface WealthData {
-  version: 1 | 2 | 3 | 4
+  version: 1 | 2 | 3 | 4 | 5 | 6
   updatedAt: string
   // How many TWD one unit of each currency is worth.
   fxRates: Record<string, number>
@@ -158,7 +158,7 @@ export function parseWealthData(raw: unknown): WealthData {
     throw new Error(`Drive 中的資料檔格式不正確：${why}。請修正或刪除該檔案後重新登入。`)
   }
   const obj = (typeof raw === 'object' && raw !== null ? raw : fail('不是 JSON 物件')) as Record<string, unknown>
-  if (obj.version !== 1 && obj.version !== 2 && obj.version !== 3 && obj.version !== 4) fail(`不支援的版本 ${String(obj.version)}`)
+  if (obj.version !== 1 && obj.version !== 2 && obj.version !== 3 && obj.version !== 4 && obj.version !== 5 && obj.version !== 6) fail(`不支援的版本 ${String(obj.version)}`)
   if (!Array.isArray(obj.accounts)) fail('缺少 accounts 陣列')
 
   const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v.trim() : fallback)
@@ -213,7 +213,7 @@ export function parseWealthData(raw: unknown): WealthData {
   if (liabilities && new Set(liabilities.map((d) => d.id)).size !== liabilities.length) fail('負債識別碼重複')
   const fxManual = Array.isArray(obj.fxManual) ? obj.fxManual.filter((c): c is string => typeof c === 'string') : []
   return {
-    version: obj.version as 1 | 2 | 3 | 4,
+    version: obj.version as 1 | 2 | 3 | 4 | 5 | 6,
     updatedAt: str(obj.updatedAt) || new Date().toISOString(),
     fxRates,
     fxManual,

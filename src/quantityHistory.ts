@@ -15,19 +15,21 @@ export interface HistoricalInstrument {
 // as valuation fallback or exposed as editable prices.
 export interface HistoricalQuote { source: 'Yahoo' | 'manual'; symbol: string; date: string; value: number }
 export interface QuantityEntry extends HistoricalInstrument {
+  quantityAsOf?: string // query-only basis date for split conversion
   quantity: number | null // null: unknown, not zero
   price?: HistoricalQuote
   fx?: HistoricalQuote
   error?: string
 }
-export interface QuantityDay { date: string; updatedAt: string; entries: QuantityEntry[] }
+export interface QuantityDay { date: string; updatedAt: string; entries: QuantityEntry[]; sparse?: true; periodDerived?: boolean; quantityEvidence?: 'complete' | 'incomplete' | 'explicit-unknown' }
 export type HistoricalPoint = Omit<Snapshot, 'total' | 'accounts' | 'categories'> & {
   total: number | null
   accounts: { id: string; name: string; value: number | null }[]
   categories: Record<string, number | null>
+  periodDerived?: boolean
   manual?: boolean
 }
-export const instrumentKey = (p: HistoricalInstrument) => JSON.stringify([p.accountId, p.type, p.type === 'cash' ? '' : p.symbol.toUpperCase(), p.currency])
+export const instrumentKey = <T extends Pick<HistoricalInstrument,'accountId'|'type'|'symbol'|'currency'>>(p: T) => JSON.stringify([p.accountId, p.type, p.type === 'cash' ? '' : p.symbol.toUpperCase(), p.currency])
 export function validDate(date: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= '0001-01-01' && Number.isFinite(Date.parse(`${date}T00:00:00Z`)) && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date
 }
@@ -41,6 +43,7 @@ export function historyCatalog(data: WealthData): HistoricalInstrument[] {
     const { accountId, account, category, country, type, symbol, currency } = p
     all.set(instrumentKey(p), { accountId, account, category, country, type, symbol, currency })
   }
+  for (const period of data.history.holdingPeriods ?? []) add(period)
   for (const day of data.history.quantityDays ?? []) for (const e of day.entries) add(e)
   for (const c of data.history.changes) {
     const account = data.accounts.find(a => a.id === c.accountId)
@@ -81,13 +84,20 @@ export function entryValue(entry: QuantityEntry): number | null {
 }
 // Preserve legacy manual fields on read, but only market quotes can value history.
 const TICKER = /^[A-Z0-9.\-=^]{1,24}$/
+export function splitQuantity(entry: QuantityEntry, date: string, prices: PriceHistory | null): number | null {
+  if (!entry.quantityAsOf || entry.quantityAsOf === date || entry.type === 'cash' || entry.quantity === 0 || entry.quantity === null) return entry.quantity
+  if (!prices?.asTraded || prices.currency !== entry.currency) return null
+  const factor = (d: string) => (prices.splits ?? []).filter(s => s.date > d).reduce((n,s) => n*s.ratio,1)
+  const value = entry.quantity * factor(entry.quantityAsOf) / factor(date)
+  return Number.isFinite(value) ? value : null
+}
 export function repriceEntry(e: QuantityEntry, date: string, prices: PriceHistory | null, rates: PriceHistory | null): QuantityEntry {
   const { price: _price, fx: _fx, error: _error, ...entry } = e
   if (e.quantity === null || e.quantity === 0) return entry
   const price = e.type !== 'cash' && prices?.currency === e.currency ? quoteOn(prices, date) : undefined
   const fx = e.currency !== 'TWD' && rates?.currency === 'TWD' ? quoteOn(rates, date) : undefined
   const error = [e.type !== 'cash' && !price && '缺少相符幣別的歷史收盤價', e.currency !== 'TWD' && !fx && '缺少歷史匯率'].filter(Boolean).join('；')
-  return { ...entry, ...(price && {price}), ...(fx && {fx}), ...(error && {error}) }
+  return { ...entry, quantity:splitQuantity(entry,date,prices), ...(price && {price}), ...(fx && {fx}), ...(error && {error}) }
 }
 export async function valueEntries(
   entries: QuantityEntry[],
@@ -104,11 +114,12 @@ export async function valueEntries(
   return Promise.all(entries.map(async e => {
     const { price: _price, fx: _fx, error: _error, ...entry } = e
     if (entry.quantity === null || entry.quantity === 0) return entry
+    let priceHistory: PriceHistory | null = null
     let price: HistoricalQuote | undefined
     let fx: HistoricalQuote | undefined
     if (entry.type !== 'cash' && !price && TICKER.test(entry.symbol)) for (const symbol of candidates(entry.symbol, entry.country, entry.category.includes('加密'))) {
       const history = await get(symbol)
-      if (history?.currency === entry.currency) price = quoteOn(history, date)
+      if (history?.currency === entry.currency) { priceHistory = history; price = quoteOn(history, date) }
       if (price) break
     }
     if (entry.currency !== 'TWD') {
@@ -116,7 +127,7 @@ export async function valueEntries(
       if (history?.currency === 'TWD') fx = quoteOn(history, date)
     }
     const error = [entry.type !== 'cash' && !price && '缺少相符幣別的歷史收盤價', entry.currency !== 'TWD' && !fx && '缺少歷史匯率'].filter(Boolean).join('；')
-    const result = { ...entry, ...(price && { price }), ...(fx && { fx }), ...(error && { error }) }
+    const result = { ...entry, quantity:splitQuantity(entry,date,priceHistory), ...(price && { price }), ...(fx && { fx }), ...(error && { error }) }
     return !error && entryValue(result) === null ? { ...result, error: '估值超出有效數值範圍' } : result
   }))
 }
@@ -133,6 +144,12 @@ export async function valueDays(days: QuantityDay[], fetcher = fetchHistory): Pr
     ...day,
     entries: await valueEntries(day.entries, day.date, shared).catch(() => day.entries.map((e) => repriceEntry(e, day.date, null, null))),
   })))
+}
+// Projection-only coverage, recorded before market lookup. An incomplete day has no
+// total whatever the quotes say, so loading or failed quotes must not bring it back.
+// Explicit unknowns and complete days with price gaps keep their own evidence class.
+export function isUnrecordedPartialDay(day: QuantityDay) {
+  return day.periodDerived === true && day.quantityEvidence === 'incomplete'
 }
 export function quantityPoint(day: QuantityDay, original?: Snapshot): HistoricalPoint {
   const accounts = new Map<string, { id: string; name: string; value: number | null }>()
@@ -151,7 +168,7 @@ export function quantityPoint(day: QuantityDay, original?: Snapshot): Historical
   // that was empty that day has nothing to add.
   if (original?.accounts.some(a => !accounts.has(a.id) && a.value !== 0) || !day.entries.length || !Number.isFinite(total)) total = null
   const debt = original?.liabilityTotal
-  return { date: day.date, at: day.updatedAt, total, accounts: [...accounts.values()], categories, manual: true,
+  return { date: day.date, at: day.updatedAt, total, accounts: [...accounts.values()], categories, manual: !day.periodDerived, ...(day.periodDerived && {periodDerived:true}),
     ...(debt !== undefined && { liabilityTotal: debt }),
     ...(original?.liabilityEstimated !== undefined && { liabilityEstimated: original.liabilityEstimated }),
     ...(debt !== undefined && { netWorth: total === null || debt === null ? null : total - debt }) }
@@ -161,13 +178,14 @@ export function applyQuantityDay(data: WealthData, day: QuantityDay, expected?: 
   const existing = data.history.quantityDays?.find(d => d.date === day.date)
   if (existing !== expected) throw new Error('這一天已新增或變更，請取消並重新開啟，避免覆蓋其他修改')
   const parsed = parseQuantityDays([day])[0]
-  return { ...data, version: data.version === 4 || data.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
+  return { ...data, version: data.version === 6 || day.sparse ? 6 : data.version === 5 || data.history.holdingPeriods !== undefined ? 5 : data.version === 4 || data.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
 }
 export function parseQuantityDays(raw: unknown): QuantityDay[] {
   if (!Array.isArray(raw)) throw new Error('歷史數量必須是陣列')
   const days = raw.map((value): QuantityDay => {
     const d = value as QuantityDay
     if (!d || !validDate(d.date) || !Number.isFinite(Date.parse(d.updatedAt)) || !Array.isArray(d.entries)) throw new Error('歷史數量日期或資料格式不正確')
+    if (d.sparse !== undefined && d.sparse !== true) throw new Error('單日紀錄範圍不正確')
     const entries = d.entries.map((e): QuantityEntry => {
       const named = [e?.accountId, e?.account, e?.category, e?.country, e?.currency].every((x) => typeof x === 'string' && x.trim())
       // A holding's symbol is whatever the account uses for it, ticker or not.
@@ -185,7 +203,7 @@ export function parseQuantityDays(raw: unknown): QuantityDay[] {
       return { accountId:e.accountId, account:e.account, category:e.category, country:e.country, type:e.type, symbol:e.symbol, currency:e.currency, quantity:e.quantity, ...(price && {price}), ...(fx && {fx}), ...(typeof e.error === 'string' && {error:e.error}) }
     })
     if (new Set(entries.map(instrumentKey)).size !== entries.length) throw new Error('同日同帳戶同持倉幣別不可重複')
-    return { date: d.date, updatedAt:d.updatedAt, entries }
+    return { date: d.date, updatedAt:d.updatedAt, entries, ...(d.sparse && {sparse:true as const}) }
   })
   if (new Set(days.map(d=>d.date)).size !== days.length) throw new Error('歷史數量日期不可重複')
   return days.sort((a,b)=>a.date.localeCompare(b.date))
