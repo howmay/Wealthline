@@ -522,3 +522,18 @@ test('trend chart leaves an actual gap for unknown history and clears out-of-ran
  assert.doesNotMatch(document.querySelector('svg').outerHTML,/NaN|Infinity/)
  }finally{globalThis.ResizeObserver=oldObserver}
 })
+test('a holding without a ticker shows a unit price field and is valued from it without a lookup',async()=>{
+ const data=historicalFixture();data.accounts[0].positions=[{id:'fund',type:'holding',symbol:'基金與退休金',currency:'TWD',quantity:3,price:10,priceManual:true}]
+ let changed,requests=0
+ await render(HistoryView,{data,dirty:true,busy:false,onChange:next=>{changed=next},onSave:()=>{},onOpenAccount:()=>{}})
+ globalThis.fetch=async()=>{requests++;return new Response('',{status:404})}
+ await click(button('＋ 補登歷史數量'))
+ await setInput(field('歷史日期'),'2025-10-04')
+ await setInput(field('合成歷史帳戶 · 基金與退休金 · TWD 當日數量'),'2')
+ await setInput(field('合成歷史帳戶 · 基金與退休金 · TWD 當日單價'),'1500')
+ await click(button('取得歷史估值'))
+ assert.equal(requests,0)
+ assert.match(document.querySelector('[role="status"]').textContent,/NT\$ 3,000/)
+ await click(button('套用歷史數量'))
+ assert.deepEqual(changed.history.quantityDays[0].entries[0].price,{source:'manual',symbol:'基金與退休金',date:'2025-10-04',value:1500})
+})

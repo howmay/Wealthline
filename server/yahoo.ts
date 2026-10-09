@@ -44,8 +44,10 @@ const MAX_YEARS = 10
 // using all subsequent split events, so an actual historical share count is valid.
 export async function yahooHistory(symbol: string, from: string): Promise<PriceHistory | null> {
   if (!SYMBOL.test(symbol) || !DATE.test(from)) return null
-  const start = Date.parse(`${from}T00:00:00Z`)
-  if (!Number.isFinite(start) || new Date(start).toISOString().slice(0, 10) !== from || start > Date.now() + 86400_000 || start < Date.now() - MAX_YEARS * 366 * 86400_000) return null
+  const requested = Date.parse(`${from}T00:00:00Z`)
+  if (!Number.isFinite(requested) || new Date(requested).toISOString().slice(0, 10) !== from || requested > Date.now() + 86400_000) return null
+  // Older starts are cut to the last ten years: the answer simply has no older closes.
+  const start = Math.max(requested, Date.now() - MAX_YEARS * 365 * 86400_000)
   const period1 = Math.floor(start / 1000) - 8 * 86400
   const period2 = Math.floor(Date.now() / 1000)
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d&events=splits`

@@ -140,3 +140,58 @@ test('today incomplete candle is not returned and malformed provider responses f
  assert.equal(await timeline.fetchHistory('TEST','2025-10-04'),null)
  }finally{globalThis.fetch=original}
 })
+const twHolding=(over={})=>({id:'tw',type:'holding',symbol:'2330.TW',currency:'TWD',quantity:400,price:1000,...over})
+const twAccount=(positions)=>({id:'tw-acc',name:'合成台股',kind:'investment',category:'台股',country:'TW',positions})
+const daily=(from,to,close)=>{const out=[];for(let t=Date.parse(`${from}T00:00:00Z`);t<=Date.parse(`${to}T00:00:00Z`);t+=86400000)out.push({date:new Date(t).toISOString().slice(0,10),close:typeof close==='function'?close(new Date(t).toISOString().slice(0,10)):close});return out}
+test('a holding with no change log is valued at its current quantity from the day it was added',()=>{
+ const p=twHolding({addedAt:'2026-09-20T04:00:00Z'}),account=twAccount([p]),data={...m.emptyData(),accounts:[account]}
+ const prices={symbol:'2330.TW',currency:'TWD',asTraded:true,splits:[],points:daily('2026-09-01','2026-10-08',900)}
+ const days=timeline.positionTimeline(data,account,p,prices,null,'2026-10-09T04:00:00Z').days
+ assert.equal(days[0].date,'2026-09-20')
+ assert.ok(days.filter(d=>!d.live).every(d=>d.quantity===400&&d.value===360000))
+})
+test('quantities carried across a split are converted to the units held on each day',()=>{
+ const p=twHolding({quantity:40,addedAt:'2025-03-05T04:00:00Z'}),account=twAccount([p]),data={...m.emptyData(),accounts:[account]}
+ const prices={symbol:'2330.TW',currency:'TWD',asTraded:true,splits:[{date:'2025-03-10',ratio:4}],points:[{date:'2025-03-07',close:100},{date:'2025-03-11',close:25}]}
+ const days=timeline.positionTimeline(data,account,p,prices,null,'2025-03-12T04:00:00Z').days
+ assert.deepEqual(days.map(d=>[d.date,d.quantity,d.value]),[['2025-03-05',10,null],['2025-03-07',10,1000],['2025-03-11',40,1000],['2025-03-12',40,40000]])
+})
+test('quantities entered on the History tab carry forward until the next record',()=>{
+ const p=twHolding({addedAt:'2026-10-08T04:00:00Z'}),account=twAccount([p])
+ const at=(date,quantity)=>({date,updatedAt:'2026-10-09T00:00:00Z',entries:[{accountId:'tw-acc',account:'合成台股',category:'台股',country:'TW',type:'holding',symbol:'2330.TW',currency:'TWD',quantity,price:{source:'Yahoo',symbol:'2330.TW',date,value:900}}]})
+ const data={...m.emptyData(),accounts:[account],history:{changes:[{at:'2026-10-08T04:00:00Z',accountId:'tw-acc',account:'合成台股',type:'holding',symbol:'2330.TW',currency:'TWD',before:null,after:{quantity:400,price:1000}}],snapshots:[],quantityDays:[at('2026-09-10',100),at('2026-09-15',400)]}}
+ const prices={symbol:'2330.TW',currency:'TWD',asTraded:true,splits:[],points:daily('2026-09-01','2026-10-08',900)}
+ const byDate=new Map(timeline.positionTimeline(data,account,p,prices,null,'2026-10-09T04:00:00Z').days.map(d=>[d.date,d.quantity]))
+ assert.equal(byDate.has('2026-09-09'),false)
+ assert.deepEqual(['2026-09-10','2026-09-14','2026-09-15','2026-10-07','2026-10-08'].map(d=>byDate.get(d)),[100,100,400,400,400])
+})
+test('holdings without a ticker take a typed unit price and are never looked up',async()=>{
+ const fund=entry({symbol:'基金與退休金',currency:'SGD',quantity:2})
+ assert.doesNotThrow(()=>q.parseQuantityDays([day({entries:[fund]})]))
+ const data={...m.emptyData(),accounts:[{id:'synthetic-a',name:'合成帳戶',kind:'investment',category:'基金與退休金',country:'SG',positions:[{id:'f',type:'holding',symbol:'基金與退休金',currency:'SGD',quantity:2,price:5,priceManual:true},{id:'c',type:'holding',symbol:'CPF',currency:'USD',quantity:1,price:5,priceManual:true}]}]}
+ assert.equal(q.needsTypedPrice(data,fund),true)
+ assert.equal(q.needsTypedPrice(data,entry({symbol:'CPF'})),true)
+ assert.equal(q.needsTypedPrice(data,entry()),false)
+ const symbols=[]
+ const fetcher=async s=>{symbols.push(s);return s==='SGDTWD=X'?quote('SGDTWD=X','TWD',24):quote(s,'USD',99)}
+ const typed={...fund,price:q.manualPrice(fund,'2025-10-04',1000)}
+ const [valued,cpf]=await q.valueEntries([typed,entry({symbol:'CPF'})],'2025-10-04',fetcher,e=>q.needsTypedPrice(data,e))
+ assert.equal(q.entryValue(valued),48000);assert.equal(valued.price.source,'manual')
+ assert.equal(q.entryValue(cpf),null);assert.match(cpf.error,/手填/)
+ assert.deepEqual(symbols.sort(),['SGDTWD=X','USDTWD=X'])
+ assert.throws(()=>q.parseQuantityDays([day({entries:[{...fund,price:{...q.manualPrice(fund,'2025-10-03',1)}}]})]),/日期/)
+})
+test('an account that was empty in the original snapshot does not make a day incomplete',()=>{
+ const cash=entry({type:'cash',symbol:'',currency:'TWD',quantity:50})
+ const original={date:'2025-10-04',at:'2025-10-04',total:50,accounts:[{id:'synthetic-a',name:'合成帳戶',value:50},{id:'empty',name:'空帳戶',value:0}],categories:{}}
+ assert.equal(q.quantityPoint(day({entries:[cash]}),original).total,50)
+})
+test('history requests older than ten years are cut to ten years instead of refused',async()=>{
+ const original=globalThis.fetch;let url
+ globalThis.fetch=async u=>{url=u;return Response.json({chart:{result:[{meta:{currency:'USD',symbol:'TEST',exchangeTimezoneName:'UTC'},timestamp:[],indicators:{quote:[{close:[]}]}}]}})}
+ try{
+  assert.ok(await yahoo.yahooHistory('TEST','2001-01-01'))
+  const period1=Number(new URL(url).searchParams.get('period1'))*1000
+  assert.ok(period1>Date.now()-11*365*86400000)
+ }finally{globalThis.fetch=original}
+})

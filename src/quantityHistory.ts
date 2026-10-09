@@ -11,7 +11,9 @@ export interface HistoricalInstrument {
   accountId: string; account: string; category: string; country: string
   type: Position['type']; symbol: string; currency: string
 }
-export interface HistoricalQuote { source: 'Yahoo'; symbol: string; date: string; value: number }
+// A past close or rate from Yahoo, or a unit price the user typed for that day
+// (for holdings Yahoo does not quote, such as funds or pension accounts).
+export interface HistoricalQuote { source: 'Yahoo' | 'manual'; symbol: string; date: string; value: number }
 export interface QuantityEntry extends HistoricalInstrument {
   quantity: number | null // null: unknown, not zero
   price?: HistoricalQuote
@@ -77,7 +79,24 @@ export function entryValue(entry: QuantityEntry): number | null {
   const value = price === undefined || fx === undefined ? NaN : entry.quantity * price * fx
   return Number.isFinite(value) ? value : null
 }
-export async function valueEntries(entries: QuantityEntry[], date: string, fetcher = fetchHistory): Promise<QuantityEntry[]> {
+// Symbols Yahoo can look up; anything else (a fund name, a sheet label) needs a typed price.
+const TICKER = /^[A-Z0-9.\-=^]{1,24}$/
+export const manualPrice = (entry: QuantityEntry, date: string, value: number): HistoricalQuote =>
+  ({ source: 'manual', symbol: entry.symbol, date, value })
+// Holdings with no market price to look up: not a ticker, or priced by hand in the account.
+export function needsTypedPrice(data: WealthData, entry: HistoricalInstrument): boolean {
+  if (entry.type === 'cash') return false
+  if (!TICKER.test(entry.symbol)) return true
+  const lots = data.accounts.find((a) => a.id === entry.accountId)?.positions.filter((p) => p.type === 'holding' && p.symbol.toUpperCase() === entry.symbol && p.currency === entry.currency) ?? []
+  return lots.length > 0 && lots.every((p) => p.priceManual)
+}
+// `typedOnly` marks holdings that are never looked up, even when the symbol looks like a ticker.
+export async function valueEntries(
+  entries: QuantityEntry[],
+  date: string,
+  fetcher = fetchHistory,
+  typedOnly: (e: QuantityEntry) => boolean = () => false,
+): Promise<QuantityEntry[]> {
   validatePastDate(date)
   const cache = new Map<string, Promise<PriceHistory | null>>()
   const get = (symbol: string) => {
@@ -86,10 +105,11 @@ export async function valueEntries(entries: QuantityEntry[], date: string, fetch
   }
   // Only symbol/date leave the client. Names, account IDs and quantities do not.
   return Promise.all(entries.map(async e => {
-    const { price: _price, fx: _fx, error: _error, ...entry } = e
+    const { price: typed, fx: _fx, error: _error, ...entry } = e
     if (entry.quantity === null || entry.quantity === 0) return entry
-    let price: HistoricalQuote | undefined, fx: HistoricalQuote | undefined
-    if (entry.type !== 'cash') for (const symbol of candidates(entry.symbol, entry.country, entry.category.includes('加密'))) {
+    let price = typed?.source === 'manual' ? typed : undefined
+    let fx: HistoricalQuote | undefined
+    if (entry.type !== 'cash' && !price && TICKER.test(entry.symbol) && !typedOnly(e)) for (const symbol of candidates(entry.symbol, entry.country, entry.category.includes('加密'))) {
       const history = await get(symbol)
       if (history?.currency === entry.currency) price = quoteOn(history, date)
       if (price) break
@@ -98,7 +118,7 @@ export async function valueEntries(entries: QuantityEntry[], date: string, fetch
       const history = await get(fxSymbol(entry.currency))
       if (history?.currency === 'TWD') fx = quoteOn(history, date)
     }
-    const error = [entry.type !== 'cash' && !price && '缺少相符幣別的歷史收盤價', entry.currency !== 'TWD' && !fx && '缺少歷史匯率'].filter(Boolean).join('；')
+    const error = [entry.type !== 'cash' && !price && '缺少相符幣別的歷史收盤價，可手填當日單價', entry.currency !== 'TWD' && !fx && '缺少歷史匯率'].filter(Boolean).join('；')
     const result = { ...entry, ...(price && { price }), ...(fx && { fx }), ...(error && { error }) }
     return !error && entryValue(result) === null ? { ...result, error: '估值超出有效數值範圍' } : result
   }))
@@ -116,8 +136,9 @@ export function quantityPoint(day: QuantityDay, original?: Snapshot): Historical
     categories[entry.category] = c === null || v === null ? null : c + v
     total = total === null || v === null ? null : total + v
   }
-  // Unknown legacy inventory in an original snapshot must not disappear.
-  if (original?.accounts.some(a => !accounts.has(a.id)) || !day.entries.length || !Number.isFinite(total)) total = null
+  // Unknown legacy inventory in an original snapshot must not disappear; an account
+  // that was empty that day has nothing to add.
+  if (original?.accounts.some(a => !accounts.has(a.id) && a.value !== 0) || !day.entries.length || !Number.isFinite(total)) total = null
   const debt = original?.liabilityTotal
   return { date: day.date, at: day.updatedAt, total, accounts: [...accounts.values()], categories, manual: true,
     ...(debt !== undefined && { liabilityTotal: debt }),
@@ -136,12 +157,17 @@ export function parseQuantityDays(raw: unknown): QuantityDay[] {
     const d = value as QuantityDay
     if (!d || !validDate(d.date) || !Number.isFinite(Date.parse(d.updatedAt)) || !Array.isArray(d.entries)) throw new Error('歷史數量日期或資料格式不正確')
     const entries = d.entries.map((e): QuantityEntry => {
-      if (!e || ![e.accountId,e.account,e.category,e.country,e.currency].every(x => typeof x === 'string' && x.trim()) || !['cash','holding'].includes(e.type) || typeof e.symbol !== 'string' || (e.type === 'holding' && !/^[A-Z0-9.\-=^]{1,24}$/.test(e.symbol)) || (e.type === 'cash' && e.symbol !== '') || !isSupportedCurrency(e.currency)) throw new Error('歷史持倉識別資料不正確')
+      const named = [e?.accountId, e?.account, e?.category, e?.country, e?.currency].every((x) => typeof x === 'string' && x.trim())
+      // A holding's symbol is whatever the account uses for it, ticker or not.
+      const symbolOk = typeof e?.symbol === 'string' && (e.type === 'cash' ? e.symbol === '' : !!e.symbol.trim() && e.symbol.length <= 64)
+      if (!e || !named || !['cash', 'holding'].includes(e.type) || !symbolOk || !isSupportedCurrency(e.currency)) throw new Error('歷史持倉識別資料不正確')
       if (e.quantity !== null && (typeof e.quantity !== 'number' || !Number.isFinite(e.quantity) || e.quantity < 0)) throw new Error('歷史數量須為非負有限數字，空白表示未知')
       const quote = (q: HistoricalQuote | undefined, isFx: boolean) => {
         if (q === undefined) return undefined
-        if (!q || q.source !== 'Yahoo' || typeof q.symbol !== 'string' || !q.symbol || !validDate(q.date) || q.date > d.date || age(d.date,q.date) > 7 || !Number.isFinite(q.value) || q.value <= 0 || (isFx && q.symbol !== fxSymbol(e.currency))) throw new Error('歷史行情來源或日期不正確')
-        return { source: 'Yahoo' as const, symbol: q.symbol, date: q.date, value: q.value }
+        const manual = q?.source === 'manual'
+        const sourceOk = manual ? !isFx && q.symbol === e.symbol && q.date === d.date : q?.source === 'Yahoo' && typeof q.symbol === 'string' && !!q.symbol
+        if (!q || !sourceOk || !validDate(q.date) || q.date > d.date || age(d.date, q.date) > 7 || !Number.isFinite(q.value) || q.value <= 0 || (isFx && q.symbol !== fxSymbol(e.currency))) throw new Error('歷史行情來源或日期不正確')
+        return { source: q.source, symbol: q.symbol, date: q.date, value: q.value }
       }
       const price = quote(e.price, false), fx = quote(e.fx, true)
       return { accountId:e.accountId, account:e.account, category:e.category, country:e.country, type:e.type, symbol:e.symbol, currency:e.currency, quantity:e.quantity, ...(price && {price}), ...(fx && {fx}), ...(typeof e.error === 'string' && {error:e.error}) }

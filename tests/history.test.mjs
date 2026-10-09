@@ -52,7 +52,7 @@ test('daily values combine past closes, past rates and the quantity held each da
   })
   const prices = { asTraded: true, symbol: 'AAPL', currency: 'USD', points: [['2026-09-30', 1], ['2026-10-01', 190], ['2026-10-02', 195], ['2026-10-05', 205], ['2026-10-06', 202]].map(([date, close]) => ({ date, close })) }
   const fx = { asTraded: true, symbol: 'USDTWD=X', currency: 'TWD', points: [{ date: '2026-10-01', close: 31 }, { date: '2026-10-05', close: 32 }] }
-  const { days, startKnown, rateFallback } = timeline.positionTimeline(d, d.accounts[0], p, prices, fx, noon('2026-10-07'))
+  const { days, startKnown, incomplete } = timeline.positionTimeline(d, d.accounts[0], p, prices, fx, noon('2026-10-07'))
   assert.deepEqual(
     days.map((x) => [x.date, x.quantity, x.price, x.rate, x.value, !!x.live]),
     [
@@ -64,10 +64,10 @@ test('daily values combine past closes, past rates and the quantity held each da
     ],
   )
   assert.equal(startKnown, true)
-  assert.equal(rateFallback, false)
+  assert.equal(incomplete, false)
 })
 
-test('without past prices a hand-priced holding leaves historical values unknown', () => {
+test('without past prices a hand-priced holding uses the prices in its change log', () => {
   const p = holding({ currency: 'TWD', quantity: 2, price: 120, priceManual: true, addedAt: noon('2026-10-01') })
   const log = [
     { ...change(noon('2026-10-01'), null, { quantity: 1, price: 100 }), currency: 'TWD' },
@@ -75,7 +75,7 @@ test('without past prices a hand-priced holding leaves historical values unknown
   ]
   const d = data([p], { history: { snapshots: [], changes: log } })
   const { days } = timeline.positionTimeline(d, d.accounts[0], p, null, null, noon('2026-10-07'))
-  assert.deepEqual(days.map((x) => [x.date, x.value]), [['2026-10-01', null], ['2026-10-03', null], ['2026-10-07', 240]])
+  assert.deepEqual(days.map((x) => [x.date, x.value]), [['2026-10-01', 100], ['2026-10-03', 240], ['2026-10-07', 240]])
 })
 
 test('the history relay rejects symbols and dates that are not plain values', async () => {

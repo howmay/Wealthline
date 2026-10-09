@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { fmt } from '../format'
 import { localDate } from '../history'
 import { BASE_CURRENCY, type Account, type Position, type WealthData } from '../model'
-import { fetchHistory, fxSymbol, positionTimeline, startDate, type PriceHistory } from '../priceHistory'
+import { explicitDays, fetchHistory, fxSymbol, positionTimeline, startDate, type PriceHistory } from '../priceHistory'
 import { displaySymbol } from '../quotes'
 import { TrendChart } from './TrendChart'
 
@@ -26,12 +26,13 @@ export function PositionHistory({
   const [now] = useState(() => new Date().toISOString())
   const [shown, setShown] = useState(10)
   const [loaded, setLoaded] = useState<Loaded | null>(null)
-  const from = [startDate(data, account, p, localDate(now)).date, ...(data.history.quantityDays ?? []).map(d=>d.date)].sort()[0]
+  // Quantities entered on the History tab carry forward, so prices start from the earliest one.
+  const from = [startDate(data, account, p, localDate(now)).date, ...explicitDays(data, account, p).keys()].sort()[0]
 
   useEffect(() => {
     let live = true
     void Promise.all([
-      p.type === 'cash' ? null : fetchHistory(p.symbol, from),
+      p.type === 'cash' || p.priceManual ? null : fetchHistory(p.symbol, from),
       p.currency === BASE_CURRENCY ? null : fetchHistory(fxSymbol(p.currency), from),
     ]).then(([prices, fx]) => live && setLoaded({ prices, fx }))
     return () => {
@@ -56,15 +57,16 @@ export function PositionHistory({
     )
   }
 
-  const { days, startKnown, rateFallback } = positionTimeline(data, account, p, loaded.prices, loaded.fx, now)
+  const { days, startKnown, incomplete } = positionTimeline(data, account, p, loaded.prices, loaded.fx, now)
   const first = days[0]
   const diff = days.length > 1 && days[days.length - 1].value !== null && first.value !== null ? days[days.length - 1].value! - first.value : null
   const notes = [
-    p.type === 'holding' && !loaded.prices && '缺少歷史股價，對應日期不估值。',
-    '同帳戶同標的同幣別合計所有批次；歷史行情統一使用 Yahoo，不套用手動現價。',
+    p.type === 'holding' && !p.priceManual && !loaded.prices && '抓不到歷史股價，過去的日子不估值。',
+    p.priceManual && '這個標的是手動價格，價值只在你修改時變動。',
     p.type === 'cash' && p.currency === BASE_CURRENCY && '台幣餘額只在你修改時變動。',
-    rateFallback && '部分日期缺少歷史價格、匯率或拆股後數量，顯示未知；不以目前值補算。',
-    !startKnown && '加入日期不明，不重建未知持倉；可至歷史頁補登。',
+    '同帳戶、同標的、同幣別的多筆一起計算；拆股前的數量會換算成當時的股數。',
+    incomplete && '部分日期缺少歷史價格或匯率，顯示未知，不以目前值補算。',
+    !startKnown && '加入日期不明，先顯示最近一年。可在歷史頁補登實際數量。',
   ].filter(Boolean)
 
   return (
