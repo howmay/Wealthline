@@ -49,7 +49,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
       <div className="page-head">
         <div>
           <h2>歷史</h2>
-          <p className="muted">每次儲存都會記下當天的資產，以及你改了哪些餘額或持倉。</p>
+          <p className="muted">每天第一次登入和每次儲存，都會記下當天的資產；儲存時也會記下你改了哪些餘額或持倉。</p>
         </div>
         {!savedToday && !dirty && data.accounts.length > 0 && (
           <button className="primary" onClick={onSave} disabled={busy}>
@@ -76,7 +76,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
           </div>
         </div>
         <TrendChart dates={dates} series={seriesFor(mode, points, accountNames)} area={mode === 'total'} />
-        {points.length < 2 && <p className="muted small chart-note">目前只有一天的紀錄。之後每天儲存一次，就能看到資產隨時間的變化。</p>}
+        {points.length < 2 && <p className="muted small chart-note">目前只有一天的紀錄。之後每天登入時會自動記一筆，就能看到資產隨時間的變化。</p>}
       </section>
 
       <section className="panel">

@@ -112,7 +112,7 @@ function Privacy() {
             <strong>Google 存取權杖</strong>：Google 發給本服務、約一小時後失效的權杖，用來代表你呼叫 Google Drive API。
           </li>
           <li>
-            <strong>你輸入的資產資料</strong>：帳戶名稱、類型、國家、各幣別餘額、持有標的代號與數量、匯率、每日資產快照與修改紀錄。用途：計算與呈現你的資產統計。
+            <strong>你輸入的資產資料</strong>：帳戶名稱、類型、國家、各幣別餘額、持有標的代號與數量、匯率、每日資產快照、標的加入日期與修改紀錄。用途：計算與呈現你的資產統計。
           </li>
         </ul>
         <p>本服務不蒐集你的銀行帳號、密碼、身分證字號、交易憑證或任何金融機構的登入資訊。</p>
@@ -149,7 +149,7 @@ function Privacy() {
             <strong>Google</strong>（登入、使用者資料、Google Drive API）：讀寫你的資料檔。適用 <a href="https://policies.google.com/privacy">Google 隱私權政策</a>。
           </li>
           <li>
-            <strong>報價查詢 /api/quote</strong>：本服務部署在 Cloudflare Workers 上的轉發程式，只收到<strong>股票代號</strong>（例如 2330.TW），再向 Yahoo Finance 查詢價格。不包含數量、金額或你的身分，也不記錄任何內容。
+            <strong>報價查詢 /api/quote 與 /api/history</strong>：本服務部署在 Cloudflare Workers 上的轉發程式，只收到<strong>股票或匯率代號</strong>（例如 2330.TW、USDTWD=X），查歷史價格時另有一個起始日期，再向 Yahoo Finance 查詢價格。不包含數量、金額或你的身分，也不記錄任何內容。
           </li>
           <li>
             <strong>ExchangeRate-API</strong>（open.er-api.com）與 <strong>CoinGecko</strong>：查詢匯率與加密貨幣價格，請求中只有幣別或幣種名稱。
@@ -256,7 +256,7 @@ function PrivacyEnglish() {
         <li>your Google account <strong>identifier, email address, name and profile picture URL</strong>; the identifier verifies the account on reauthorization;</li>
         <li>
           the <strong>single data file</strong> that Wealthline creates in your Google Drive (<code>My Drive / {FOLDER_NAME} / {DATA_FILE_NAME}</code>),
-          which holds the accounts, balances, holdings, exchange rates, daily snapshots and edit log that you enter;
+          which holds the accounts, balances, holdings, exchange rates, daily snapshots, the date each holding was added, and the edit log that you enter;
         </li>
         <li>a short-lived <strong>OAuth access token</strong> (about one hour) used to call the Google Drive API on your behalf.</li>
       </ul>
@@ -277,8 +277,8 @@ function PrivacyEnglish() {
       <h3>3. How we share, transfer or disclose Google user data</h3>
       <p>
         <strong>We do not share, transfer or disclose Google user data with any third party.</strong> Google user data travels only between your browser
-        and Google. To look up market prices, the browser sends only ticker symbols (for example 2330.TW) to the app's own quote relay on Cloudflare
-        Workers, which asks Yahoo Finance, and only currency or coin codes to ExchangeRate-API and CoinGecko. These requests contain no Google user data, no
+        and Google. To look up market prices, the browser sends only ticker or currency-pair symbols (for example 2330.TW or USDTWD=X), plus a start date for past prices, to the
+        app's own quote relay on Cloudflare Workers, which asks Yahoo Finance, and only currency or coin codes to ExchangeRate-API and CoinGecko. These requests contain no Google user data, no
         amounts and no identity. Cloudflare hosts the website and may log technical data such as IP addresses under its own policy.
       </p>
 

@@ -1,13 +1,14 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
-import { handleQuoteRequest } from './server/yahoo.ts'
+import { handleApiRequest, isApiPath } from './server/yahoo.ts'
 
-// Serves /api/quote during `npm run dev` and `npm run preview`, mirroring the
+// Serves /api/quote and /api/history during `npm run dev` and `npm run preview`, mirroring the
 // Cloudflare Worker in worker/index.ts.
 function quoteApi(): Plugin {
   const middleware = async (req: { url?: string }, res: import('node:http').ServerResponse, next: () => void) => {
-    if (!req.url?.startsWith('/api/quote')) return next()
-    const r = await handleQuoteRequest(new URL(req.url, 'http://localhost'))
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    if (!isApiPath(url.pathname)) return next()
+    const r = await handleApiRequest(url)
     res.statusCode = r.status
     r.headers.forEach((v, k) => res.setHeader(k, v))
     res.end(await r.text())

@@ -1,6 +1,6 @@
-// Cloudflare Worker entry: answers /api/quote and leaves everything else to the static
+// Cloudflare Worker entry: answers /api/quote and /api/history, and leaves everything else to the static
 // assets in dist/ (configured in wrangler.jsonc), applying security headers to both.
-import { handleQuoteRequest } from '../server/yahoo.ts'
+import { handleApiRequest, isApiPath } from '../server/yahoo.ts'
 
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> }
@@ -9,8 +9,8 @@ interface Env {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
-    const result = request.method === 'GET' && url.pathname === '/api/quote'
-      ? await handleQuoteRequest(url)
+    const result = request.method === 'GET' && isApiPath(url.pathname)
+      ? await handleApiRequest(url)
       : await env.ASSETS.fetch(request)
     const response = new Response(result.body, result)
     // run_worker_first bypasses public/_headers, so keep HTML revalidated here (see that file).

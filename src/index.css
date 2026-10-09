@@ -1584,6 +1584,51 @@ td.num .cell-input {
   vertical-align: middle;
 }
 
+.holdings .symbol {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.holdings .symbol .chevron {
+  width: 0.8em;
+  color: var(--ink-2);
+  font-size: 0.8em;
+}
+
+.holdings .symbol:hover strong {
+  color: var(--accent);
+}
+
+.holdings tr.open strong {
+  color: var(--accent);
+}
+
+.position-history {
+  margin: 14px 0 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+
+.position-history h4 {
+  margin: 0;
+}
+
+.position-history > p {
+  margin: 2px 0 10px;
+}
+
+.position-history table {
+  margin-top: 10px;
+}
+
+.position-history > button {
+  margin-top: 8px;
+}
+
 .ellipsis {
   max-width: 220px;
   overflow: hidden;

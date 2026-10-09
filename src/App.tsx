@@ -13,7 +13,7 @@ import {
 } from './google/auth'
 import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData } from './google/drive'
 import { applyFetchedRates, emptyData, missingRates, parseWealthData, ratesStale, usedCurrencies, type WealthData } from './model'
-import { pendingChanges, recordSave, revertChange } from './history'
+import { localDate, pendingChanges, recordSave, revertChange } from './history'
 import { applyQuotes, fetchHoldingQuotes } from './quotes'
 import { fetchRates } from './rates'
 import { Accounts, type AccountsView } from './views/Accounts'
@@ -40,6 +40,8 @@ export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null)
   const [data, setData] = useState<WealthData | null>(null)
   const [dirty, setDirty] = useState(false)
+  const dirtyRef = useRef(false)
+  dirtyRef.current = dirty
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [tab, setTab] = useState<Tab>('overview')
   const [accountsView, setAccountsView] = useState<AccountsView>({ page: 'list' })
@@ -92,36 +94,72 @@ export default function App() {
     const loaded = file?.data ?? emptyData()
     setData(loaded)
     setDirty(false)
-    void refreshMarket(loaded)
+    void refreshMarket(loaded).then((market) => market && recordToday(market))
   }
 
   // Updates holding prices, then exchange rates (new quotes can bring new currencies).
-  // Like rates, prices stay in memory until the next save.
-  async function refreshMarket(from: WealthData) {
+  // Like rates, prices stay in memory until the next save. Returns `from` with the
+  // new prices and rates, or null when the user signed out meanwhile.
+  async function refreshMarket(from: WealthData): Promise<WealthData | null> {
     const version = sessionVersion.current
     const { quotes, failed } = await fetchHoldingQuotes(from)
-    if (version !== sessionVersion.current) return
+    if (version !== sessionVersion.current) return null
     const at = new Date().toISOString()
     setData((d) => (d ? applyQuotes(d, quotes, at) : d))
     setPriceError(failed.length ? `找不到 ${failed.join('、')} 的報價，可以點價格手動輸入。` : '')
     const withQuotes = applyQuotes(from, quotes, at)
-    if (ratesStale(withQuotes)) await refreshRates(withQuotes)
+    return ratesStale(withQuotes) ? refreshRates(withQuotes) : withQuotes
   }
 
   // Updates exchange rates in the background. The new rates are kept in memory and
-  // written to Drive with the next save, so opening the app never leaves unsaved changes.
-  async function refreshRates(from: WealthData) {
+  // written to Drive with the next save (or today's first record), so opening the app never leaves unsaved changes.
+  async function refreshRates(from: WealthData): Promise<WealthData | null> {
     const version = sessionVersion.current
     setRatesError('')
     try {
       const r = await fetchRates(usedCurrencies(from))
-      if (version !== sessionVersion.current) return
+      if (version !== sessionVersion.current) return null
       setData((d) => (d ? applyFetchedRates(d, r.rates, r.updatedAt) : d))
       if (r.unsupported.length) setRatesError(`找不到 ${r.unsupported.join('、')} 的匯率，請手動輸入。`)
+      return applyFetchedRates(from, r.rates, r.updatedAt)
     } catch (e) {
-      if (version !== sessionVersion.current) return
+      if (version !== sessionVersion.current) return null
       setRatesError(e instanceof Error ? e.message : String(e))
+      return from
     }
+  }
+
+  // The first sign-in of the day records that day's values with fresh prices, so the
+  // daily history fills in without the user having to save. Only market data changes:
+  // `market` is the saved file with new prices and rates, so no edits are logged.
+  async function recordToday(market: WealthData) {
+    const version = sessionVersion.current
+    const at = new Date().toISOString()
+    const last = saved.current
+    if (!last || !market.accounts.length || dirtyRef.current) return
+    if (last.history.snapshots.some((s) => s.date === localDate(at))) return
+    // A value without its exchange rate would record a wrong day.
+    if (missingRates(market).length) return
+    const next = recordSave(last, { ...market, updatedAt: at })
+    try {
+      fileId.current = await saveData(await validToken(), next, fileId.current)
+    } catch {
+      return // Not worth an error: the next save records today anyway.
+    }
+    if (version !== sessionVersion.current) return
+    saved.current = next
+    // Keep any edits made while it was saving; only the history and the new stamps are added.
+    const stamps = new Map(next.accounts.flatMap((a) => a.positions.map((p) => [p.id, p.addedAt])))
+    setData((d) =>
+      d
+        ? {
+            ...d,
+            // An edit meanwhile (say, a deleted history entry) wins; that save records today again.
+            history: dirtyRef.current ? d.history : next.history,
+            accounts: d.accounts.map((a) => ({ ...a, positions: a.positions.map((p) => (p.addedAt ? p : { ...p, addedAt: stamps.get(p.id) })) })),
+          }
+        : d,
+    )
   }
 
   // Restore the session after a reload while this tab's token is still valid.
@@ -318,7 +356,7 @@ export default function App() {
             onChange={update}
             view={accountsView}
             setView={setAccountsView}
-            onRefreshPrices={() => refreshMarket(data)}
+            onRefreshPrices={async () => void (await refreshMarket(data))}
             priceError={priceError}
           />
         )}
@@ -332,7 +370,7 @@ export default function App() {
             onOpenAccount={(id) => go('accounts', { page: 'detail', id })}
           />
         )}
-        {data && tab === 'rates' && <Rates data={data} onChange={update} onRefresh={() => refreshRates(data)} error={ratesError} />}
+        {data && tab === 'rates' && <Rates data={data} onChange={update} onRefresh={async () => void (await refreshRates(data))} error={ratesError} />}
       </main>
       <SiteFooter />
     </>

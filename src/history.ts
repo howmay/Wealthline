@@ -44,7 +44,9 @@ export function localDate(iso: string): string {
 
 // Positions are matched by what they are (a currency balance or a ticker), not by id,
 // so re-importing a spreadsheet does not read as removing and re-adding everything.
-const keyOf = (p: Position) => `${p.type}:${p.type === 'cash' ? p.currency : p.symbol.toUpperCase()}`
+export const keyOf = (p: Position) => `${p.type}:${p.type === 'cash' ? p.currency : p.symbol.toUpperCase()}`
+// The same key for a change log entry, whose symbol is the currency for a balance.
+export const changeKey = (c: { type: string; symbol: string }) => `${c.type}:${c.symbol.toUpperCase()}`
 
 function states(a: Account | undefined): Map<string, { p: Position; s: PositionState }> {
   const m = new Map<string, { p: Position; s: PositionState }>()
@@ -100,6 +102,25 @@ export function snapshotOf(data: WealthData, at: string): Snapshot {
   return { date: localDate(at), at, total: accounts.reduce((s, a) => s + a.value, 0), accounts, categories }
 }
 
+// When each balance or holding first appeared: new ones get this save's time; ones saved
+// earlier get the time the change log last recorded them being added, if it did.
+function stampAdded(saved: WealthData | null, next: WealthData, changes: Change[], at: string): WealthData['accounts'] {
+  return next.accounts.map((a) => {
+    if (a.positions.every((p) => p.addedAt)) return a
+    const before = new Set(saved?.accounts.find((x) => x.id === a.id)?.positions.map(keyOf) ?? [])
+    const positions = a.positions.map((p) => {
+      if (p.addedAt) return p
+      const key = keyOf(p)
+      if (!before.has(key)) return { ...p, addedAt: at }
+      const added = changes
+        .filter((c) => c.accountId === a.id && !c.before && c.after && changeKey(c) === key)
+        .reduce<string | undefined>((latest, c) => (!latest || c.at > latest ? c.at : latest), undefined)
+      return added ? { ...p, addedAt: added } : p
+    })
+    return { ...a, positions }
+  })
+}
+
 function upsert(snapshots: Snapshot[], s: Snapshot): Snapshot[] {
   return [...snapshots.filter((x) => x.date !== s.date), s].sort((x, y) => x.date.localeCompare(y.date))
 }
@@ -139,12 +160,13 @@ export function recordSave(saved: WealthData | null, next: WealthData): WealthDa
   if (saved && saved.accounts.length && snapshots.length === 0 && localDate(saved.updatedAt) !== localDate(at)) {
     snapshots = [snapshotOf(saved, saved.updatedAt)]
   }
-  const changes = diffPositions(saved ?? { ...next, accounts: [] }, next, at)
+  const changes = [...next.history.changes, ...diffPositions(saved ?? { ...next, accounts: [] }, next, at)]
+  const stamped = { ...next, accounts: stampAdded(saved, next, changes, at) }
   return {
-    ...next,
+    ...stamped,
     history: {
-      changes: [...next.history.changes, ...changes],
-      snapshots: next.accounts.length ? upsert(snapshots, snapshotOf(next, at)) : snapshots,
+      changes,
+      snapshots: next.accounts.length ? upsert(snapshots, snapshotOf(stamped, at)) : snapshots,
     },
   }
 }

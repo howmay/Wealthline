@@ -16,6 +16,7 @@ import {
 import { displaySymbol, lookupQuote } from '../quotes'
 import { ChangeList } from './History'
 import { NumberInput } from './NumberInput'
+import { PositionHistory } from './PositionHistory'
 
 interface Props {
   data: WealthData
@@ -30,6 +31,8 @@ interface Props {
 // Where the numbers go: balances per currency, and holdings for investment accounts.
 export function AccountDetail({ data, account: a, onChange, onEdit, onBack, onRefreshPrices, priceError }: Props) {
   const [refreshing, setRefreshing] = useState(false)
+  // The holding whose daily values are shown under its row.
+  const [open, setOpen] = useState<string | null>(null)
   const setPositions = (positions: Position[]) => onChange({ ...a, positions })
   const setPosition = (p: Position) => setPositions(a.positions.map((x) => (x.id === p.id ? p : x)))
   const cash = a.positions.filter((p) => p.type === 'cash')
@@ -110,9 +113,19 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack, onRe
                 </thead>
                 <tbody>
                   {holdings.map((p) => (
-                    <tr key={p.id}>
+                    <tr key={p.id} className={open === p.id ? 'open' : ''}>
                       <td>
-                        <strong>{displaySymbol(p.symbol)}</strong>
+                        <button
+                          className="link symbol"
+                          aria-expanded={open === p.id}
+                          title={open === p.id ? '收起每日價值' : '查看每日價值'}
+                          onClick={() => setOpen(open === p.id ? null : p.id)}
+                        >
+                          <span className="chevron" aria-hidden>
+                            {open === p.id ? '▾' : '▸'}
+                          </span>
+                          <strong>{displaySymbol(p.symbol)}</strong>
+                        </button>
                         {p.name && p.name !== p.symbol && <div className="muted small ellipsis">{p.name}</div>}
                       </td>
                       <td className="num">
@@ -140,6 +153,11 @@ export function AccountDetail({ data, account: a, onChange, onEdit, onBack, onRe
               </table>
             </div>
           )}
+          {holdings
+            .filter((p) => p.id === open)
+            .map((p) => (
+              <PositionHistory key={p.id} data={data} account={a} position={p} onClose={() => setOpen(null)} />
+            ))}
           <AddHolding account={a} onAdd={(p) => setPositions([...a.positions, p])} />
         </section>
       )}
