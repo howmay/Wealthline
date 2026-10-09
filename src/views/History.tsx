@@ -48,7 +48,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
       <div className="page-head">
         <div>
           <h2>歷史</h2>
-          <p className="muted">每日紀錄直接展開，可按帳戶補登或修正當日持倉數量。手動補登受保護，不會被自動快照覆蓋。</p>
+          <p className="muted">選擇帳戶與標的，補登或修正當日持有數量。已填資料保留，不修改目前持倉。</p>
         </div>
         {!savedToday && !dirty && (data.accounts.length > 0 || !!data.liabilities?.length) && (
           <button className="primary" onClick={onSave} disabled={busy}>
@@ -137,12 +137,12 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
               <tbody>
                 {[...points].reverse().map((s) => (
                   <tr key={s.date}>
-                    <td>{s.date.replace(/-/g, '/')}<span className="muted small">{s.manual ? ' · 手動' : s.date === today.date ? ' · 目前' : ' · 原始快照'}</span></td>
-                    <td className="num">{s.total === null ? '資料不完整' : `NT$ ${fmt(s.total, 0)}`}</td>
-                    <td className="num">{s.liabilityEstimated && '預估 · '}{s.liabilityTotal === undefined ? '未記錄' : s.liabilityTotal === null ? '無法換算' : `NT$ ${fmt(s.liabilityTotal, 0)}`}</td>
-                    <td className="num">{s.liabilityEstimated && '預估 · '}{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</td>
-                    <td className="num">{s.accounts.length}</td>
-                    <td className="num">
+                    <td data-label="日期"><span className="daily-cell-value">{s.date.replace(/-/g, '/')}<span className="muted small">{s.manual ? ' · 手動' : s.date === today.date ? ' · 目前' : ' · 原始快照'}</span></span></td>
+                    <td className="num" data-label="總資產"><span className="daily-cell-value">{s.total === null ? '資料不完整' : `NT$ ${fmt(s.total, 0)}`}</span></td>
+                    <td className="num" data-label="總負債"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.liabilityTotal === undefined ? '未記錄' : s.liabilityTotal === null ? '無法換算' : `NT$ ${fmt(s.liabilityTotal, 0)}`}</span></td>
+                    <td className="num" data-label="淨資產"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</span></td>
+                    <td className="num" data-label="帳戶數"><span className="daily-cell-value">{s.accounts.length}</span></td>
+                    <td className="num daily-actions">
                       <button onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date)})}>編輯數量 {s.date}</button>
                       {!s.manual && saved.some(x=>x.date===s.date) && <button
                         className="icon"
