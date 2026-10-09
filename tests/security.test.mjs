@@ -116,8 +116,9 @@ test('the CSP allows exactly the inline scripts in index.html', async () => {
 test('legacy plaintext Drive files remain readable', async () => {
   const data = { version: 1, accounts: [] }
   globalThis.fetch = async (url) => new URL(url).searchParams.has('alt')
-    ? Response.json(data) : Response.json({ files: [{ id: 'file-a' }] })
-  assert.deepEqual(await drive.loadData(token, (raw) => raw), { fileId: 'file-a', data })
+    ? Response.json(data) : new URL(url).pathname.endsWith('/file-a')
+      ? Response.json({ id: 'file-a', etag: '"v1"', headRevisionId: 'r1' }) : Response.json({ files: [{ id: 'file-a' }] })
+  assert.deepEqual(await drive.loadData(token, (raw) => raw), { fileId: 'file-a', etag: '"v1"', data })
 })
 
 test('invalid quote symbols cannot turn the proxy into an arbitrary URL fetcher', async () => {

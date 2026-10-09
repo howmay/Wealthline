@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { fmt, pct } from '../format'
-import { importSheet } from '../importSheet'
+import { importSheet, type ImportResult } from '../importSheet'
 import { ACCOUNT_KINDS, CATEGORIES, accountBaseValue, cashCurrencies, countryLabel, type Account, type AccountKind, type WealthData } from '../model'
 import { AccountDetail } from './AccountDetail'
 import { AccountForm } from './AccountForm'
@@ -147,31 +147,50 @@ function categoryColor(category: string) {
 
 function ImportPanel({ data, onChange, onDone }: Props & { onDone: () => void }) {
   const [text, setText] = useState('')
-  const [message, setMessage] = useState('')
+  const [preview, setPreview] = useState<{ source: WealthData; result: ImportResult } | null>(null)
   return (
     <section className="panel">
       <h3>從試算表匯入</h3>
       <p className="muted small">
         從 Google 試算表或 Excel 複製資料列後貼上（不含標題列）。欄位順序：機構、類別、子類別、幣別、數量、單價、原幣市值、匯率、台幣市值、佔比。
-        同名帳戶會被覆蓋，匯率會一併更新。
+        同名帳戶的全部原持倉會被取代，匯率會一併更新。請先預覽並確認刪除差異；有錯誤時整批不匯入。
       </p>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} placeholder="在這裡貼上…" />
+      <textarea value={text} onChange={(e) => { setText(e.target.value); setPreview(null) }} rows={8} placeholder="在這裡貼上…" />
       <div className="row">
         <button
           className="primary"
           onClick={() => {
-            const r = importSheet(data, text)
-            onChange(r.data)
-            setMessage(`已匯入 ${r.rows} 列到 ${r.accounts} 個帳戶${r.skipped ? `，略過 ${r.skipped} 列無法辨識的資料` : ''}。`)
-            setText('')
-            if (!r.skipped) onDone()
+            setPreview({ source: data, result: importSheet(data, text) })
           }}
           disabled={!text.trim()}
         >
-          匯入
+          預覽匯入
         </button>
-        {message && <span className="muted">{message}</span>}
+        <button onClick={onDone}>取消</button>
       </div>
+      {preview && <div aria-live="polite">
+        <h4>匯入預覽：{preview.result.rows} 列、{preview.result.accounts} 個帳戶</h4>
+        {preview.source !== data && <p role="alert">資料已變更，請重新預覽後再確認。</p>}
+        {preview.result.errors.length > 0 && <div role="alert">
+          <p>以下錯誤必須全部修正，尚未套用任何資料：</p>
+          <ul>{preview.result.errors.map((e) => <li key={e.line}>第 {e.line} 列：{e.message}</li>)}</ul>
+        </div>}
+        {preview.result.replaced.map((a) => <div key={a.id}>
+          <strong>將取代「{a.name}」，刪除以下 {a.positions.length} 筆原持倉：</strong>
+          <ul>{a.positions.map((p) => <li key={p.id}>{p.symbol || '現金'} · {p.currency} · 數量 {p.quantity} · 單價 {p.price}</li>)}</ul>
+        </div>)}
+        {!preview.result.errors.length && preview.result.data.accounts.filter((a) => !preview.source.accounts.includes(a)).map((a) => <div key={a.id}>
+          <strong>匯入後：{a.name} · {a.kind === 'bank' ? '銀行帳戶' : '投資帳戶'} · {a.category} · {a.country || '未設定國家'}</strong>
+          <ul>{a.positions.map((p) => <li key={p.id}>{p.symbol || '現金'} · {p.currency} · 數量 {p.quantity} · 單價 {p.price}</li>)}</ul>
+        </div>)}
+        <ul>{preview.result.rateChanges.map((r) => <li key={r.currency}>匯率 {r.currency}：{r.before ?? '未設定'} → {r.after}</li>)}</ul>
+        <p className="muted small">確認後只更新本機資料，仍需按「儲存變更」才會寫入 Drive。</p>
+        <button className="primary" disabled={preview.source !== data || !!preview.result.errors.length || !preview.result.rows} onClick={() => {
+          if (preview.source !== data || preview.result.errors.length || !preview.result.rows) return
+          onChange(preview.result.data)
+          onDone()
+        }}>確認匯入並取代上述資料</button>
+      </div>}
     </section>
   )
 }
