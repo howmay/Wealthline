@@ -104,10 +104,10 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
           const pdf = await readStatementPdf(bytes,secret,abort.signal,file.name,message=>{if(!abort.signal.aborted)setProgress(message)})
           const info = statementMetadata(pdf.lines,pdf.title,file.name)
           const statementMonth = info.month || month
-          const statementCard = card.trim() || info.bank || ''
+          const statementCard = card.trim() || (info.bank ? `${info.bank}${info.currency === 'SGD' ? ' (SG)' : ''}` : '')
           if(!statementMonth) throw new Error('無法辨識帳單月份，請填寫備用月份後重試')
           if(!statementCard.trim()) throw new Error('無法辨識銀行，請填寫備用銀行／卡片名稱後重試')
-          const parsed = parseStatement(pdf.lines,statementMonth,currency,info.bank || file.name,pdf.transactionIndexes)
+          const parsed = parseStatement(pdf.lines,statementMonth,info.currency || currency,info.bank || file.name,pdf.transactionIndexes)
           if(!parsed.rows.length) throw new Error('沒有辨識到交易。此帳單的排版暫不支援，尚未匯入任何資料。')
           const rows = await prepareExpenses(parsed.rows,statementCard,fileHash,info.bank === '匯豐' ? parsed.sourceIndexes : undefined)
           if(abort.signal.aborted) return
@@ -129,7 +129,7 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
   return <section className="panel statement-import">
     <div className="panel-head"><h2>匯入信用卡帳單</h2><button onClick={()=>{controller.current?.abort();onCancel()}}>取消匯入</button></div>
     <p className="notice">PDF 與密碼只在此瀏覽器解密及解析，不傳送到伺服器、不保存原始檔或密碼。確認後的消費明細會隨資料檔儲存在此瀏覽器或你的 Google Drive。</p>
-    <p className="muted small">支援富邦與玉山文字帳單的入帳欄位，使用最後的臺幣帳單金額。匯豐圖片商家欄會在本機以 OCR 補上；OCR 交易預設不勾選，請核對商家、日期與金額並排除繳款後再選取。證券帳單不支援；掃描圖片及其他排版可能無法辨識，請核對完整性。退款以負數記錄，繳款與總計不當作消費。</p>
+    <p className="muted small">支援富邦與玉山文字帳單的入帳欄位，使用最後的臺幣帳單金額。SG 匯豐文字帳單自動使用 SGD 入帳金額。匯豐圖片商家欄會在本機以 OCR 補上；OCR 交易預設不勾選，請核對商家、日期與金額並排除繳款後再選取。證券帳單不支援；掃描圖片及其他排版可能無法辨識，請核對完整性。退款以負數記錄，繳款與總計不當作消費。</p>
     {parsing && progress && <p role="status">{progress}</p>}
     {error && <p className="banner error" role="alert">{error}</p>}
     {!!reports.length && <ul className="notice" aria-label="各帳單解析結果">{reports.map((r,i)=><li key={i}><strong>{r.name}</strong>：{r.error || `${r.bank} · ${r.month}（${r.source}）· ${r.count} 筆待核對${r.ocr?' · OCR 商家請核對':''}${r.warning?` · ${r.warning}`:''}`}</li>)}</ul>}

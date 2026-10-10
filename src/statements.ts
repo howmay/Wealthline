@@ -19,6 +19,34 @@ export function textLines(items:unknown[]):string[] {
   return textRows(items).map(r=>r.items.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim())
 }
 
+const months=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
+const englishDate=(text:string)=>{
+  const match=text.trim().match(/^(\d{1,2})\s+([A-Z]{3})$/i)
+  const month=match ? months.indexOf(match[2].toUpperCase())+1 : 0
+  return match && month ? `${String(month).padStart(2,'0')}/${match[1].padStart(2,'0')}` : undefined
+}
+
+export function hsbcSgPage(items:unknown[]) {
+  const rows=textRows(items),lines=textLines(items)
+  const header=rows.find(row=>row.items.filter(i=>/^DATE$/i.test(i.str.trim())).length===2 && row.items.some(i=>/^DESCRIPTION$/i.test(i.str.trim())) && row.items.some(i=>/^AMOUNT\s*\(SGD\)$/i.test(i.str.trim())))
+  if(!header) return undefined
+  const dates=header.items.filter(i=>/^DATE$/i.test(i.str.trim()))
+  const merchantX=header.items.find(i=>/^DESCRIPTION$/i.test(i.str.trim()))!.x
+  const amountX=header.items.find(i=>/^AMOUNT/i.test(i.str.trim()))!.x
+  const transactionIndexes:number[]=[]
+  for(const [index,row] of rows.entries()) {
+    if(row.y>=header.y) continue
+    if(row.items.some(i=>i.x>=merchantX-5 && /^Total(?:\s|$)/i.test(i.str.trim()))) break
+    const date=dates.map(column=>englishDate(row.items.find(i=>Math.abs(i.x-column.x)<5)?.str ?? ''))
+    if(!date.every(Boolean)) continue
+    const description=row.items.filter(i=>i.x>=merchantX-5 && i.x<amountX).map(i=>i.str.trim()).join(' ')
+    const amount=row.items.filter(i=>i.x>=amountX).map(i=>i.str.trim()).join(' ').replace(/(\d)(CR|DR)$/i,'$1 $2')
+    lines[index]=`${date.join(' ')} ${description} ${amount}`
+    transactionIndexes.push(index)
+  }
+  return {lines,transactionIndexes}
+}
+
 export function hsbcMerchantRegions(items:unknown[]) {
   return textRows(items).flatMap((row,index)=>{
     const line=row.items.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim()
@@ -72,7 +100,7 @@ export function statementPasswordHandler(passwordText:string) {
   return (update:(value:string|Error)=>void) => update(index < passwords.length ? passwords[index++] : new Error('帳單需要密碼，或提供的密碼均不正確。'))
 }
 
-export function statementMetadata(lines:string[], title = '', fileName = ''): {bank?:string;month?:string;monthSource?:string} {
+export function statementMetadata(lines:string[], title = '', fileName = ''): {bank?:string;month?:string;monthSource?:string;currency?:string} {
   const identify = (text:string) => {
     const compact = text.normalize('NFKC').replace(/\s/g,'')
     const banks = [[/玉山|E\.?SUN/i,'玉山'],[/富邦|FUBON/i,'富邦'],[/HSBC|滙豐|匯豐/i,'匯豐']] as const
@@ -80,6 +108,12 @@ export function statementMetadata(lines:string[], title = '', fileName = ''): {b
     return matches.length === 1 ? matches[0][1] : undefined
   }
   const bank = identify(title) ?? lines.slice(0,10).map(identify).find(Boolean) ?? identify(fileName) ?? identify(lines.join(' '))
+  const identity={bank,...(bank === '匯豐' && /AMOUNT\s*\(\s*SGD\s*\)|ACCOUNT\s+SUMMARY\s+SGD/i.test(lines.join(' ')) ? {currency:'SGD'} : {})}
+  for(const line of lines) {
+    const closing=line.match(/^Statement From \d{1,2}\s+[A-Z]{3}\s+\d{4}\s+to\s+(\d{1,2})\s+([A-Z]{3})\s+(\d{4})/i)
+    const date=closing && englishDate(`${closing[1]} ${closing[2]}`)
+    if(identity.currency && closing && date && validDate(`${closing[3]}-${date.replace('/','-')}`)) return {...identity,month:`${closing[3]}-${date.slice(0,2)}`,monthSource:'帳單結帳日'}
+  }
   const yearMonth = (year:string,month:string) => {
     const y = Number(year)+(year.length === 3 ? 1911 : 0), m = Number(month)
     return y >= 1900 && y <= 9999 && m >= 1 && m <= 12 ? `${y}-${String(m).padStart(2,'0')}` : undefined
@@ -87,7 +121,7 @@ export function statementMetadata(lines:string[], title = '', fileName = ''): {b
   // Only explicit statement headings/dates count; payment deadlines and advertising dates do not.
   for(const heading of [title,...lines.slice(0,20).filter(l=>/信用卡|帳單|對帳單/.test(l))]) {
     const match = heading.normalize('NFKC').match(/(\d{3,4})\s*年\s*(\d{1,2})\s*月/)
-    if(match) {const month=yearMonth(match[1],match[2]);if(month) return {bank,month,monthSource:'帳單標題'}}
+    if(match) {const month=yearMonth(match[1],match[2]);if(month) return {...identity,month,monthSource:'帳單標題'}}
   }
   for(let i=0;i<Math.min(lines.length,20);i++) {
     const line=lines[i].normalize('NFKC')
@@ -99,10 +133,10 @@ export function statementMetadata(lines:string[], title = '', fileName = ''): {b
     if(values.length !== labels.length) continue
     const [year,m,d]=values[index].split(/[/.-]/)
     const month=yearMonth(year,m)
-    if(month && validDate(`${month}-${d.padStart(2,'0')}`)) return {bank,month,monthSource:'帳單結帳日'}
+    if(month && validDate(`${month}-${d.padStart(2,'0')}`)) return {...identity,month,monthSource:'帳單結帳日'}
   }
   const match=fileName.match(/(?:^|\D)(20\d{2})[-_](0[1-9]|1[0-2])(?:\D|$)/)
-  return {bank,...(match?{month:yearMonth(match[1],match[2]),monthSource:'檔名'}:{})}
+  return {...identity,...(match?{month:yearMonth(match[1],match[2]),monthSource:'檔名'}:{})}
 }
 
 export function assertCreditCardFile(name:string) {

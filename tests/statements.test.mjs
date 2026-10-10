@@ -272,3 +272,45 @@ test('multi-page HSBC fixture has a bankless continuation page with a readable t
     assert.equal(statements.parseStatement(second,'2026-04','TWD','HSBC').rows.length,4)
   } finally {await task.destroy()}
 })
+
+
+test('SG HSBC metadata uses statement-period end month and the billed SGD header',()=>{
+  const info=statements.statementMetadata(['HSBC','ACCOUNT SUMMARY SGD','Statement From 21 Dec 2025 to 20 Jan 2026'],'HSBC statement','renamed.pdf')
+  assert.deepEqual(info,{bank:'匯豐',currency:'SGD',month:'2026-01',monthSource:'帳單結帳日'})
+})
+test('SG HSBC positioned columns preserve merchant numbers, final SGD amount and CR, excluding summary/payment',()=>{
+  const item=(str,x,y)=>({str,width:20,height:8,transform:[1,0,0,1,x,y]})
+  const items=[item('DATE',56,660),item('DATE',101,660),item('DESCRIPTION',139,660),item('AMOUNT(SGD)',278,660),
+    item('Previous statement balance',139,625),item('999',338,625),
+    item('31 DEC',59,600),item('02 JAN',100,600),item('SYNTHETIC SHOP 123',139,600),item('12.34',348,600),
+    item('CNY 80.00',139,590),item('COUNTRY',200,590),
+    item('03 JAN',59,570),item('04 JAN',100,570),item('SYNTHETIC REFUND',139,570),item('2.00CR',330,570),
+    item('05 JAN',59,540),item('06 JAN',100,540),item('PAYMENT THANK YOU',139,540),item('500.00CR',330,540),
+    item('Total',139,510),item('999',338,510),item('07 JAN',59,490),item('08 JAN',100,490),item('AD',139,490),item('999',348,490)]
+  const page=statements.hsbcSgPage(items)
+  assert.ok(page)
+  const parsed=statements.parseStatement(page.lines,'2026-01','SGD','HSBC',page.transactionIndexes)
+  assert.deepEqual(parsed.rows,[{date:'2025-12-31',description:'SYNTHETIC SHOP 123',amount:12.34,currency:'SGD'},{date:'2026-01-03',description:'SYNTHETIC REFUND',amount:-2,currency:'SGD'}])
+  assert.deepEqual(statements.hsbcSgPage([item('HSBC',50,700)]),undefined)
+})
+
+
+test('SG HSBC PDF skips its cover and combines only billed SGD transactions',async()=>{
+  const {getDocument}=await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const task=getDocument({data:new Uint8Array(await readFile(new URL('./fixtures/synthetic-hsbc-sg.pdf',import.meta.url))),verbosity:0})
+  try {
+    const pdf=await task.promise,lines=[],allowed=[]
+    for(let n=1;n<=pdf.numPages;n++) {
+      const items=(await (await pdf.getPage(n)).getTextContent()).items
+      const sg=statements.hsbcSgPage(items)
+      if(sg) allowed.push(...sg.transactionIndexes.map(i=>lines.length+i))
+      lines.push(...(sg?.lines ?? statements.textLines(items)))
+    }
+    const info=statements.statementMetadata(lines,(await pdf.getMetadata()).info.Title,'renamed.pdf')
+    assert.equal(info.month,'2026-09');assert.equal(info.currency,'SGD')
+    const parsed=statements.parseStatement(lines,info.month,info.currency,info.bank,allowed)
+    assert.deepEqual(parsed.rows.map(r=>[r.description,r.amount,r.currency]),[['SYNTHETIC SHOP 123',12.34,'SGD'],['SYNTHETIC REFUND',-2,'SGD']])
+    const rows=await expenses.prepareExpenses(parsed.rows,'匯豐 (SG)','a'.repeat(64),parsed.sourceIndexes)
+    assert.equal(expenses.mergeExpenses(rows,rows).added,0)
+  } finally {await task.destroy()}
+})

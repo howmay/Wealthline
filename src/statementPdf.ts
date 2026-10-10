@@ -1,6 +1,6 @@
 import { GlobalWorkerOptions, getDocument, PasswordException } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { hsbcMerchantRegions, hsbcTransactionBounds, ocrMerchantLine, statementMetadata, statementPasswordHandler, textLines, textRows } from './statements'
+import { hsbcMerchantRegions, hsbcSgPage, hsbcTransactionBounds, ocrMerchantLine, statementMetadata, statementPasswordHandler, textLines, textRows } from './statements'
 
 GlobalWorkerOptions.workerSrc = workerUrl
 // Bundle CMaps locally: Chinese PDFs must not depend on a CDN or send document data to it.
@@ -31,16 +31,21 @@ export async function readStatementPdf(bytes: Uint8Array, password:string, signa
     const title = typeof info?.Title === 'string' ? info.Title : ''
     let bank=statementMetadata([],title,fileName).bank
     const lines:string[] = [], transactionIndexes:number[] = []
-    let scoped=false
+    let scoped=false,singapore=false
     let ocrUsed=false,ocrError:string|undefined
     for(let i=1;i<=pdf.numPages;i++) {
       if(signal.aborted) throw new Error('已取消解析')
       const page = await pdf.getPage(i)
       const text = await page.getTextContent()
-      const pageLines=textLines(text.items)
+      let pageLines=textLines(text.items)
       let allowed=pageLines.map((_,index)=>index)
-      bank ??= statementMetadata(pageLines,'',fileName).bank
-      if(bank === '匯豐') {
+      const pageInfo=statementMetadata(pageLines,title,fileName)
+      bank ??= pageInfo.bank
+      singapore ||= pageInfo.currency === 'SGD'
+      const sg=bank === '匯豐' ? hsbcSgPage(text.items) : undefined
+      if(sg) {pageLines=sg.lines;allowed=sg.transactionIndexes;scoped=true}
+      else if(bank === '匯豐' && singapore) {allowed=[];scoped=true}
+      else if(bank === '匯豐') {
         allowed=[];scoped=true
         const regions=hsbcMerchantRegions(text.items)
         const candidates=textRows(text.items).filter(row=>/^\d{1,2}[/.-]\d{1,2}\s+\d{1,2}[/.-]\d{1,2}(?:\s|$)/.test(row.items.map(i=>i.str).join(' ')))
