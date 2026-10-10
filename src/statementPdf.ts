@@ -1,5 +1,5 @@
-import { GlobalWorkerOptions, getDocument, PasswordException } from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { GlobalWorkerOptions, getDocument, PasswordException } from 'pdfjs-dist/legacy/build/pdf.mjs'
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import { hsbcMerchantRegions, hsbcSgPage, hsbcTransactionBounds, ocrMerchantLine, statementMetadata, statementPasswordHandler, textLines, textRows } from './statements'
 
 GlobalWorkerOptions.workerSrc = workerUrl
