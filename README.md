@@ -124,6 +124,8 @@
    npm run dev                  # http://localhost:5173
    ```
 
+`/api/history` 與 `/api/quote` 應回傳 JSON；若本機收到首頁 HTML，請先儲存草稿，再停止並重新啟動 `npm run dev`，讓 Vite 載入目前的 API 設定，然後按「重新查詢歷史行情」。
+
 | 指令 | 用途 |
 | --- | --- |
 | `npm run dev` | 本機開發伺服器 |
