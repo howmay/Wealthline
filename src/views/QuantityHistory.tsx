@@ -40,7 +40,7 @@ export function QuantityHistory({ data, busy = false, onChange, request: editing
     <p className="muted small">補登單日或持有期間；修改既有紀錄可從日期列直接選項目。所有操作只影響歷史數量。</p>
     {days.some(d=>[...d.entries,...(d.completion?.entries ?? [])].some(e=>e.quantity===null)) && <p className="notice">既有未知數量會保留並中斷對應持有期間。舊資料無法判別佔位或刻意清除，請逐項核對，不會自動移除。</p>}
     {error && <p role="alert" className="banner error">{error}</p>}
-    {editing?.mode==='baseline' ? <HistoryBaseline data={data} busy={busy} onCancel={()=>setEditing(undefined)} onApply={next=>{apply(next);setEditing(undefined)}}/> : editing ? <QuantityEditor key={`${editing.date}:${editing.entryKey ?? ''}`} data={data} busy={busy} date={editing.date} expected={editing.expected} entryKey={editing.entryKey}
+    {editing?.mode==='baseline' ? <HistoryBaseline key={editing.date} initialDate={editing.date} data={data} busy={busy} onCancel={()=>setEditing(undefined)} onApply={next=>{apply(next);setEditing(undefined)}}/> : editing ? <QuantityEditor key={`${editing.date}:${editing.entryKey ?? ''}`} data={data} busy={busy} date={editing.date} expected={editing.expected} entryKey={editing.entryKey}
       onCancel={() => setEditing(undefined)} onApply={next => { apply(next); setEditing(undefined) }} /> : <>
       {undo && <button disabled={busy} onClick={() => {
         if ((data.history.quantityDays !== undo.after.days || data.history.holdingPeriods !== undo.after.periods)) { setError('歷史已變更，無法直接復原；請重新檢查。'); return }
@@ -59,7 +59,7 @@ export function QuantityHistory({ data, busy = false, onChange, request: editing
           <strong>{nameOf(entry)}</strong><span>數量 {entry.quantity === null ? '未知' : fmt(entry.quantity, 8)}</span><Valuation entry={entry} />
           <button disabled={busy} data-history-entry={`item:${day.date}:${instrumentKey(entry)}`} aria-label={`編輯 ${day.date} ${nameOf(entry)}`} onClick={() => setEditing({ date: day.date, expected: day, entryKey: instrumentKey(entry),focusKey:`item:${day.date}:${instrumentKey(entry)}` })}>編輯這項數量</button>
         </div>)}</div>
-        <div className="row"><button disabled={busy} data-history-entry={`list:${day.date}`} onClick={() => setEditing({ date: day.date, expected: day,focusKey:`list:${day.date}` })}>編輯 {day.date}</button><button disabled={busy} className="danger" onClick={() => {
+        <div className="row"><button disabled={busy} data-history-entry={`list:${day.date}`} onClick={() => setEditing({ date: day.date, mode:'baseline', expected: day,focusKey:`list:${day.date}` })}>編輯 {day.date}</button><button disabled={busy} className="danger" onClick={() => {
           if (confirm(removalMessage(data,day.date))) apply({ ...data, history: { ...data.history, quantityDays: days.filter(d => d !== day) } })
         }}>移除 {day.date}</button></div>
       </details>)}
@@ -245,7 +245,7 @@ export function QuantityEditor({ data, busy = false, date: initialDate, expected
   </dialog>
 }
 
-function Valuation({ entry: e }: { entry: QuantityEntry }) {
+export function Valuation({ entry: e }: { entry: QuantityEntry }) {
   const value = entryValue(e)
   const price = e.price?.source === 'Yahoo' ? `Yahoo ${e.price.symbol} · ${e.price.date} 收盤 ${fmt(e.price.value, 6)} ${e.currency}` : undefined
   return (

@@ -11,7 +11,7 @@ import { BASE_CURRENCY, rateOf, type Account, type Position, type WealthData } f
 export interface PriceHistory {
   symbol: string
   currency: string
-  failure?: 'not_found' | 'provider_error'
+  failure?: 'not_found' | 'provider_error' | 'invalid_response'
   conversion?: {currency:string;asset:PriceHistory|null;usd:PriceHistory|null}
   asTraded?: boolean
   splits?: { date: string; ratio: number }[]
@@ -56,10 +56,10 @@ async function requestHistory(symbol: string, from: string, reload: boolean): Pr
   if(!res?.ok) return {symbol,currency:'',points:[],failure:res?.status===404?'not_found':'provider_error'}
   try {
     const body=await res.json() as PriceHistory
-    if(!body || !Array.isArray(body.points) || typeof body.currency!=='string' || typeof body.symbol!=='string' || !body.points.every(p=>p && typeof p.date==='string' && Number.isFinite(p.close) && p.close>0) || (body.splits!==undefined && (!Array.isArray(body.splits)||!body.splits.every(s=>s && typeof s.date==='string' && Number.isFinite(s.ratio)&&s.ratio>0)))) return null
+    if(!body || !Array.isArray(body.points) || typeof body.currency!=='string' || typeof body.symbol!=='string' || !body.points.every(p=>p && typeof p.date==='string' && Number.isFinite(p.close) && p.close>0) || (body.splits!==undefined && (!Array.isArray(body.splits)||!body.splits.every(s=>s && typeof s.date==='string' && Number.isFinite(s.ratio)&&s.ratio>0)))) return {symbol,currency:'',points:[],failure:'invalid_response'}
     // Do not accept internal conversion containers or failure flags from the network.
     return {symbol:body.symbol,currency:body.currency,points:body.points,asTraded:body.asTraded===true,splits:body.splits}
-  } catch { return null }
+  } catch { return {symbol,currency:'',points:[],failure:'invalid_response'} }
 }
 
 // Yahoo's symbol for the base-currency price of one unit of `currency`.

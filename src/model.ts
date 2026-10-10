@@ -24,6 +24,9 @@ export const COUNTRIES: Record<string, string> = {
   HK: '香港',
   GLOBAL: '全球 / 不限',
 }
+export const accountLabel = (a: { name: string; country?: string }) => `${a.name} (${a.country || '未設定國家'})`
+export const accountIdentity = (a: { name: string; country: string }) => JSON.stringify([a.name.trim().toUpperCase(), a.country.trim().toUpperCase()])
+
 export const countryLabel = (code: string) => COUNTRIES[code] ?? code
 
 export const COMMON_CURRENCIES = ['TWD', 'USD', 'SGD', 'JPY', 'HKD', 'EUR', 'CNY', 'USDT']

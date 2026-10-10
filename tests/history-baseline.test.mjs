@@ -104,3 +104,18 @@ test('review: sparse and legacy unverified sources cannot become complete even w
  }
  assert.equal(source(fixture()).error,'');assert.equal(b.quantityBaselines(fixture(),now)[0].error,'')
 })
+
+
+test('explicit date editing updates the complete day with fresh valuation and retains inventory provenance',async()=>{
+ const data=fixture(),from=source(data),date=from.date,revision=b.baselineRevision(data,from.id,date,now)
+ const entries=from.entries.map(e=>({...e,quantity:e.accountId==='A'?150:e.quantity}))
+ const day=b.baselineDay(from,date,entries,now,'edit')
+ assert.equal(day.entries[1].price,undefined);assert.equal(day.entries[1].fx,undefined)
+ day.entries=await q.valueEntries(day.entries,date,async symbol=>({symbol,currency:symbol==='USDTWD=X'?'TWD':'USD',asTraded:true,splits:[],points:[{date,close:symbol==='USDTWD=X'?30:10}]}))
+ const next=b.applyBaseline(data,day,from.id,revision,true,now,'edit')
+ assert.deepEqual(next.history.quantityDays[0].inventory,data.history.quantityDays[0].inventory)
+ assert.equal(next.history.quantityDays[0].entries[0].quantity,150);assert.equal(next.history.quantityDays[0].entries[1].price.date,date)
+ assert.equal(next.history.quantityDays[0].entries[1].fx.value,30);assert.deepEqual(next.accounts,data.accounts)
+ assert.throws(()=>b.applyBaseline(next,day,from.id,revision,true,now,'edit'),/已變更/)
+ assert.throws(()=>b.baselineDay(from,date,entries.map(e=>({...e,quantity:null})),now,'edit'),/數量/)
+})

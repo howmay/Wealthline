@@ -105,3 +105,19 @@ test('client retains failure kind and does not accept injected conversion contai
  globalThis.fetch=async()=>Response.json({...quote('USDT-USD','USD',0.98),conversion:{currency:'USDT',asset:null,usd:null}})
  assert.equal((await p.fetchHistory('USDT-USD',date,true)).conversion,undefined)
 })
+
+test('HTML fallback is reported as an API format error and a fresh query recovers historical FX',async()=>{
+ let html=true
+ globalThis.fetch=async()=>html ? new Response('<!doctype html><title>Wealthline</title>',{headers:{'Content-Type':'text/html'}}) : Response.json(quote('SGDTWD=X','TWD',25))
+ const response=await p.fetchHistory('SGDTWD=X',date,true)
+ assert.equal(response?.failure,'invalid_response')
+ const [bad]=await q.valueEntries([entry({currency:'SGD'})],date)
+ assert.equal(q.entryValue(bad),null)
+ assert.match(bad.error,/API.*JSON.*重啟/)
+ assert.doesNotMatch(bad.error,/缺少歷史行情/)
+ html=false;p.clearHistoryCache()
+ const [good]=await q.valueEntries([entry({currency:'SGD'})],date)
+ assert.equal(q.entryValue(good),175)
+ assert.equal(good.fx.date,date)
+ assert.equal(good.error,undefined)
+})

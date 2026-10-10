@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import {
+  accountIdentity,
   ACCOUNT_KINDS,
   CATEGORIES,
   COMMON_CURRENCIES,
@@ -15,6 +16,7 @@ import {
 interface Props {
   // Undefined when creating a new account.
   account?: Account
+  accounts: Account[]
   onSave: (a: Account) => void
   onCancel: () => void
   onDelete?: () => void
@@ -22,7 +24,7 @@ interface Props {
 
 // Defines what an account is: type, where it is, which currencies it holds.
 // Balances and holdings are filled in afterwards on the account page.
-export function AccountForm({ account, onSave, onCancel, onDelete }: Props) {
+export function AccountForm({ account, accounts, onSave, onCancel, onDelete }: Props) {
   const [kind, setKind] = useState<AccountKind>(account?.kind ?? 'bank')
   const [name, setName] = useState(account?.name ?? '')
   const [country, setCountry] = useState(account?.country || 'TW')
@@ -44,8 +46,11 @@ export function AccountForm({ account, onSave, onCancel, onDelete }: Props) {
 
   const shownCurrencies = [...new Set([...COMMON_CURRENCIES, ...currencies])]
 
+  const duplicate = accounts.some(a => a.id !== account?.id && accountIdentity(a) === accountIdentity({ name, country }))
+
   function submit(e: FormEvent) {
     e.preventDefault()
+    if (duplicate || !name.trim()) return
     const positions = account?.positions ?? []
     // Keep existing balances and all holdings; add a zero balance for newly picked currencies.
     const kept = positions.filter((p) => p.type === 'holding' || currencies.includes(p.currency))
@@ -80,7 +85,7 @@ export function AccountForm({ account, onSave, onCancel, onDelete }: Props) {
 
       <label className="field">
         <span>帳戶名稱</span>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="例如 HSBC SG、台新證券" required autoFocus />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="例如 HSBC、台新證券" required autoFocus />
       </label>
 
       <label className="field">
@@ -134,8 +139,9 @@ export function AccountForm({ account, onSave, onCancel, onDelete }: Props) {
         </select>
       </label>
 
+      {duplicate && <p role="alert" className="banner error">此國家已有同名帳戶，請修改名稱或國家。</p>}
       <div className="row">
-        <button type="submit" className="primary" disabled={!name.trim()}>
+        <button type="submit" className="primary" disabled={!name.trim() || duplicate}>
           {account ? '儲存' : '建立帳戶'}
         </button>
         <button type="button" onClick={onCancel}>

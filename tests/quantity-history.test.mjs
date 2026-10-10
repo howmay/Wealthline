@@ -136,9 +136,9 @@ test('today incomplete candle is not returned and malformed provider responses f
  globalThis.fetch=async()=>Response.json({chart:{result:[{meta:{currency:'USD',symbol:'TEST',exchangeTimezoneName:'UTC'},timestamp:[Math.floor(Date.now()/1000)],indicators:{quote:[{close:[123]}]}}]}})
  assert.deepEqual((await yahoo.yahooHistory('TEST','2025-10-04')).points,[])
  globalThis.fetch=async()=>Response.json({symbol:'TEST',currency:'USD',points:[null]})
- assert.equal(await timeline.fetchHistory('TEST','2025-10-04'),null)
+ assert.equal((await timeline.fetchHistory('TEST','2025-10-04',true)).failure,'invalid_response')
  globalThis.fetch=async()=>new Response('invalid json',{status:200})
- assert.equal(await timeline.fetchHistory('TEST','2025-10-04'),null)
+ assert.equal((await timeline.fetchHistory('TEST','2025-10-04',true)).failure,'invalid_response')
  }finally{globalThis.fetch=original}
 })
 const twHolding=(over={})=>({id:'tw',type:'holding',symbol:'2330.TW',currency:'TWD',quantity:400,price:1000,...over})

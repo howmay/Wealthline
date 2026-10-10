@@ -18,6 +18,7 @@ export async function fetchHistoricalFx(currency:string, from:string, fetcher:Hi
 export function historicalFxError(currency:string,date:string,history:PriceHistory|null):string {
   if(currency==='TWD') return ''
   const legError=(history:PriceHistory|null,expectedCurrency:string,label:string,expectedSymbol?:string) => {
+    if(history?.failure==='invalid_response') return `${label}：行情 API 未回傳有效 JSON；請確認 API 路由，本機開發請重啟伺服器後重新查詢`
     if(history?.failure==='provider_error') return `${label}：行情來源暫時異常，請稍後重新查詢`
     if(history?.failure==='not_found') return `${label}：來源查無行情`
     if(!history) return `${label}：缺少歷史行情`
