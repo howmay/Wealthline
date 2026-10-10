@@ -32,7 +32,7 @@ export default {
     response.headers.set('Content-Security-Policy', [
       "default-src 'self'",
       // The hash is index.html's inline restore script (tests/security.test.mjs keeps them in sync).
-      "script-src 'self' 'sha256-h3DftuZS5vk2o6vxAqud0bSU2UYKpc5iMHQRou5hjAY=' https://accounts.google.com/gsi/client",
+      "script-src 'self' 'sha256-y9ZP2XkknaC8PB9I+/GCdUGofPK4Iz8oAARSz8989ek=' https://accounts.google.com/gsi/client",
       "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
       "connect-src 'self' https://accounts.google.com/gsi/ https://www.googleapis.com https://oauth2.googleapis.com https://open.er-api.com https://api.coingecko.com",
       "frame-src https://accounts.google.com/gsi/",

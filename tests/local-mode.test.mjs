@@ -369,3 +369,25 @@ test('after Google fails to load, choosing local mode in that tab survives a rel
   assert.equal(window.location.pathname, '/app')
   noGoogle()
 })
+
+test('a tab that chose local mode keeps it on reload after another tab left local mode', async () => {
+  const profile = { sub: 'account-a', email: 'a@example.com', name: 'Alice' }
+  auth.storeSession({ token: { value: 'test-token', expiresAt: Date.now() + 3600_000 }, profile })
+  localStorage.setItem(DATA_KEY, JSON.stringify(fixture()))
+  window.history.replaceState(null, '', '/app')
+  // Tab A chooses local mode (after its Google load failed, so its token is still stored).
+  await render()
+  await settle()
+  await click(button('繼續使用此瀏覽器中的資料'))
+  await settle()
+  // Tab B leaves local mode, which clears the flag all tabs share.
+  localStorage.removeItem(ACTIVE_KEY)
+
+  requests = []
+  await render()
+  await settle()
+  assert.ok(document.querySelector('summary[aria-label="本機模式選單"]'))
+  assert.equal(window.location.pathname, '/app')
+  assert.equal(localStorage.getItem(ACTIVE_KEY), '1')
+  noGoogle()
+})

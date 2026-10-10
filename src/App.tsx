@@ -14,7 +14,7 @@ import {
 import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData, type DriveFile, type DriveVersion } from './google/drive'
 import { applyFetchedRates, emptyData, missingRates, parseWealthData, ratesStale, usedCurrencies, type WealthData } from './model'
 import { finishSave } from './saveState'
-import { clearLocal, downloadDataFile, hasLocalData, isLocalActive, loadLocal, localChosenInTab, readDataFile, replaceLocal, saveLocal, setLocalActive, type LocalFile } from './localStore'
+import { clearLocal, downloadDataFile, hasLocalData, loadLocal, opensLocal, readDataFile, replaceLocal, saveLocal, setLocalActive, type LocalFile } from './localStore'
 import { localDate, pendingChanges, pendingLiabilityChanges, recordSave, revertChange, revertLiabilityChange } from './history'
 import { applyQuotes, fetchHoldingQuotes } from './quotes'
 import { fetchRates } from './rates'
@@ -46,9 +46,9 @@ export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null)
   // Local mode: no sign-in, the data file is kept in this browser (localStore.ts). The ref is for
   // background tasks started before the state re-renders; `localRaw` is the stored text this tab last read or wrote.
-  // The flag is shared by every tab: a tab keeps the mode it chose itself, and otherwise a live
-  // Google session in the tab wins on reload.
-  const [local, setLocal] = useState(() => isLocalActive() && (localChosenInTab() || !loadSession()?.token))
+  // A tab keeps the mode it chose itself; otherwise a live Google session in the tab wins over
+  // the flag other tabs share (see opensLocal).
+  const [local, setLocal] = useState(() => opensLocal(!!loadSession()?.token))
   const localMode = useRef(local)
   const localRaw = useRef<string | null>(null)
   // The home page reads whether local data exists on render; this re-renders it after a delete.
@@ -67,7 +67,7 @@ export default function App() {
   // Between getting a token and showing the app. A reload with a live token starts here,
   // so the signed-out page never flashes before the app.
   const [opening, setOpening] = useState<{ step: OpeningStep; profile?: UserProfile } | null>(() =>
-    loadSession()?.token && !(isLocalActive() && localChosenInTab()) ? { step: 'auth' } : null,
+    loadSession()?.token && !opensLocal(true) ? { step: 'auth' } : null,
   )
   // Prices and rates being fetched after the data file has loaded.
   const [refreshing, setRefreshing] = useState(false)
