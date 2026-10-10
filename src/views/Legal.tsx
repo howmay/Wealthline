@@ -160,7 +160,7 @@ function Privacy() {
             <strong>Google</strong>（登入、使用者資料、Google Drive API）：讀寫你的資料檔。適用 <a href="https://policies.google.com/privacy">Google 隱私權政策</a>。
           </li>
           <li>
-            <strong>報價查詢 /api/quote 與 /api/history</strong>：本服務部署在 Cloudflare Workers 上的轉發程式，收到<strong>股票或匯率代號</strong>（例如 2330.TW、USDTWD=X），查歷史價格時另有一個起始日期，再向 Yahoo Finance 查詢價格。不包含數量、金額、Google 帳號資料或存取權杖；程式沒有實作請求內容的持久化紀錄。股票代號可能來自你在 Drive 保存的持倉。
+            <strong>報價查詢 /api/quote 與 /api/history</strong>：本服務部署在 Cloudflare Workers 上的轉發程式，收到<strong>股票或匯率代號</strong>（例如 2330.TW、USDTWD=X），查歷史價格時另有一個起始日期，再向 Yahoo Finance 查詢價格。不包含數量、金額、Google 帳號資料或存取權杖；程式沒有實作請求內容的紀錄。為了減少向 Yahoo Finance 重複查詢，成功取得的公開市場價格會連同其代號（歷史價格另含起始日期）暫存在 Cloudflare 的邊緣快取：報價約 3 分鐘、歷史價格約 6 小時後失效，快取內容與你的身分、帳號或其他請求資訊無關，查詢失敗的結果不會暫存。股票代號可能來自你在 Drive 保存的持倉。
           </li>
           <li>
             <strong>ExchangeRate-API</strong>（open.er-api.com）與 <strong>CoinGecko</strong>：查詢匯率與加密貨幣價格，請求中只有幣別或幣種名稱。
@@ -311,7 +311,7 @@ function PrivacyEnglish() {
       <h3>3. How we share, transfer or disclose Google user data</h3>
       <p>
         <strong>We do not sell Google user data or send your Google profile, access token or complete Drive file to market-data services.</strong> Your browser communicates directly with Google for sign-in and Drive storage. To look up market prices, the browser sends only ticker or currency-pair symbols (for example 2330.TW or USDTWD=X), plus a start date for past prices, to the
-        app's own quote relay on Cloudflare Workers, which asks Yahoo Finance, and only currency or coin codes to ExchangeRate-API and CoinGecko. Ticker symbols may be read from your saved Drive holdings. Market requests exclude balances, quantities, account names, Google profile data and access tokens. The relay code does not persist request contents. These services also receive ordinary connection metadata, such as IP addresses. Cloudflare hosts the website and may log technical data such as IP addresses under its own policy.
+        app's own quote relay on Cloudflare Workers, which asks Yahoo Finance, and only currency or coin codes to ExchangeRate-API and CoinGecko. Ticker symbols may be read from your saved Drive holdings. Market requests exclude balances, quantities, account names, Google profile data and access tokens. The relay code keeps no log of requests. To avoid repeating identical lookups, it does keep each successful public market-price answer, together with its ticker symbol (and the start date for past prices), in Cloudflare's edge cache for about 3 minutes for quotes and about 6 hours for past prices; these cache entries are not linked to your identity, account or any other request details, and failed lookups are not stored. These services also receive ordinary connection metadata, such as IP addresses. Cloudflare hosts the website and may log technical data such as IP addresses under its own policy.
       </p>
 
       <h3>4. How we store and protect Google user data</h3>
@@ -330,7 +330,7 @@ function PrivacyEnglish() {
 
       <h3>5. Data retention and deletion</h3>
       <ul>
-        <li>The Drive data file stays in your Drive until you delete it. Sign out and close other open tabs before deleting the "{FOLDER_NAME}" folder and emptying the trash, so unsaved changes cannot recreate it. Delete any downloaded backups separately. Revoking access does not delete the file; Google’s backup and retention rules apply to its copies.</li>
+        <li>The relay's cached market-price answers expire on their own after the periods in section 3 and contain no personal data. The Drive data file stays in your Drive until you delete it. Sign out and close other open tabs before deleting the "{FOLDER_NAME}" folder and emptying the trash, so unsaved changes cannot recreate it. Delete any downloaded backups separately. Revoking access does not delete the file; Google’s backup and retention rules apply to its copies.</li>
         <li>
           The account hint stays in your browser until you sign out. Signing out immediately clears local sign-in information and attempts to revoke
           the token with Google. If that request fails, you can revoke access in your Google account. Clearing browser site data also removes the hint.

@@ -22,7 +22,7 @@ export default {
     // The Cache API exists only on Workers (not in the Node tests or the Vite dev server).
     const edge = (globalThis as { caches?: { default?: EdgeCache } }).caches?.default
     const result = request.method === 'GET' && isApiPath(url.pathname)
-      ? await cachedApiResponse(url, edge, (p) => ctx?.waitUntil(p))
+      ? await cachedApiResponse(url, edge, { waitUntil: (p) => ctx?.waitUntil(p), headers: request.headers })
       : await env.ASSETS.fetch(request)
     const response = new Response(result.body, result)
     // run_worker_first bypasses public/_headers, so keep HTML revalidated here (see that file).
