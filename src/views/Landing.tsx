@@ -4,17 +4,22 @@ import type { ReactNode } from 'react'
 import type { UserProfile } from '../google/auth'
 import { DATA_FILE_NAME, FOLDER_NAME } from '../google/drive'
 import { LICENSE_ZH_URL, PAGES, REPO_URL } from '../site'
+import { UploadButton } from './LocalData'
 import { GitHubMark, Link, Logo, SiteFooter } from './Site'
 
 interface Props {
   returning: UserProfile | null
+  // Whether this browser already holds local-mode data.
+  hasLocal: boolean
   busy: boolean
   message: { kind: 'busy' | 'error'; text: string } | null
   onSignIn: () => void
   onResume: () => void
+  onLocal: () => void
+  onUpload: (file: File) => void
 }
 
-export function Landing({ returning, busy, message, onSignIn, onResume }: Props) {
+export function Landing({ returning, hasLocal, busy, message, onSignIn, onResume, onLocal, onUpload }: Props) {
   return (
     <div className="landing">
       <header className="landing-top">
@@ -42,11 +47,11 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
               <span className="accent-text">Google Drive</span>
             </p>
             <p className="lead">
-              Wealthline 是免費、開放原始碼的個人資產統計工具：用帳戶整理銀行存款、股票、基金與加密貨幣，自動換算匯率與報價，一眼看清資產配置。財務資料由瀏覽器處理，儲存到你自己的 Google Drive。也能記錄負債與還款，回看每日淨資產快照。
+              Wealthline 是免費、開放原始碼的個人資產統計工具：用帳戶整理銀行存款、股票、基金與加密貨幣，自動換算匯率與報價，一眼看清資產配置。財務資料由瀏覽器處理，儲存到你自己的 Google Drive。也能記錄負債與還款，回看每日淨資產快照。不想登入也可以直接在瀏覽器使用，資料只存在這台裝置。
             </p>
             <p className="lead lead-en" lang="en">
               Wealthline is a free, open-source web app that tracks your bank balances, stocks, funds and crypto in one place and shows your net worth and asset
-              allocation. Financial records are processed in your browser and saved in your own Google Drive. Track debts, repayment estimates and daily net-worth snapshots too.
+              allocation. Financial records are processed in your browser and saved in your own Google Drive. Track debts, repayment estimates and daily net-worth snapshots too. You can also use it without signing in, keeping the data only in this browser.
             </p>
             <div className="signin-box">
               {returning ? (
@@ -64,9 +69,22 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
                   使用 Google 登入
                 </button>
               )}
+              <div className="or-divider" role="separator">
+                <span>或</span>
+              </div>
+              <button className="ghost local-start" onClick={onLocal} disabled={busy}>
+                {hasLocal ? '繼續使用此瀏覽器中的資料' : '不登入，直接在瀏覽器使用'}
+              </button>
+              <p className="muted small">
+                不登入時，資料只存在這個瀏覽器，不會上傳到任何伺服器。可以隨時下載成資料檔，之後再
+                <UploadButton className="link inline" onFile={onUpload} disabled={busy}>
+                  上傳資料檔
+                </UploadButton>
+                繼續使用。
+              </p>
               {message && <p className={message.kind === 'error' ? 'error small' : 'muted small'}>{message.text}</p>}
               <p className="muted small">
-                登入即表示你同意<Link to={PAGES.terms.path}>使用條款</Link>與<Link to={PAGES.privacy.path}>隱私權政策</Link>。
+                使用本服務即表示你同意<Link to={PAGES.terms.path}>使用條款</Link>與<Link to={PAGES.privacy.path}>隱私權政策</Link>。
               </p>
             </div>
           </div>
@@ -124,6 +142,7 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
             <ul className="checks">
               <li>Google Drive 僅要求 drive.file 權限，看不到你雲端硬碟中的其他檔案。</li>
               <li>資料是一個普通的 JSON 檔，可以隨時下載、備份或刪除。</li>
+              <li>不想登入也可以：資料只存在這個瀏覽器的 localStorage，下載成檔案後可以再上傳還原。</li>
               <li>不使用分析工具、廣告或追蹤 Cookie。</li>
               <li>隨時可以在 Google 帳戶設定中撤銷授權。</li>
             </ul>

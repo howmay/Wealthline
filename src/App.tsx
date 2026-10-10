@@ -14,6 +14,7 @@ import {
 import { DATA_FILE_NAME, FOLDER_NAME, loadData, saveData, type DriveFile, type DriveVersion } from './google/drive'
 import { applyFetchedRates, emptyData, missingRates, parseWealthData, ratesStale, usedCurrencies, type WealthData } from './model'
 import { finishSave } from './saveState'
+import { clearLocal, downloadDataFile, hasLocalData, isLocalActive, loadLocal, readDataFile, replaceLocal, saveLocal, setLocalActive, type LocalFile } from './localStore'
 import { localDate, pendingChanges, pendingLiabilityChanges, recordSave, revertChange, revertLiabilityChange } from './history'
 import { applyQuotes, fetchHoldingQuotes } from './quotes'
 import { fetchRates } from './rates'
@@ -29,6 +30,7 @@ import { LegalPage } from './views/Legal'
 import { PAGES, goBack, navigate, usePage, usePath } from './site'
 import { TABS, parseRoute, routePath, tabPath, type Route, type Tab } from './routes'
 import { Link, Logo, PrivacyNotice, SiteFooter } from './views/Site'
+import { DeviceIcon, UploadButton } from './views/LocalData'
 
 type Status = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'error'; text: string }
 
@@ -42,6 +44,11 @@ export default function App() {
   // The version last read from or written to Drive; each save records what changed since it.
   const saved = useRef<WealthData | null>(null)
   const [user, setUser] = useState<UserProfile | null>(null)
+  // Local mode: no sign-in, the data file is kept in this browser (localStore.ts). The ref is for
+  // background tasks started before the state re-renders; `localRaw` is the stored text this tab last read or wrote.
+  const [local, setLocal] = useState(isLocalActive)
+  const localMode = useRef(local)
+  const localRaw = useRef<string | null>(null)
   const [data, setData] = useState<WealthData | null>(null)
   const [dirty, setDirty] = useState(false)
   const dirtyRef = useRef(false)
@@ -56,7 +63,7 @@ export default function App() {
   // Between getting a token and showing the app. A reload with a live token starts here,
   // so the signed-out page never flashes before the app.
   const [opening, setOpening] = useState<{ step: OpeningStep; profile?: UserProfile } | null>(() =>
-    loadSession()?.token ? { step: 'auth' } : null,
+    loadSession()?.token && !isLocalActive() ? { step: 'auth' } : null,
   )
   // Prices and rates being fetched after the data file has loaded.
   const [refreshing, setRefreshing] = useState(false)
@@ -106,13 +113,28 @@ export default function App() {
     } finally {
       setOpening(null)
     }
-    const version = ++sessionVersion.current
     token.current = t
     storeSession({ profile: p, token: t })
     setUser(p)
     driveVersion.current = file ? { fileId: file.fileId, etag: file.etag } : undefined
-    saved.current = file?.data ?? null
-    const loaded = file?.data ?? emptyData()
+    startSession(file?.data ?? null)
+  }
+
+  // Opens local mode with the data stored in this browser, or with `file` (an upload just
+  // stored). Throws, without entering local mode, when the stored data does not parse.
+  function openLocal(file: LocalFile | null = loadLocal()) {
+    setLocalActive(true)
+    localMode.current = true
+    localRaw.current = file?.raw ?? null
+    setLocal(true)
+    startSession(file?.data ?? null)
+  }
+
+  // Shows the loaded data file (null: none yet) and refreshes its prices and rates.
+  function startSession(file: WealthData | null) {
+    const version = ++sessionVersion.current
+    saved.current = file
+    const loaded = file ?? emptyData()
     setData(loaded)
     setDirty(false)
     setRefreshing(true)
@@ -171,9 +193,8 @@ export default function App() {
     savingRef.current = true
     setSaving(true)
     try {
-      const result = await saveData(await validToken(), next, driveVersion.current)
+      await write(next)
       if (version !== sessionVersion.current) return
-      driveVersion.current = result
       saved.current = next
       setData((d) => d ? finishSave(d, market, next) : d)
     } catch (e) {
@@ -184,11 +205,37 @@ export default function App() {
     }
   }
 
-  // Restore the session after a reload while this tab's token is still valid.
+  // Writes the data file to Drive, or to this browser in local mode.
+  async function write(next: WealthData) {
+    if (localMode.current) {
+      localRaw.current = saveLocal(next, localRaw.current)
+      return
+    }
+    const session = sessionVersion.current
+    const result = await saveData(await validToken(), next, driveVersion.current)
+    if (session === sessionVersion.current) driveVersion.current = result
+  }
+
+  // Restore the session after a reload while this tab's token is still valid,
+  // or local mode when the user was using it.
   const restored = useRef(false)
   useEffect(() => {
     if (page || restored.current) return
     restored.current = true
+    if (localMode.current) {
+      void run('載入中…', async () => {
+        try {
+          openLocal()
+        } catch (e) {
+          // Unreadable stored data: back to the home page, which shows why and offers an upload.
+          setLocalActive(false)
+          localMode.current = false
+          setLocal(false)
+          throw e
+        }
+      })
+      return
+    }
     const stored = loadSession()?.token
     if (!stored) return
     void run('載入中…', async () => {
@@ -205,8 +252,8 @@ export default function App() {
   }, [page])
 
   useEffect(() => {
-    if (user && path === '/') navigate('/app', { replace: true })
-  }, [user, path])
+    if ((user || local) && path === '/') navigate('/app', { replace: true })
+  }, [user, local, path])
 
   const signIn = () =>
     run('登入中…', async () => {
@@ -240,6 +287,43 @@ export default function App() {
       if (previous) void revokeAccessToken(previous).catch(() => {})
     })
 
+  const startLocal = () =>
+    run('開啟中…', async () => {
+      openLocal()
+      navigate('/app')
+    })
+
+  // Restores a downloaded data file into this browser, replacing what is stored here.
+  const upload = (file: File) =>
+    run('讀取資料檔…', async () => {
+      const uploaded = await readDataFile(file)
+      const replacing = localMode.current ? !!saved.current || dirtyRef.current : hasLocalData()
+      if (replacing && !confirm('上傳的資料檔會取代此瀏覽器中目前的資料，包括未儲存的修改。建議先下載目前的資料備份。要繼續嗎？')) return
+      openLocal({ data: uploaded, raw: replaceLocal(uploaded) })
+      navigate('/app')
+    })
+
+  // Leaves local mode, keeping the stored data for next time unless `erase` is set.
+  const leaveLocal = (erase = false) => {
+    const question = erase
+      ? '要刪除此瀏覽器中的 Wealthline 資料嗎？刪除後無法復原，建議先下載資料檔備份。'
+      : dirtyRef.current ? '有尚未儲存的修改，離開本機模式後會遺失。要繼續嗎？' : ''
+    if (question && !confirm(question)) return
+    if (erase) clearLocal()
+    else setLocalActive(false)
+    sessionVersion.current++
+    localMode.current = false
+    localRaw.current = null
+    saved.current = null
+    setLocal(false)
+    setRefreshing(false)
+    setData(null)
+    setDirty(false)
+    setReviewing(false)
+    setStatus({ kind: 'idle' })
+    navigate('/', { replace: true })
+  }
+
   const persist = async (submitted: WealthData) => {
     if (savingRef.current) return
     savingRef.current = true
@@ -247,11 +331,10 @@ export default function App() {
     const edits = editVersion.current
     const session = sessionVersion.current
     try {
-      await run('儲存到 Google Drive…', async () => {
+      await run(localMode.current ? '儲存到此瀏覽器…' : '儲存到 Google Drive…', async () => {
         const next = recordSave(saved.current, { ...submitted, updatedAt: new Date().toISOString() })
-        const result = await saveData(await validToken(), next, driveVersion.current)
+        await write(next)
         if (session !== sessionVersion.current) return
-        driveVersion.current = result
         saved.current = next
         setData((current) => current ? finishSave(current, submitted, next) : current)
         const stillDirty = edits !== editVersion.current
@@ -304,17 +387,20 @@ export default function App() {
   const go = (r: Route, replace = false) => navigate(routePath(r), { replace })
   const goAccounts = (view: AccountsView, replace = false) => go({ tab: 'accounts', ...view }, replace)
 
-  if (page) return <LegalPage page={page} signedIn={!!user} />
+  if (page) return <LegalPage page={page} signedIn={!!user || local} />
 
-  if (!user) {
+  if (!user && !local) {
     if (opening) return <Opening step={opening.step} profile={opening.profile} />
     return (
       <Landing
         returning={returning}
+        hasLocal={hasLocalData()}
         busy={busy}
         message={status.kind === 'idle' ? null : status}
         onSignIn={signIn}
         onResume={resume}
+        onLocal={startLocal}
+        onUpload={upload}
       />
     )
   }
@@ -350,12 +436,16 @@ export default function App() {
               </span>
             ) : status.kind === 'error' ? (
               <span className="muted">同步未完成</span>
+            ) : local ? (
+              <span className="synced" title="資料存在這個瀏覽器的 localStorage">
+                <span aria-hidden>✓</span> 已存在此瀏覽器
+              </span>
             ) : (
               <span className="synced" title={`我的雲端硬碟 / ${FOLDER_NAME} / ${DATA_FILE_NAME}`}>
                 <span aria-hidden>✓</span> 已同步
               </span>
             )}
-            <details className="account-menu">
+            {user ? <details className="account-menu">
               <summary aria-label="帳號選單">
                 {user.picture ? <img src={user.picture} alt="" referrerPolicy="no-referrer" /> : <span className="avatar">{user.email[0]}</span>}
               </summary>
@@ -372,7 +462,29 @@ export default function App() {
                   登出
                 </button>
               </div>
-            </details>
+            </details> : <details className="account-menu">
+              <summary aria-label="本機模式選單">
+                <span className="avatar"><DeviceIcon /></span>
+              </summary>
+              <div className="menu">
+                <strong>本機模式（未登入）</strong>
+                <span className="muted small">資料只存在這個瀏覽器。清除網站資料、換瀏覽器或換裝置都看不到，請定期下載資料檔備份。</span>
+                <button onClick={() => saved.current && downloadDataFile(saved.current)} disabled={busy || dirty || !saved.current}>
+                  下載資料檔
+                </button>
+                {dirty ? <span className="muted small">請先儲存變更，再下載資料檔。</span> : !saved.current && <span className="muted small">儲存過資料後就能下載。</span>}
+                <UploadButton onFile={upload} disabled={busy}>上傳資料檔</UploadButton>
+                <Link to={PAGES.privacy.path} className="small">
+                  隱私權政策 Privacy Policy
+                </Link>
+                <button onClick={() => leaveLocal()} disabled={saving}>
+                  離開本機模式
+                </button>
+                <button className="danger" onClick={() => leaveLocal(true)} disabled={saving}>
+                  刪除此瀏覽器中的資料
+                </button>
+              </div>
+            </details>}
           </div>
         </div>
       </header>
@@ -398,14 +510,7 @@ export default function App() {
         {status.kind === 'busy' && !data && <p className="muted">{status.text}</p>}
         {status.kind === 'error' && <div className="banner error" role="alert">
           <p>{status.text}</p>
-          {data && <button onClick={() => {
-            const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
-            const link = document.createElement('a')
-            link.href = url
-            link.download = 'we-wealth-local-backup.json'
-            link.click()
-            setTimeout(() => URL.revokeObjectURL(url), 1000)
-          }}>下載本機資料備份</button>}
+          {data && <button onClick={() => downloadDataFile(data, 'we-wealth-local-backup.json')}>下載本機資料備份</button>}
         </div>}
 
         {data && tab === 'overview' && (
