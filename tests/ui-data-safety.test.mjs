@@ -1364,3 +1364,31 @@ test('daily record icons keep accessible names and editing restores focus to its
  await click(edit);assert.equal(field('合成歷史帳戶 · TWD · TWD 當日數量').value,'100')
  await click(button('取消歷史編輯'));assert.equal(document.activeElement,edit)
 })
+
+
+test('accounts reject duplicate name and country while allowing another country and unchanged edits',async()=>{
+ const data=historicalFixture();data.accounts[0].name='HSBC';data.accounts[0].country='TW'
+ const props={data,setView:()=>{},onBack:()=>{},onRefreshPrices:async()=>{},priceError:'',onChange:()=>assert.fail('duplicate must not save')}
+ await render(Accounts,{...props,view:{page:'new'}})
+ await setInput(field('帳戶名稱'),' hsbc ')
+ assert.equal(button('建立帳戶').disabled,true)
+ assert.match(document.querySelector('[role="alert"]').textContent,/同名帳戶/)
+ await act(async()=>{field('國家').value='SG';field('國家').dispatchEvent(new Event('change',{bubbles:true}))})
+ assert.equal(button('建立帳戶').disabled,false)
+ await render(Accounts,{...props,key:'edit',view:{page:'edit',id:data.accounts[0].id}})
+ assert.equal(button('儲存').disabled,false)
+})
+
+test('same-name accounts show countries in history and overview and open the correct account',async()=>{
+ const data=historicalFixture(),a=data.accounts[0]
+ data.accounts=[{...a,name:'HSBC',country:'TW'},{...a,id:'sg-account',name:'HSBC',country:'SG'}]
+ await render(HistoryView,{data,dirty:false,busy:false,onChange:()=>{},onSave:()=>{},onOpenAccount:()=>{}})
+ assert.match(document.querySelector('.snapshot-accounts').textContent,/HSBC \(TW\)/)
+ assert.match(document.querySelector('.snapshot-accounts').textContent,/HSBC \(SG\)/)
+ let opened
+ await render(Overview,{data,onOpenAccount:id=>{opened=id}})
+ const rows=[...document.querySelectorAll('.rank button')]
+ assert.equal(rows.length,2)
+ await click(rows.find(b=>b.textContent.includes('HSBC (SG)')))
+ assert.equal(opened,'sg-account')
+})

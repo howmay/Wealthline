@@ -15,6 +15,7 @@ import {
   COUNTRIES,
   breakdown,
   countryLabel,
+  accountLabel,
   missingRates,
   type WealthData,
 } from '../model'
@@ -29,7 +30,7 @@ interface Props {
   onGoLiabilities?: () => void
   onNewAccount: () => void
   onImport: () => void
-  onOpenAccount: (name: string) => void
+  onOpenAccount: (id: string) => void
 }
 
 export function Overview({ data, onGoHistory, onGoRates, onGoLiabilities, onNewAccount, onImport, onOpenAccount }: Props) {
@@ -41,7 +42,7 @@ export function Overview({ data, onGoHistory, onGoRates, onGoLiabilities, onNewA
   const live = snapshotOf(data, now)
   const points: HistoricalPoint[] = [...totalPoints(historical.data, now).filter(p => p.date !== live.date || p.manual), live]
   const chartPoints = totalPoints(historical.data, now)
-  const accountNames = new Map(chartPoints.flatMap(p => p.accounts.map(a => [a.id, a.name] as const)))
+  const accountNames = new Map(chartPoints.flatMap(p => p.accounts.map(a => [a.id, accountLabel({ name: a.name, country: historical.data.history.valuedQuantityDays?.find(d => d.date === p.date)?.entries.find(e => e.accountId === a.id)?.country ?? data.accounts.find(x => x.id === a.id)?.country })] as const)))
   const keys = points.map((p, i) => i === points.length - 1 ? 'current' : p.date)
   const index = Math.max(0, keys.includes(selected) ? keys.indexOf(selected) : points.length - 1)
   const point = points[index]
@@ -99,7 +100,7 @@ export function Overview({ data, onGoHistory, onGoRates, onGoLiabilities, onNewA
         {historical.status && <p className="muted small" aria-live="polite">{historical.status}</p>}
         {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
       </section>
-      {!current ? <SnapshotDetails point={point} day={historical.data.history.valuedQuantityDays?.find(d => d.date === point.date)} /> : <>
+      {!current ? <SnapshotDetails accounts={data.accounts} point={point} day={historical.data.history.valuedQuantityDays?.find(d => d.date === point.date)} /> : <>
       <section className="panel hero">
         <span className="eyebrow">總資產</span>
         <div className="hero-figure">
@@ -140,7 +141,7 @@ export function Overview({ data, onGoHistory, onGoRates, onGoLiabilities, onNewA
 
       <section className="panel">
         <h3>帳戶</h3>
-        <RankBars slices={breakdown(data, (a) => a.name).slices} onSelect={onOpenAccount} />
+        <RankBars slices={breakdown(data, accountLabel).slices} onSelect={label => { const account = data.accounts.find(a => accountLabel(a) === label); if (account) onOpenAccount(account.id) }} />
       </section>
 
       <section className="panel">

@@ -1,3 +1,4 @@
+import { accountLabel } from '../model'
 import { ActionIcon } from './ActionIcon'
 import { removalMessage } from '../historyCompletion'
 import { useCalendarNow } from '../useCalendarNow'
@@ -74,10 +75,10 @@ export function HistoryView({ initialDate, data, dirty, busy, onSave, onChange, 
         <p className="muted">{sourcePoint.periodDerived ? '持有期間推算' : sourcePoint.manual ? '單日補登／完整回補' : sourcePoint.date === today.date ? '目前餘額／當日快照' : '原始每日快照'} · {sourcePoint.date} · 總資產 {sourcePoint.total === null ? '資料不完整' : `NT$ ${fmt(sourcePoint.total, 0)}`}</p>
         {sourceDay?.inventory && <p className="muted small">持倉清單來源：{sourceDay.inventory.source.date} · {sourceDay.inventory.source.kind === 'current' ? '目前完整持倉' : '已確認完整清單'}</p>}
         {sourceDay?.completion && <p className="muted small">當日補齊來源：{sourceDay.completion.source.date} · {sourceDay.completion.source.kind === 'current' ? '目前完整持倉' : '已確認完整清單'}</p>}
-        <ul className="snapshot-accounts">{sourcePoint.accounts.map(a => <li key={a.id}><span>{a.name}</span><strong>{a.value === null ? '資料不完整' : `NT$ ${fmt(a.value, 0)}`}</strong></li>)}</ul>
+        <ul className="snapshot-accounts">{sourcePoint.accounts.map(a => <li key={a.id}><span>{accountLabel({ name: a.name, country: sourceDay?.entries.find(e => e.accountId === a.id)?.country ?? data.accounts.find(x => x.id === a.id)?.country })}</span><strong>{a.value === null ? '資料不完整' : `NT$ ${fmt(a.value, 0)}`}</strong></li>)}</ul>
         <p className="muted small">分類總額：{Object.entries(sourcePoint.categories).map(([name, value]) => `${name} ${value === null ? '未知' : `NT$ ${fmt(value, 0)}`}`).join(' · ') || '未記錄'}</p>
         {sourceDay ? <div className="quantity-rows">{sourceDay.entries.map(entry => <div className="quantity-row" key={instrumentKey(entry)}>
-          <strong>{entry.account} · {entry.symbol || entry.currency} · {entry.currency}</strong>
+          <strong>{accountLabel({ name: entry.account, country: entry.country })} · {entry.symbol || entry.currency} · {entry.currency}</strong>
           <span>數量 {entry.quantity === null ? '未知' : fmt(entry.quantity, 8)}{entry.quantityAsOf && ` · 數量基準 ${entry.quantityAsOf}`}</span>
           <Valuation entry={entry} />
           <button disabled={busy || !!quantityRequest} data-history-entry={`source:${sourcePoint.date}:${instrumentKey(entry)}`} onClick={() => setQuantityRequest({ date: sourcePoint.date, expected: data.history.quantityDays?.find(d => d.date === sourcePoint.date), entryKey: instrumentKey(entry), focusKey: `source:${sourcePoint.date}:${instrumentKey(entry)}` })}>編輯來源數量</button>

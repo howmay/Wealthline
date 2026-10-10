@@ -39,6 +39,7 @@ export function Accounts({ data, onChange, view, setView, onBack, onRefreshPrice
     return (
       <AccountForm
         account={current}
+        accounts={data.accounts}
         onSave={(a) => {
           saveAccount(a)
           // Editing returns to the account it came from; a new account's page takes the form's place.

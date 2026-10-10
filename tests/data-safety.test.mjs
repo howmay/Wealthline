@@ -138,7 +138,7 @@ test('duplicate existing account names block replacement; empty input is a no-op
   before.accounts.push({ ...before.accounts[0], id: 'a2' })
   const result = importer.importSheet(before, row())
   assert.equal(result.data, before)
-  assert.match(result.errors[0].message, /名稱重複/)
+  assert.match(result.errors[0].message, /表格未提供國家/)
   assert.equal(importer.importSheet(before, '\n ').data, before)
 })
 
@@ -266,4 +266,14 @@ test('creation followed by discovery failure retains remote file and refuses bli
   await assert.rejects(() => drive.saveData(token, fixture()), drive.DriveConflictError)
   assert.equal(uploads, 1)
   assert.equal(created, true)
+})
+
+
+test('sheet account matching ignores case and whitespace and rejects ambiguous countries',()=>{
+ const data=fixture()
+ const imported=importer.importSheet(data,[row('USD','10','1','32',' broker '),row('USD','20','1','32','BROKER')].join('\n'))
+ assert.equal(imported.errors.length,0);assert.equal(imported.data.accounts.length,1);assert.equal(imported.data.accounts[0].id,'a1');assert.equal(imported.data.accounts[0].positions.length,2)
+ data.accounts.push({...data.accounts[0],id:'a2',country:'TW'})
+ const blocked=importer.importSheet(data,row('USD','10','1','32','broker'))
+ assert.equal(blocked.data,data);assert.match(blocked.errors[0].message,/表格未提供國家/)
 })

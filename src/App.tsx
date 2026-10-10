@@ -412,10 +412,7 @@ export default function App() {
             onGoRates={() => go({ tab: 'rates' })}
             onNewAccount={() => goAccounts({ page: 'new' })}
             onImport={() => goAccounts({ page: 'list', importing: true })}
-            onOpenAccount={(name) => {
-              const a = data.accounts.find((x) => x.name === name)
-              if (a) goAccounts({ page: 'detail', id: a.id })
-            }}
+            onOpenAccount={(id) => goAccounts({ page: 'detail', id })}
           />
         )}
         {data && route.tab === 'history' && <HistoryView key={route.date ?? 'history'} initialDate={route.date} data={data} dirty={dirty} busy={busy || dirty} onSave={requestSave}
