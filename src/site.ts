@@ -4,6 +4,7 @@ import { useSyncExternalStore } from 'react'
 
 export const SITE_HOST = 'wealthline.haomeh.com'
 export const SITE_URL = `https://${SITE_HOST}`
+export const SUPPORT_URL = 'https://ko-fi.com/haomeh'
 export const REPO_URL = 'https://github.com/howmay/Wealthline'
 export const ISSUES_URL = `${REPO_URL}/issues`
 export const SECURITY_URL = `${REPO_URL}/security/advisories/new`
