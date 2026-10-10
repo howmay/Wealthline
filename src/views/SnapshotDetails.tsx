@@ -26,12 +26,12 @@ export function SnapshotDetails({ point, day }: { point: HistoricalPoint; day?: 
   const category = point.total === null ? null : slices(point.categories), currency = grouped('currency'), country = grouped('country')
   return <>
     <section className="panel hero" aria-label="快照總資產">
-      <span className="eyebrow">{point.date.replaceAll('-', '/')} · {point.manual ? '補登快照' : '歷史快照'}</span>
+      <span className="eyebrow">{point.date.replaceAll('-', '/')} · {point.periodDerived ? '期間推算' : point.manual ? '補登快照' : '歷史快照'}</span>
       <div className="hero-figure">{money(point.total)}</div>
       <p className="muted">{point.accounts.length} 個帳戶 · 總資產</p>
     </section>
-    <section className="panel stat" aria-label="總負債"><span className="eyebrow">總負債{point.liabilityEstimated && '（預估）'}</span><strong>{money(point.liabilityTotal)}</strong></section>
-    <section className="panel stat" aria-label="淨資產"><span className="eyebrow">淨資產{point.liabilityEstimated && '（預估）'}</span><strong>{money(point.netWorth)}</strong><span className="muted small">總資產 − 總負債 · 未記錄負債以 0 計</span></section>
+    <section className="panel stat" aria-label="總負債"><span className="eyebrow">總負債{point.liabilityEstimated && '（預估）'}</span><strong>{point.liabilityAssumed ? '未記錄（以 0 計）' : money(point.liabilityTotal)}</strong></section>
+    <section className="panel stat" aria-label="淨資產"><span className="eyebrow">淨資產{point.liabilityEstimated && '（預估）'}</span><strong>{money(point.netWorth)}</strong><span className="muted small">總資產 − 總負債{point.liabilityAssumed && ' · 負債未記錄，以 0 計'}</span></section>
     <section className="panel span-2"><h3>資產配置</h3>{category ? <Allocation slices={colorize(category, CATEGORIES)} /> : <p className="muted">缺少歷史數量或行情，配置尚不完整。</p>}</section>
     <section className="panel" aria-label="快照帳戶"><h3>當時的帳戶餘額</h3><ul className="snapshot-accounts">{point.accounts.map(a => <li key={a.id}><span>{a.name}</span><strong>{money(a.value)}</strong></li>)}</ul></section>
     <section className="panel"><h3>幣別曝險</h3>{currency ? <Allocation slices={colorize(currency, COMMON_CURRENCIES)} /> : <p className="muted">這份快照沒有完整的幣別明細。</p>}</section>

@@ -52,9 +52,10 @@ export async function yahooHistory(symbol: string, from: string): Promise<PriceH
   const period2 = Math.floor(Date.now() / 1000)
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d&events=splits`
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (we-wealth quote lookup)' } })
-  if (!res.ok) return null
+  if (!res.ok) { if(res.status===404) return null; throw new Error('history_provider_error') }
   const body = (await res.json()) as {
     chart?: {
+      error?: {code?:string}
       result?: {
         meta?: { currency?: string; symbol?: string; gmtoffset?: number; exchangeTimezoneName?: string }
         timestamp?: number[]
@@ -63,9 +64,11 @@ export async function yahooHistory(symbol: string, from: string): Promise<PriceH
       }[]
     }
   }
+  if(body.chart?.error) { if(body.chart.error.code==='Not Found') return null; throw new Error('history_provider_error') }
   const r = body.chart?.result?.[0]
   const closes = r?.indicators?.quote?.[0]?.close ?? []
-  if (!r?.meta?.currency || !r.timestamp) return null
+  if(!r) { if(Array.isArray(body.chart?.result) && body.chart.result.length===0) return null; throw new Error('history_provider_error') }
+  if (!r.meta?.currency || !Array.isArray(r.timestamp)) throw new Error('history_provider_error')
   const offset = r.meta.gmtoffset ?? 0
   const dateOf = (t: number) => r.meta?.exchangeTimezoneName
     ? new Intl.DateTimeFormat('en-CA', { timeZone: r.meta.exchangeTimezoneName, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t * 1000))
@@ -97,10 +100,11 @@ export const isApiPath = (path: string) => path === '/api/quote' || path === '/a
 export async function handleApiRequest(url: URL): Promise<Response> {
   const symbol = url.searchParams.get('symbol') ?? ''
   const history = url.pathname === '/api/history'
-  const result = await (history ? yahooHistory(symbol, url.searchParams.get('from') ?? '') : yahooQuote(symbol)).catch(() => null)
-  return new Response(JSON.stringify(result ?? { error: 'not_found' }), {
-    status: result ? 200 : 404,
+  let providerFailed=false
+  const result = await (history ? yahooHistory(symbol, url.searchParams.get('from') ?? '') : yahooQuote(symbol)).catch(() => {providerFailed=history;return null})
+  return new Response(JSON.stringify(result ?? { error: providerFailed ? 'provider_error' : 'not_found' }), {
+    status: result ? 200 : providerFailed ? 502 : 404,
     // Past closes change only once a day.
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${history ? 3600 : 300}` },
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': providerFailed ? 'no-store' : `public, max-age=${history ? 3600 : 300}` },
   })
 }

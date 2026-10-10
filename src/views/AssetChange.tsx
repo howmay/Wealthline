@@ -29,7 +29,8 @@ export function ChangeSinceLast({ data }: { data: WealthData }) {
   const now = useCalendarNow()
   const today = snapshotOf(data, now)
   const previous = points.length > 1 ? points[points.length - 2] : null
-  if (!previous || previous.total === null || today.total === null) return null
+  if (!previous) return null
+  if (previous.total === null || today.total === null) return <p className="hero-change muted small">較 {shortDate(previous.date)} 的紀錄：資料不完整，無法比較。</p>
   const diff = today.total - previous.total
   const gap = dayNumber(today.date) - dayNumber(previous.date)
   return (
@@ -70,7 +71,7 @@ export function AssetChange({ data }: { data: WealthData }) {
           ))}
         </div>
       </div>
-      {data.history.quantityDays?.length ? <p className="muted small">含手動補登的歷史估值；目前總資產仍以現有持倉計算。資料不完整的日期保留缺口。</p> : null}
+      {(data.history.quantityDays?.length || data.history.holdingPeriods?.length) ? <p className="muted small">含單日補登及持有期間的歷史估值；目前總資產仍以現有持倉計算。資料不完整的日期保留缺口。</p> : null}
       {shown.length < 2 ? (
         <p className="muted">
           目前只有一天的紀錄。每天第一次登入時會自動記一筆，累積幾天之後，這裡就會顯示總資產的變化。

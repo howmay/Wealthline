@@ -2,13 +2,17 @@
 // daily closes and exchange rates come from /api/history, and the quantity held on
 // each day comes from the change log. Nothing here is written to Drive.
 
+import { MAX_PERIOD_DAYS, resolveCompletion, createPeriodIndex, shiftDate } from './holdingPeriods'
 import { changeKey, keyOf, localDate } from './history'
-import { entryValue, instrumentKey, quoteOn, repriceEntry, type QuantityEntry } from './quantityHistory'
+import { historicalFxError } from './historicalFx'
+import { entryValue, instrumentKey, quoteOn, repriceEntry, type QuantityEntry, type HistoricalQuote } from './quantityHistory'
 import { BASE_CURRENCY, rateOf, type Account, type Position, type WealthData } from './model'
 
 export interface PriceHistory {
   symbol: string
   currency: string
+  failure?: 'not_found' | 'provider_error'
+  conversion?: {currency:string;asset:PriceHistory|null;usd:PriceHistory|null}
   asTraded?: boolean
   splits?: { date: string; ratio: number }[]
   points: { date: string; close: number }[]
@@ -21,6 +25,8 @@ export interface DayValue {
   rate: number | null
   priceDate?: string
   rateDate?: string
+  rateQuote?: HistoricalQuote
+  error?: string
   value: number | null
   live?: boolean // today, from the current numbers
 }
@@ -47,9 +53,12 @@ export async function fetchHistory(symbol: string, from: string, reload = false)
 }
 async function requestHistory(symbol: string, from: string, reload: boolean): Promise<PriceHistory | null> {
   const res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&from=${from}`, { cache: reload ? 'no-cache' : 'default' }).catch(() => null)
+  if(!res?.ok) return {symbol,currency:'',points:[],failure:res?.status===404?'not_found':'provider_error'}
   try {
-    const body = res?.ok ? await res.json() as PriceHistory : null
-    return body && Array.isArray(body.points) && typeof body.currency === 'string' && typeof body.symbol === 'string' && body.points.every(p => p && typeof p.date === 'string' && Number.isFinite(p.close) && p.close > 0) && (body.splits === undefined || Array.isArray(body.splits) && body.splits.every(s => s && typeof s.date === 'string' && Number.isFinite(s.ratio) && s.ratio > 0)) ? body : null
+    const body=await res.json() as PriceHistory
+    if(!body || !Array.isArray(body.points) || typeof body.currency!=='string' || typeof body.symbol!=='string' || !body.points.every(p=>p && typeof p.date==='string' && Number.isFinite(p.close) && p.close>0) || (body.splits!==undefined && (!Array.isArray(body.splits)||!body.splits.every(s=>s && typeof s.date==='string' && Number.isFinite(s.ratio)&&s.ratio>0)))) return null
+    // Do not accept internal conversion containers or failure flags from the network.
+    return {symbol:body.symbol,currency:body.currency,points:body.points,asTraded:body.asTraded===true,splits:body.splits}
   } catch { return null }
 }
 
@@ -81,6 +90,7 @@ export function explicitDays(data: WealthData, account: Account, p: Position): M
   for (const d of data.history.quantityDays ?? []) {
     const entry = d.entries.find((e) => instrumentKey(e) === key)
     if (entry) days.set(d.date, entry)
+    else if(d.inventory) days.set(d.date,{accountId:account.id,account:account.name,category:account.category,country:account.country,type:p.type,symbol:p.type==='cash' ? '' : p.symbol,currency:p.currency,quantity:0})
   }
   return days
 }
@@ -99,6 +109,8 @@ function enteredDay(date: string, stored: QuantityEntry, prices: PriceHistory | 
     rate: e.currency === BASE_CURRENCY ? 1 : (e.fx?.value ?? null),
     priceDate: e.price?.date,
     rateDate: e.fx?.date,
+    rateQuote:e.fx,
+    error:e.error,
     value: entryValue(e),
   }
 }
@@ -127,7 +139,19 @@ export function positionTimeline(
   const log = (mixedCurrency ? [] : logFor(data, account, p)).filter(
     (c) => c.currency === p.currency && (!c.before || !c.after || c.before.quantity !== c.after.quantity),
   )
-  const entered = [...explicitDays(data, account, p)].sort(([a], [b]) => a.localeCompare(b))
+  const enteredByDate=explicitDays(data,account,p)
+  const rawEntered=new Map(enteredByDate)
+  const completionDates=new Set<string>()
+  for(const day of data.history.quantityDays ?? []) if(day.completion) {
+    completionDates.add(day.date)
+    const identity={accountId:account.id,account:account.name,category:account.category,country:account.country,type:p.type,symbol:p.type==='cash'?'':p.symbol,currency:p.currency}
+    enteredByDate.set(day.date,resolveCompletion(data,day).entries.find(e=>instrumentKey(e)===instrumentKey(identity)) ?? {...identity,quantity:0})
+  }
+  const inventoryDates=new Set((data.history.quantityDays ?? []).filter(d=>d.inventory).map(d=>d.date))
+  const entered = [...enteredByDate].sort(([a], [b]) => a.localeCompare(b))
+  const identity = {accountId:account.id,account:account.name,category:account.category,country:account.country,type:p.type,symbol:p.symbol,currency:p.currency}
+  const periods = (data.history.holdingPeriods ?? []).filter(x=>instrumentKey(x)===instrumentKey(identity))
+  const periodLookup = createPeriodIndex(data)
   const recordedDays = data.history.snapshots.map((s) => s.date)
 
   // Units held at the end of `date` and the day that count was recorded;
@@ -141,7 +165,7 @@ export function positionTimeline(
     }
     // A recorded day's total was worked out from the logged count, so an entered
     // quantity stops there and the daily records and this chart agree.
-    const last = entered.filter(([d]) => d <= date).at(-1)
+    const last = [...rawEntered].sort(([a],[b])=>a.localeCompare(b)).filter(([d]) => d <= date && !inventoryDates.has(d)).at(-1)
     if (last && !(logged && logged.recorded > last[0]) && !recordedDays.some((d) => d > last[0] && d <= date)) {
       const [recorded, e] = last
       return e.quantity === null ? undefined : { quantity: e.quantity, recorded }
@@ -166,14 +190,30 @@ export function positionTimeline(
   const dates = new Set<string>(start.known ? [start.date] : [])
   for (const x of lots) if (x.addedAt) dates.add(localDate(x.addedAt))
   for (const pt of quoted ? prices!.points : []) dates.add(pt.date)
-  for (const pt of fx?.points ?? []) dates.add(pt.date)
+  for (const source of [fx,fx?.conversion?.asset,fx?.conversion?.usd]) for(const pt of source?.points ?? []) dates.add(pt.date)
   for (const c of log) dates.add(localDate(c.at))
   for (const [date] of entered) dates.add(date)
 
+  if (periods.length) {
+    const earliest=periods.map(x=>x.start).sort()[0], lower=shiftDate(today,-MAX_PERIOD_DAYS)
+    for(let date=earliest<lower?lower:earliest;date<today;date=shiftDate(date,1)) dates.add(date)
+  }
   const days: DayValue[] = []
   let incomplete = false
   for (const date of [...dates].sort()) {
     if (date >= today) continue
+    const inventoryEntry=(inventoryDates.has(date) || completionDates.has(date)) ? enteredByDate.get(date) : undefined
+    if(inventoryEntry) {
+      const day=enteredDay(date,inventoryEntry,prices,fx)
+      if(day.value===null) incomplete=true
+      days.push(day);continue
+    }
+    const periodState = periodLookup(identity,date)
+    if (periodState) {
+      const day=enteredDay(date,{...identity,quantity:periodState.quantity,quantityAsOf:periodState.basisDate},prices,fx)
+      if(day.value===null) incomplete=true
+      days.push(day);continue
+    }
     const entry = entered.find(([d]) => d === date)?.[1]
     if (entry) {
       const day = enteredDay(date, entry, prices, fx)
@@ -199,7 +239,7 @@ export function positionTimeline(
     const raw = quantity === 0 ? 0 : price === null || rate === null ? null : quantity * price * rate
     const value = raw !== null && Number.isFinite(raw) ? raw : null
     if (value === null) incomplete = true
-    days.push({ date, quantity, price, rate, priceDate: quote?.date, rateDate: rateQuote?.date, value })
+    days.push({ date, quantity, price, rate, priceDate: quote?.date, rateDate: rateQuote?.date, rateQuote, error:quantity===0 ? undefined : historicalFxError(p.currency,date,fx), value })
   }
 
   const enteredToday = entered.find(([d]) => d === today)?.[1]

@@ -278,7 +278,7 @@ export default function App() {
   function update(next: WealthData) {
     editVersion.current++
     dirtyRef.current = true
-    setData({ ...next, version: next.version === 4 || next.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [] })
+    setData({ ...next, version: next.version === 9 ? 9 : next.version === 8 ? 8 : next.version === 7 ? 7 : next.version === 6 ? 6 : next.version === 5 || next.history.holdingPeriods !== undefined ? 5 : next.version === 4 || next.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : next.version === 3 || next.history.quantityDays !== undefined ? 3 : 2, liabilities: next.liabilities ?? [] })
     setDirty(true)
   }
 
@@ -408,7 +408,13 @@ export default function App() {
           <Overview
             data={data}
             busy={busy}
-            onCommitHistory={(next) => { update(next); void persist(next) }}
+            dirty={dirty}
+            onSave={requestSave}
+            onCommitHistory={(next) => {
+              if (savingRef.current) throw new Error('背景儲存中，請稍後再儲存歷史修改。')
+              if (dirtyRef.current) throw new Error('請先儲存或捨棄其他未儲存修改，再儲存歷史。')
+              update(next); void persist(next)
+            }}
             onGoLiabilities={() => go({ tab: 'liabilities' })}
             onGoRates={() => go({ tab: 'rates' })}
             onNewAccount={() => goAccounts({ page: 'new' })}
