@@ -1402,3 +1402,34 @@ test('complete backfill date editing uses the same full-list editor and keeps it
  assert.deepEqual(current.history.quantityDays[0].inventory,before.inventory)
  assert.deepEqual(current.history.quantityDays[0].entries.map(e=>e.quantity),[150,2,0,3,4]);assert.deepEqual(current.accounts,data.accounts)
 })
+
+
+test('public home and legal pages need no sign-in and legal pages do not restore Drive sessions', async () => {
+  let calls = 0
+  globalThis.fetch = async () => { calls++; throw new Error('public pages must not fetch account or Drive data') }
+  for (const path of ['/', '/privacy', '/terms', '/disclaimer', '/app']) {
+    if (root) { await act(() => root.unmount()); root = null }
+    auth.clearSession()
+    if (path === '/privacy') auth.storeSession({ token, profile })
+    window.history.replaceState(null, '', path)
+    await render(App)
+    assert.ok(document.querySelector('footer a[href="/privacy"]'))
+    assert.ok(document.querySelector('footer a[href="/terms"]'))
+    assert.equal(document.querySelectorAll('script[src*="accounts.google.com"]').length, 0)
+    assert.equal(document.querySelector('.topbar'), null)
+    assert.equal(calls, 0, path)
+    if (path === '/' || path === '/app') assert.ok(button('使用 Google 登入'))
+    else assert.ok(document.querySelector('.legal article'))
+  }
+})
+
+test('restored home session moves to /app without replacing a protected deep link', async () => {
+  window.history.replaceState(null, '', '/')
+  setupDrive(fixture())
+  await render(App)
+  assert.equal(window.location.pathname, '/app')
+  assert.ok(document.querySelector('.topbar'))
+  await act(async () => { window.history.replaceState(null, '', '/history'); window.dispatchEvent(new PopStateEvent('popstate')) })
+  assert.equal(window.location.pathname, '/history')
+  assert.ok(document.querySelector('section.daily'))
+})

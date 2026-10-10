@@ -138,7 +138,7 @@ test('only the public pages are indexable; app routes and the API are marked noi
   const env = { ASSETS: { fetch: async () => new Response('<html></html>', { headers: { 'Content-Type': 'text/html' } }) } }
   const robots = async (path) => (await worker.fetch(new Request(`https://example.com${path}`), env)).headers.get('X-Robots-Tag')
   for (const path of ['/', '/index.html', '/privacy', '/privacy/', '/terms.html', '/disclaimer']) assert.equal(await robots(path), null, path)
-  for (const path of ['/accounts', '/history', '/privacy/extra', '/no-such-page']) assert.equal(await robots(path), 'noindex', path)
+  for (const path of ['/app', '/accounts', '/history', '/privacy/extra', '/no-such-page']) assert.equal(await robots(path), 'noindex', path)
   globalThis.fetch = async () => { assert.fail('invalid symbols must not reach the network') }
   assert.equal(await robots('/api/quote?symbol=%20'), 'noindex')
 })

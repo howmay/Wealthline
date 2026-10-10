@@ -16,7 +16,7 @@ export type Route =
   | { tab: 'history'; date?: string }
   | { tab: 'rates' }
 
-export const tabPath = (t: Tab) => (t === 'overview' ? '/' : `/${t}`)
+export const tabPath = (t: Tab) => (t === 'overview' ? '/app' : `/${t}`)
 
 export function parseRoute(path: string): Route {
   const [first, second, third, ...rest] = path.split('/').filter(Boolean).map(decodeURIComponent)
@@ -39,7 +39,7 @@ export function parseRoute(path: string): Route {
 export function routePath(r: Route): string {
   switch (r.tab) {
     case 'overview':
-      return '/'
+      return '/app'
     case 'history':
       return r.date ? `/history/${r.date}` : '/history'
     case 'liabilities':

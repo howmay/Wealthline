@@ -12,7 +12,7 @@ after(() => server.close())
 
 test('each signed-in page has its own URL that parses back to the same page', () => {
   const pages = [
-    [{ tab: 'overview' }, '/'],
+    [{ tab: 'overview' }, '/app'],
     [{ tab: 'accounts', page: 'list' }, '/accounts'],
     [{ tab: 'accounts', page: 'list', importing: true }, '/accounts/import'],
     [{ tab: 'accounts', page: 'new' }, '/accounts/new'],
