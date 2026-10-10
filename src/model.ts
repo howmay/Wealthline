@@ -154,11 +154,18 @@ export function breakdown(data: WealthData, keyOf: (a: Account, p: Position) => 
   return { total, slices }
 }
 
-// The file sits in the user's Drive and may have been edited by hand, so check it before use.
+// The file sits in the user's Drive (or was uploaded) and may have been edited by hand, so check it before use.
 // Throws instead of guessing, so a broken file is never silently overwritten.
-export function parseWealthData(raw: unknown): WealthData {
+// Where the data came from, for the error message when it does not parse.
+const SOURCES = {
+  drive: ['Drive 中的資料檔', '請修正或刪除該檔案後重新登入。'],
+  file: ['上傳的資料檔', '請確認選的是 Wealthline 的 JSON 資料檔。'],
+  browser: ['此瀏覽器保存的資料', '可以上傳備份的資料檔取代它。'],
+} as const
+
+export function parseWealthData(raw: unknown, source: keyof typeof SOURCES = 'drive'): WealthData {
   const fail = (why: string): never => {
-    throw new Error(`Drive 中的資料檔格式不正確：${why}。請修正或刪除該檔案後重新登入。`)
+    throw new Error(`${SOURCES[source][0]}格式不正確：${why}。${SOURCES[source][1]}`)
   }
   const obj = (typeof raw === 'object' && raw !== null ? raw : fail('不是 JSON 物件')) as Record<string, unknown>
   if (obj.version !== 1 && obj.version !== 2 && obj.version !== 3 && obj.version !== 4 && obj.version !== 5 && obj.version !== 6 && obj.version !== 7 && obj.version !== 8 && obj.version !== 9) fail(`不支援的版本 ${String(obj.version)}`)

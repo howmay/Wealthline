@@ -414,6 +414,32 @@ a.button.ghost {
   gap: 10px;
 }
 
+/* Local mode (no sign-in) under the Google button */
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--hairline);
+}
+
+button.local-start {
+  width: 100%;
+  padding: 10px 16px;
+}
+
+button.link.inline {
+  padding: 0 2px;
+  font-size: inherit;
+}
+
 .signin-box a,
 .legal a,
 .more {

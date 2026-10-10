@@ -24,7 +24,7 @@
 
 ## 立即使用
 
-打開 **<https://wealthline.haomeh.com>**，用 Google 帳號登入即可，不需要註冊或安裝。
+打開 **<https://wealthline.haomeh.com>**，用 Google 帳號登入即可，不需要註冊或安裝。也可以不登入，直接在瀏覽器使用（本機模式）。
 
 - 隱私權政策：<https://wealthline.haomeh.com/privacy>
 - 使用條款：<https://wealthline.haomeh.com/terms>
@@ -45,6 +45,7 @@
 - [x] 使用 Google 帳號登入（Google Identity Services），權杖只存放在目前分頁的 sessionStorage，重新整理頁面後保持登入，關閉分頁即失效；權杖過期後可一鍵以同一帳號繼續。
 - [x] 資料以 JSON 檔存放在使用者自己的 Google Drive，儲存前有未儲存變更提示，關閉分頁前會提醒。
 - [x] 登出時撤銷 Google 存取權杖並清除本機登入資訊。
+- [x] 本機模式：不登入也能使用，資料以同樣的 JSON 格式存放在瀏覽器的 localStorage。可以下載成資料檔，之後在任何瀏覽器上傳還原；也可以一鍵刪除瀏覽器中的資料。除了報價與匯率查詢，資料不會離開瀏覽器。
 
 ### 帳戶與持倉
 - [x] 先建立帳戶（銀行帳戶／投資帳戶），設定國家、幣別與資產類別。新增或編輯時，同名稱與國家不可重複（忽略大小寫與前後空白）；同名不同國家的帳戶分開展示。

@@ -94,7 +94,7 @@ function Privacy() {
       <h2 className="legal-zh-title">中文版</h2>
       <p className="legal-lead">
         Wealthline（<a href={SITE_URL}>{SITE_HOST}</a>）是一個開放原始碼的個人資產統計工具，讓你記錄銀行存款、股票、基金與加密貨幣，並換算成新臺幣看清資產配置。
-        我們的設計原則很簡單：<strong>資產與負債資料由瀏覽器處理，儲存在你自己的 Google Drive</strong>，營運者不建立財務資料庫。
+        我們的設計原則很簡單：<strong>資產與負債資料由瀏覽器處理，儲存在你自己的 Google Drive</strong>；選擇不登入的「本機模式」時，則<strong>只存在你的瀏覽器</strong>。營運者不建立財務資料庫。
         本政策說明本服務存取哪些資料、如何使用、存放、分享與刪除。英文版本在本頁上方，兩者內容相同。
       </p>
 
@@ -108,7 +108,7 @@ function Privacy() {
       <Section title="二、我們向 Google 要求的權限">
         <p>以 Google 帳號登入時，Google 會顯示授權畫面，請你同意以下權限。每個權限的用途如下：</p>
         <ScopeTable lang="zh" />
-        <p>本服務不會要求其他任何 Google 權限，例如 Gmail、通訊錄、日曆，或讀取整個雲端硬碟的權限。</p>
+        <p>本服務不會要求其他任何 Google 權限，例如 Gmail、通訊錄、日曆，或讀取整個雲端硬碟的權限。使用本機模式時不需要登入，本服務不會向 Google 要求任何權限。</p>
       </Section>
 
       <Section title="三、我們存取與處理哪些資料">
@@ -145,6 +145,9 @@ function Privacy() {
             <strong>登入資訊</strong>：存取權杖只存放在目前分頁的 sessionStorage：重新整理頁面仍保持登入，通常在關閉分頁後清除；瀏覽器的工作階段復原功能可能保留它，因此共用裝置請務必登出。localStorage 只保存帳號識別碼、電子郵件、名稱與大頭貼網址，供下次繼續登入，另記錄你最後看過的隱私權政策版本。登出立即清除本機登入資訊，並嘗試向 Google 撤銷權杖；若網路失敗，可至 Google 帳戶撤銷授權。
           </li>
           <li>
+            <strong>本機模式的資產資料</strong>：只存在你的瀏覽器，詳見第七節。
+          </li>
+          <li>
             <strong>網站與報價服務</strong>：由 Cloudflare 託管網站及報價轉發程式，不建立 Google 帳號或完整財務資料的後端資料庫。報價請求的資料與連線資訊見下一節。
           </li>
         </ul>
@@ -166,10 +169,31 @@ function Privacy() {
             <strong>Cloudflare</strong>：網站託管服務。和任何網站一樣，託管商可能依其政策記錄連線的 IP 位址等技術資訊。
           </li>
         </ul>
-        <p>Google 帳號資料、存取權杖與完整 Drive 檔案不會傳送給報價服務。查價所需的標的代號可能來自 Drive 檔案；第三方服務也會收到一般連線資訊，例如 IP 位址。Google、Cloudflare 與行情供應商依各自政策處理資料。</p>
+        <p>使用本機模式時，瀏覽器不會連線到 Google，只會連線到上述報價與匯率服務。Google 帳號資料、存取權杖與完整 Drive 檔案不會傳送給報價服務。查價所需的標的代號可能來自 Drive 檔案；第三方服務也會收到一般連線資訊，例如 IP 位址。Google、Cloudflare 與行情供應商依各自政策處理資料。</p>
       </Section>
 
-      <Section title="七、Google API 使用者資料：有限使用聲明">
+      <Section title="七、不登入使用（本機模式）">
+        <p>你可以在首頁選擇「不登入，直接在瀏覽器使用」。本機模式的運作方式如下：</p>
+        <ul>
+          <li>
+            <strong>存放位置</strong>：你輸入的資產資料（種類與第三節相同）以 JSON 格式存放在這個瀏覽器的 localStorage，並另外記錄你正在使用本機模式。資料不會傳送給營運者，也不會上傳到 Google Drive 或任何伺服器；本服務的報價轉發程式也不會收到這些資料。
+          </li>
+          <li>
+            <strong>離開瀏覽器的資料</strong>：只有查詢報價與匯率時，瀏覽器會送出股票代號、幣別或幣種名稱，以及查歷史價格時的起始日期，內容同第六節，不包含數量、金額或帳戶名稱。
+          </li>
+          <li>
+            <strong>下載與上傳</strong>：「下載資料檔」會在你的裝置上產生一個 JSON 檔，存放在你選擇的位置，由你自行保管。「上傳資料檔」只在瀏覽器中讀取你選的檔案，並取代此瀏覽器中的資料，檔案不會傳送到任何伺服器。
+          </li>
+          <li>
+            <strong>保存期限與刪除</strong>：資料會保留到你在選單中按「刪除此瀏覽器中的資料」，或清除瀏覽器的網站資料為止。「離開本機模式」會保留資料，供下次繼續使用。換瀏覽器、換裝置或使用無痕視窗時看不到這些資料，營運者也無法替你復原，請定期下載備份。
+          </li>
+          <li>
+            <strong>安全</strong>：localStorage 中的資料沒有加密，能使用這個瀏覽器設定檔的人都可能讀取。共用裝置請勿使用本機模式，或在使用後刪除資料。
+          </li>
+        </ul>
+      </Section>
+
+      <Section title="八、Google API 使用者資料：有限使用聲明">
         <p>
           Wealthline 對於從 Google API 取得之資訊的使用與傳輸，遵守{' '}
           <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API 服務使用者資料政策</a>
@@ -177,13 +201,16 @@ function Privacy() {
         </p>
       </Section>
 
-      <Section title="八、如何刪除資料與撤銷授權">
+      <Section title="九、如何刪除資料與撤銷授權">
         <ul>
           <li>
             <strong>刪除資產資料</strong>：在 Google Drive 刪除「{FOLDER_NAME}」資料夾並清空垃圾桶，本服務便無法再讀取該檔案。請先登出並關閉其他已開啟的分頁，以免未儲存修改再次寫入；也請自行刪除下載的備份。Google 的備份與保留期限依其政策處理。營運者沒有完整財務資料副本。
           </li>
           <li>
             <strong>清除本機登入資訊</strong>：在本服務中按「登出」，或清除瀏覽器的網站資料。
+          </li>
+          <li>
+            <strong>刪除本機模式的資料</strong>：在本機模式的選單按「刪除此瀏覽器中的資料」，或清除瀏覽器的網站資料；下載的資料檔請自行刪除。
           </li>
           <li>
             <strong>撤銷 Google 授權</strong>：到 <a href="https://myaccount.google.com/connections">Google 帳戶的第三方連結</a> 移除 Wealthline 的存取權。撤銷授權不會刪除 Drive 檔案，需另外執行上述刪除步驟。
@@ -194,22 +221,22 @@ function Privacy() {
         </ul>
       </Section>
 
-      <Section title="九、Cookie 與追蹤">
-        <p>本服務本身不設定追蹤 Cookie、不加入分析工具或廣告。Google 登入及第三方服務可能依各自政策使用 Cookie 或連線資訊。localStorage 與 sessionStorage 只用來保存上述登入資訊與你最後看過的隱私權政策版本。</p>
+      <Section title="十、Cookie 與追蹤">
+        <p>本服務本身不設定追蹤 Cookie、不加入分析工具或廣告。Google 登入及第三方服務可能依各自政策使用 Cookie 或連線資訊。localStorage 與 sessionStorage 只用來保存上述登入資訊、本機模式的資料與使用狀態，以及你最後看過的隱私權政策版本。</p>
       </Section>
 
-      <Section title="十、安全">
+      <Section title="十一、安全">
         <p>
           正式網站連線使用 HTTPS。資料檔是一般 JSON，本服務沒有對它加上額外的端對端加密；HTTPS 保護傳輸，Google Drive 的帳號權限保護檔案存取。請勿將資料檔公開分享，請為你的 Google 帳號啟用兩步驟驗證。本服務的程式碼完全公開在{' '}
           <a href={REPO_URL}>GitHub</a>，任何人都可以檢查上述說明是否屬實。
         </p>
       </Section>
 
-      <Section title="十一、兒童">
+      <Section title="十二、兒童">
         <p>本服務不以兒童為對象，也不會在知情的情況下處理兒童的個人資料。</p>
       </Section>
 
-      <Section title="十二、政策變更">
+      <Section title="十三、政策變更">
         <p>
           本政策如有修改，會更新本頁的「最後更新日期」，並可在 GitHub 的版本紀錄中查到每一次的變更內容。若修改內容涉及 Google 使用者資料的存取、使用、存放或分享方式，登入後的 App 內會顯示通知並連到新版政策；以新的方式使用 Google 使用者資料前，會再次取得你的同意。
         </p>
@@ -252,7 +279,7 @@ function PrivacyEnglish() {
       <p>
         This privacy policy explains how <strong>Wealthline</strong> (<a href={SITE_URL}>{SITE_HOST}</a>), a free, open-source personal asset tracking web app,
         accesses, uses, stores, shares and deletes Google user data. Wealthline lets you record bank balances, stocks, funds and crypto holdings and shows your
-        total net worth and asset allocation. <strong>Your financial records are processed in your browser and saved in your own Google Drive.</strong> The operator does not maintain a financial records database. Website hosting and market-data requests are described below.
+        total net worth and asset allocation. <strong>Your financial records are processed in your browser and saved in your own Google Drive</strong>, or, if you choose to use Wealthline without signing in (local mode), <strong>kept only in your browser</strong>. The operator does not maintain a financial records database. Website hosting and market-data requests are described below.
       </p>
 
       <h3>1. Google user data we access</h3>
@@ -318,27 +345,54 @@ function PrivacyEnglish() {
         </li>
       </ul>
 
-      <h3>6. Limited Use disclosure</h3>
+      <h3>6. Using Wealthline without signing in (local mode)</h3>
+      <p>You can choose “use in the browser without signing in” on the home page. Local mode works as follows:</p>
+      <ul>
+        <li>No Google sign-in is involved: Wealthline requests no Google scopes and receives no Google user data, and your browser does not contact Google.</li>
+        <li>
+          The asset data you enter (the same kinds of records listed in section 1) is stored as JSON in this browser's localStorage, together with a flag that
+          you are using local mode. It is not sent to the operator, to Google Drive or to any server, including Wealthline's quote relay.
+        </li>
+        <li>
+          The only data that leaves your browser are the market lookups described in section 3: ticker symbols, currency or coin codes, and a start date for
+          past prices. Balances, quantities and account names are never sent.
+        </li>
+        <li>
+          “Download data file” saves a JSON file to a location you choose on your device. “Upload data file” reads the file you pick inside the browser and
+          replaces the data stored there; the file is not sent anywhere.
+        </li>
+        <li>
+          The data stays until you choose “Delete the data in this browser” from the menu or clear the browser's site data. “Leave local mode” keeps the data
+          for next time. It is not available in other browsers, on other devices or in private windows, and the operator cannot recover it, so download
+          backups regularly.
+        </li>
+        <li>
+          localStorage is not encrypted: anyone who can use this browser profile may read the data. Do not use local mode on a shared device, or delete the
+          data when you are done.
+        </li>
+      </ul>
+
+      <h3>7. Limited Use disclosure</h3>
       <p>
         Wealthline's use and transfer to any other app of information received from Google APIs will adhere to the{' '}
         <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use
         requirements.
       </p>
 
-      <h3>7. Cookies and tracking</h3>
-      <p>Wealthline itself does not set tracking cookies or include analytics or advertising. Google sign-in and other third-party services may use cookies or connection metadata under their own policies. It uses browser storage only for the sign-in information described above and the version of this policy you last saw.</p>
+      <h3>8. Cookies and tracking</h3>
+      <p>Wealthline itself does not set tracking cookies or include analytics or advertising. Google sign-in and other third-party services may use cookies or connection metadata under their own policies. It uses browser storage only for the sign-in information described above, local-mode data and its on/off flag, and the version of this policy you last saw.</p>
 
-      <h3>8. Children</h3>
+      <h3>9. Children</h3>
       <p>Wealthline is not directed at children under 13 and does not knowingly process their personal data.</p>
 
-      <h3>9. Changes to this policy</h3>
+      <h3>10. Changes to this policy</h3>
       <p>
         When this policy changes, we update the "Last updated" date above, and every change is visible in the public GitHub history. If a change affects how
         Wealthline accesses, uses, stores or shares Google user data, signed-in users see a notice inside the app that links to the updated policy, and we
         will ask for your consent again before using Google user data in a new way.
       </p>
 
-      <h3>10. Contact</h3>
+      <h3>11. Contact</h3>
       <p>
         Operator: the {OPERATOR} GitHub organization (<a href={OPERATOR_URL}>{OPERATOR_URL}</a>). Contact: <a href={ISSUES_URL}>GitHub Issues</a>.
       </p>
@@ -353,14 +407,15 @@ function Terms() {
 
       <Section title="一、服務內容">
         <p>
-          本服務是由 GitHub 組織 {OPERATOR}（<a href={OPERATOR_URL}>{OPERATOR_URL}</a>，以下稱「營運者」）以開放原始碼方式提供的免費個人資產統計工具，協助你整理帳戶、持倉與匯率，資料保存在你自己的 Google Drive。本服務為開源專案，不保證持續提供、不保證可用時間，也可能隨時修改或停止。
+          本服務是由 GitHub 組織 {OPERATOR}（<a href={OPERATOR_URL}>{OPERATOR_URL}</a>，以下稱「營運者」）以開放原始碼方式提供的免費個人資產統計工具，協助你整理帳戶、持倉與匯率，資料保存在你自己的 Google Drive，或在不登入的本機模式下保存在你的瀏覽器。本服務為開源專案，不保證持續提供、不保證可用時間，也可能隨時修改或停止。
         </p>
       </Section>
 
       <Section title="二、帳號與資料責任">
         <ul>
-          <li>你需以自己的 Google 帳號登入，並負責保管該帳號的安全。</li>
-          <li>你輸入的資料由你自行負責其正確性。資料檔存放在你的 Google Drive，請自行備份；營運者無法替你復原遺失或損毀的資料。</li>
+          <li>使用 Google 登入時，你需以自己的 Google 帳號登入，並負責保管該帳號的安全。</li>
+          <li>你輸入的資料由你自行負責其正確性。資料檔存放在你的 Google Drive，或在本機模式下存放在你的瀏覽器，請自行備份；營運者無法替你復原遺失或損毀的資料。</li>
+          <li>本機模式的資料會因清除瀏覽器網站資料、更換瀏覽器或裝置而無法取得，請定期下載資料檔。</li>
           <li>請勿刪除或手動修改資料檔的結構，以免本服務無法讀取。</li>
         </ul>
       </Section>
@@ -396,7 +451,7 @@ function Terms() {
       </Section>
 
       <Section title="七、終止">
-        <p>你可以隨時停止使用本服務並撤銷 Google 授權。若你違反本條款，營運者得停止你使用本服務的部署版本。</p>
+        <p>你可以隨時停止使用本服務並撤銷 Google 授權，或刪除本機模式存放在瀏覽器中的資料。若你違反本條款，營運者得停止你使用本服務的部署版本。</p>
       </Section>
 
       <Section title="八、準據法與管轄">
@@ -431,7 +486,7 @@ function Disclaimer() {
 
       <Section title="三、資料安全與遺失">
         <p>
-          你的資料只存在你的 Google Drive，本服務不另外保存副本。帳號遭盜用、資料檔被刪除或覆寫、第三方服務異常等情況造成的資料遺失或外洩，營運者無法負責，請定期下載備份。
+          你的資料只存在你的 Google Drive，或在本機模式下只存在你的瀏覽器，本服務不另外保存副本。帳號遭盜用、資料檔被刪除或覆寫、瀏覽器網站資料被清除、第三方服務異常等情況造成的資料遺失或外洩，營運者無法負責，請定期下載備份。
         </p>
       </Section>
 
