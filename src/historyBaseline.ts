@@ -42,9 +42,9 @@ export function quantityBaselines(data:WealthData,now=new Date().toISOString()):
 }
 // Scope is a user-confirmed complete portfolio on the destination date, not the
 // all-time catalog. Original sparse records remain sparse unless explicitly copied.
-export function baselineDay(source:QuantityBaseline,date:string,entries:QuantityEntry[],now=new Date().toISOString()):QuantityDay {
+export function baselineDay(source:QuantityBaseline,date:string,entries:QuantityEntry[],now=new Date().toISOString(),mode:'copy'|'edit'='copy'):QuantityDay {
   validatePastDate(date,now)
-  if(date===source.date) throw new Error('目的日必須與來源日不同；此流程不修改來源。')
+  if(date===source.date && mode!=='edit') throw new Error('目的日必須與來源日不同；此流程不修改來源。')
   if(source.error) throw new Error(source.error)
   if(source.kind==='day' && !source.verified) throw new Error('未驗證的歷史清單不能作完整基底')
   const byKey=new Map(entries.map(e=>[instrumentKey(e),e]))
@@ -55,11 +55,14 @@ export function baselineRevision(data:WealthData,sourceId:string,date:string,now
   const source=quantityBaselines(data,now).find(b=>b.id===sourceId)
   return JSON.stringify({source,day:data.history.quantityDays?.find(d=>d.date===date),snapshot:data.history.snapshots.find(s=>s.date===date),periods:data.history.holdingPeriods,changes:data.history.changes})
 }
-export function applyBaseline(data:WealthData,day:QuantityDay,sourceId:string,revision:string,confirmed:boolean,now=new Date().toISOString()):WealthData {
+export function applyBaseline(data:WealthData,day:QuantityDay,sourceId:string,revision:string,confirmed:boolean,now=new Date().toISOString(),mode:'copy'|'edit'='copy'):WealthData {
   if(!confirmed) throw new Error('請確認完整範圍與目的日差異')
   if(baselineRevision(data,sourceId,day.date,now)!==revision) throw new Error('來源或目的日資料已變更，請重新預覽')
   const source=quantityBaselines(data,now).find(b=>b.id===sourceId)
   if(!source) throw new Error('來源已不存在，請重新選取')
-  const validated=baselineDay(source,day.date,day.entries,now)
-  return applyQuantityDay(data,{...day,inventory:validated.inventory},data.history.quantityDays?.find(d=>d.date===day.date))
+  const validated=baselineDay(source,day.date,day.entries,now,mode)
+  const previous=data.history.quantityDays?.find(d=>d.date===day.date)
+  const scope=previous?.inventory ?? previous?.completion
+  const inventory=mode==='edit' && source.kind==='day' && source.date===day.date && scope ? {...validated.inventory!,source:scope.source} : validated.inventory
+  return applyQuantityDay(data,{...day,inventory},previous)
 }
