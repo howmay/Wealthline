@@ -1,4 +1,5 @@
 import type { WealthData } from './model'
+import { resolveCompletion } from './holdingPeriods'
 import { localDate } from './history'
 import { applyQuantityDay, instrumentKey, parseQuantityDays, validatePastDate, type CompleteInventory, type QuantityDay, type QuantityEntry } from './quantityHistory'
 
@@ -25,7 +26,12 @@ export function quantityBaselines(data:WealthData,now=new Date().toISOString()):
   }
   const today=localDate(now)
   const candidates:QuantityBaseline[]=[{id:'current',date:today,kind:'current',accounts:data.accounts.map(a=>({id:a.id,name:a.name})),entries:[...current.values()],verified:true,error:''},
-    ...(data.history.quantityDays ?? []).filter(d=>d.date<=today).slice().reverse().map(d=>({id:`day:${d.date}`,date:d.date,kind:'day' as const,accounts:d.inventory?.accounts ?? [...new Map(d.entries.map(e=>[e.accountId,{id:e.accountId,name:e.account}])).values()],entries:d.entries.map(quantityOnly),verified:!!d.inventory,error:''}))]
+    ...(data.history.quantityDays ?? []).filter(d=>d.date<=today).slice().reverse().map(raw=>{
+      const d=resolveCompletion(data,raw)
+      const scope=d.inventory ?? d.completion
+      const uncertainBasis=!!d.completion && d.entries.some(e=>e.quantityAsOf && e.quantityAsOf!==d.date && e.type!=='cash' && e.quantity!==0)
+      const omittedSnapshot=!!d.completion && data.history.snapshots.some(s=>s.date===d.date && s.accounts.some(a=>a.value!==0 && !scope?.accounts.some(known=>known.id===a.id)))
+      return {id:`day:${d.date}`,date:d.date,kind:'day' as const,accounts:scope?.accounts ?? [...new Map(d.entries.map(e=>[e.accountId,{id:e.accountId,name:e.account}])).values()],entries:d.entries.map(quantityOnly),verified:!!scope && !uncertainBasis && !omittedSnapshot,error:''}})]
   return candidates.map(b=>{
     let error=''
     if(b.entries.some(e=>e.quantity===null || !Number.isFinite(e.quantity) || e.quantity<0)) error='來源含未知或無效數量，請先補齊來源；不會補成 0。'

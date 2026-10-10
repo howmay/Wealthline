@@ -27,7 +27,9 @@ export interface CompleteInventory {
   accounts: {id:string;name:string}[]
   source: {kind: 'current' | 'day'; date:string}
 }
-export interface QuantityDay { inventory?: CompleteInventory; date: string; updatedAt: string; entries: QuantityEntry[]; sparse?: true; periodDerived?: boolean; quantityEvidence?: 'complete' | 'incomplete' | 'explicit-unknown' }
+// Supplements are scoped to this date. Raw entries retain their historical event semantics.
+export interface DayCompletion extends CompleteInventory { entries: QuantityEntry[] }
+export interface QuantityDay { completion?: DayCompletion; inventory?: CompleteInventory; date: string; updatedAt: string; entries: QuantityEntry[]; sparse?: true; periodDerived?: boolean; quantityEvidence?: 'complete' | 'incomplete' | 'explicit-unknown' }
 export type HistoricalPoint = Omit<Snapshot, 'total' | 'accounts' | 'categories'> & {
   total: number | null
   accounts: { id: string; name: string; value: number | null }[]
@@ -50,7 +52,7 @@ export function historyCatalog(data: WealthData): HistoricalInstrument[] {
     all.set(instrumentKey(p), { accountId, account, category, country, type, symbol, currency })
   }
   for (const period of data.history.holdingPeriods ?? []) add(period)
-  for (const day of data.history.quantityDays ?? []) for (const e of day.entries) add(e)
+  for (const day of data.history.quantityDays ?? []) for (const e of [...day.entries,...(day.completion?.entries ?? [])]) add(e)
   for (const c of data.history.changes) {
     const account = data.accounts.find(a => a.id === c.accountId)
     add({ accountId: c.accountId, account: account?.name ?? c.account, category: account?.category ?? '未分類', country: account?.country ?? 'GLOBAL', type: c.type, symbol: c.type === 'cash' ? '' : c.symbol.toUpperCase(), currency: c.currency })
@@ -121,8 +123,11 @@ export async function valueEntries(
 ): Promise<QuantityEntry[]> {
   validatePastDate(date)
   const cache = new Map<string, Promise<PriceHistory | null>>()
+  // Period evidence may precede the destination; fetch its split history while
+  // still selecting prices and FX strictly on the destination date.
+  const from=entries.reduce((first,e)=>e.quantityAsOf && e.quantityAsOf<first ? e.quantityAsOf : first,date)
   const get = (symbol: string) => {
-    if (!cache.has(symbol)) cache.set(symbol, fetcher(symbol, date).catch(() => null))
+    if (!cache.has(symbol)) cache.set(symbol, fetcher(symbol, from).catch(() => null))
     return cache.get(symbol)!
   }
   // Only symbol/date leave the client. Names, account IDs and quantities do not.
@@ -168,7 +173,7 @@ export function isUnrecordedPartialDay(day: QuantityDay) {
   return day.periodDerived === true && day.quantityEvidence === 'incomplete'
 }
 export function quantityPoint(day: QuantityDay, original?: Snapshot): HistoricalPoint {
-  const accounts = new Map<string, { id: string; name: string; value: number | null }>((day.inventory?.accounts ?? []).map(a=>[a.id,{...a,value:0}]))
+  const accounts = new Map<string, { id: string; name: string; value: number | null }>((day.inventory?.accounts ?? day.completion?.accounts ?? []).map(a=>[a.id,{...a,value:0}]))
   const categories: Record<string, number | null> = Object.create(null)
   let total: number | null = 0
   for (const entry of day.entries) {
@@ -194,7 +199,7 @@ export function applyQuantityDay(data: WealthData, day: QuantityDay, expected?: 
   const existing = data.history.quantityDays?.find(d => d.date === day.date)
   if (existing !== expected) throw new Error('這一天已新增或變更，請取消並重新開啟，避免覆蓋其他修改')
   const parsed = parseQuantityDays([day])[0]
-  return { ...data, version: data.version === 8 || parsed.inventory ? 8 : data.version === 7 || parsed.entries.some(e=>e.fx?.source==='derived') ? 7 : data.version === 6 || day.sparse ? 6 : data.version === 5 || data.history.holdingPeriods !== undefined ? 5 : data.version === 4 || data.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
+  return { ...data, version: data.version === 9 || parsed.completion ? 9 : data.version === 8 || parsed.inventory ? 8 : data.version === 7 || parsed.entries.some(e=>e.fx?.source==='derived') ? 7 : data.version === 6 || day.sparse ? 6 : data.version === 5 || data.history.holdingPeriods !== undefined ? 5 : data.version === 4 || data.liabilities?.some(d => d.schedule || d.basisHistory) ? 4 : 3, history: { ...data.history, quantityDays: [...(data.history.quantityDays ?? []).filter(d => d.date !== day.date), parsed].sort((a,b) => a.date.localeCompare(b.date)) } }
 }
 export function parseQuantityDays(raw: unknown): QuantityDay[] {
   if (!Array.isArray(raw)) throw new Error('歷史數量必須是陣列')
@@ -238,7 +243,19 @@ export function parseQuantityDays(raw: unknown): QuantityDay[] {
       if(entries.some(e=>!x.accounts.some(a=>a.id===e.accountId))) throw new Error('此帳戶不在這天的完整回補範圍。請取消編輯，使用「沿用持倉回補差異」重新回補此日期以擴大範圍；不必刪除原紀錄。')
       inventory={accounts:x.accounts.map(a=>({id:a.id,name:a.name})),source:{kind:x.source.kind,date:x.source.date}}
     }
-    return { date: d.date, updatedAt:d.updatedAt, entries, ...(d.sparse && {sparse:true as const}), ...(inventory && {inventory}) }
+    let completion:DayCompletion|undefined
+    if(d.completion!==undefined) {
+      const x=d.completion
+      if(d.inventory || !x || !Array.isArray(x.entries) || !Array.isArray(x.accounts) || !x.source || !['current','day'].includes(x.source.kind) || !validDate(x.source.date)) throw new Error('當日補齊資料格式不正確')
+      if(x.accounts.some(a=>!a || typeof a.id!=='string' || !a.id.trim() || typeof a.name!=='string' || !a.name.trim()) || new Set(x.accounts.map(a=>a.id)).size!==x.accounts.length) throw new Error('當日補齊帳戶範圍不正確')
+      const supplements=parseQuantityDays([{date:d.date,updatedAt:d.updatedAt,entries:x.entries}])[0].entries.map(e=>{
+        const {price:_price,fx:_fx,error:_error,...identity}=e
+        return identity
+      })
+      if(supplements.some(e=>entries.some(raw=>instrumentKey(raw)===instrumentKey(e))) || [...entries,...supplements].some(e=>!x.accounts.some(a=>a.id===e.accountId))) throw new Error('當日補齊範圍重複或缺少帳戶')
+      completion={source:{kind:x.source.kind,date:x.source.date},accounts:x.accounts.map(a=>({id:a.id,name:a.name})),entries:supplements}
+    }
+    return { date: d.date, updatedAt:d.updatedAt, entries, ...(completion && {completion}), ...(d.sparse && {sparse:true as const}), ...(inventory && {inventory}) }
   })
   if (new Set(days.map(d=>d.date)).size !== days.length) throw new Error('歷史數量日期不可重複')
   return days.sort((a,b)=>a.date.localeCompare(b.date))

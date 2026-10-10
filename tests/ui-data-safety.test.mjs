@@ -14,6 +14,7 @@ before(async () => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   globalThis.ResizeObserver = class { observe() {} disconnect() {} }
   window.scrollTo = () => {}
+  globalThis.requestAnimationFrame = callback => setTimeout(callback,0)
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true }
   ;({ createRoot } = await import('react-dom/client'))
   server = await createServer({ configFile: false, envDir: false, server: { middlewareMode: true, watch: null, hmr: false, ws: false } })
@@ -44,6 +45,11 @@ const render = async (component, props = {}) => {
 }
 const button = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent === text)
 const click = async (element) => { assert.ok(element); await act(async () => element.click()) }
+const confirmCompletion = async () => {
+ const label=[...document.querySelectorAll('.quantity-editor label')].find(e=>e.textContent.includes('確認當日補齊範圍'))
+ const checkbox=label?.querySelector('input[type="checkbox"]')
+ if(checkbox && !checkbox.checked) await click(checkbox)
+}
 const setInput = async (input, value) => {
   await act(async () => {
     const prototype = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
@@ -540,7 +546,7 @@ test('historical quantity add/edit/cancel/restore changes only chosen date; char
   await setInput(field(label),'100')
   await click(button('取得歷史估值'))
   assert.match(document.querySelector('[role="status"]').textContent,/100/)
-  await click(button('套用歷史數量'))
+  await confirmCompletion();await click(button('套用歷史數量'))
   assert.equal(current.accounts[0].positions[0].quantity,900)
   assert.equal(current.history.quantityDays[0].entries[0].quantity,100)
   const row=[...document.querySelectorAll('section.daily tbody tr')].find(r=>r.textContent.includes('2025/10/04'))
@@ -550,7 +556,7 @@ test('historical quantity add/edit/cancel/restore changes only chosen date; char
   assert.equal(field('歷史日期').disabled,true)
   await setInput(field(label),'0')
   await click(button('取得歷史估值'))
-  await click(button('套用歷史數量'))
+  await confirmCompletion();await click(button('套用歷史數量'))
   assert.equal(current.history.quantityDays[0].entries[0].quantity,0)
   await click(button('復原上次歷史修改'))
   assert.equal(current.history.quantityDays[0].entries[0].quantity,100)
@@ -603,7 +609,7 @@ test('missing historical prices preserve quantity and show incomplete total inst
  await click(button('取得歷史估值'))
  assert.match(document.querySelector('[role="status"]').textContent,/資料不完整/)
  assert.match(document.body.textContent,/缺少歷史匯率/)
- await click(button('套用歷史數量'))
+ await confirmCompletion();await click(button('套用歷史數量'))
  assert.equal(changed.history.quantityDays[0].entries[0].quantity,2)
  assert.equal(changed.history.quantityDays[0].entries[0].price,undefined)
  assert.equal(changed.accounts[0].positions[0].quantity,1)
@@ -618,13 +624,13 @@ test('quantity edits during Drive save remain dirty while committed history meta
  await setInput(field('歷史日期'),'2025-10-04')
  await setInput(field('合成歷史帳戶 · TWD · TWD 當日數量'),'100')
  await click(button('取得歷史估值'))
- await click(button('套用歷史數量'))
+ await confirmCompletion();await click(button('套用歷史數量'))
  await drive.finish()
  assert.ok(button('儲存變更'))
  assert.match(document.querySelector('[aria-label="歷史持倉數量"]').textContent,/2025-10-04/)
  await click(button('儲存變更'))
  assert.equal(drive.writes,2)
- assert.equal(drive.uploaded.version,6)
+ assert.equal(drive.uploaded.version,9)
  assert.equal(drive.uploaded.history.quantityDays[0].entries[0].quantity,100)
  assert.equal(drive.uploaded.accounts[0].positions[0].quantity,900)
  await drive.finish()
@@ -674,7 +680,7 @@ test('unquoted holdings keep quantity without a historical manual price field',a
  await click(button('取得歷史估值'))
  assert.equal(requests,0)
  assert.match(document.querySelector('[role="status"]').textContent,/資料不完整/)
- await click(button('套用歷史數量'))
+ await confirmCompletion();await click(button('套用歷史數量'))
  assert.equal(changed.history.quantityDays[0].entries[0].price,undefined)
   assert.equal(changed.accounts[0].positions[0].price,10)
 })
@@ -740,7 +746,7 @@ test('single-instrument update preserves every other entry and date, including t
  await setInput(field('合成歷史帳戶 · TEST · TWD 當日數量'),'6')
  await click(button('取得歷史估值'));assert.match(document.querySelector('[role="status"]').textContent,/140/)
  await click(button('返回修改'));assert.equal(field('合成歷史帳戶 · TEST · TWD 當日數量').value,'6')
- await click(button('取得歷史估值'));await click(button('套用歷史數量'))
+ await click(button('取得歷史估值'));await confirmCompletion();await click(button('套用歷史數量'))
  const result=changed.history.quantityDays.find(d=>d.date===date)
  assert.equal(result.entries.find(e=>e.accountId==='history-account').quantity,6)
  assert.equal(result.entries.find(e=>e.accountId==='b').quantity,8)
@@ -761,7 +767,7 @@ test('empty account accepts a removed instrument without manual pricing and row 
  await setInput(field('歷史日期'),'2025-10-04');await setInput(field('合成歷史帳戶 · 已移除合成基金 · TWD 當日數量'),'3')
  await click(button('取得歷史估值'));assert.match(document.querySelector('[role="status"]').textContent,/資料不完整/)
  assert.equal(document.querySelector('input[inputmode="decimal"]'),null)
- await click(button('套用歷史數量'))
+ await confirmCompletion();await click(button('套用歷史數量'))
  assert.equal(current.accounts[0].positions.length,0)
  const rowButton=document.querySelector('[aria-label="編輯 2025-10-04 合成歷史帳戶 · 已移除合成基金 · TWD"]')
  await click(rowButton)
@@ -770,16 +776,16 @@ test('empty account accepts a removed instrument without manual pricing and row 
  assert.equal(field('歷史日期').disabled,true)
 })
 
-test('wizard blocks stale day preview and retains unknown other quantities on a new date', async () => {
+test('wizard blocks stale day preview after proposing nearest complete quantities', async () => {
  const data=historicalFixture();data.accounts.push({...data.accounts[0],id:'b',name:'第二合成帳戶'})
  let applied=0
  const props={data,dirty:true,busy:false,onChange:()=>applied++,onSave:()=>{},onOpenAccount:()=>{}}
  await render(HistoryView,props);await click(button('＋ 補登歷史數量'));await chooseHistoryInstrument()
  await setInput(field('歷史日期'),'2025-10-04');await setInput(field('合成歷史帳戶 · TWD · TWD 當日數量'),'100')
- await click(button('取得歷史估值'));assert.match(document.querySelector('[role="status"]').textContent,/資料不完整/)
+ await click(button('取得歷史估值'));assert.match(document.querySelector('[role="status"]').textContent,/1,000/)
  const newer={...data,history:{...data.history,quantityDays:[{date:'2025-10-04',updatedAt:'2025-10-04T12:00:00Z',entries:[]}]}}
- await render(HistoryView,{...props,data:newer});await click(button('套用歷史數量'))
- assert.equal(applied,0);assert.match(document.querySelector('[role="alert"]').textContent,/已新增或變更/)
+ await render(HistoryView,{...props,data:newer});await confirmCompletion();await click(button('套用歷史數量'))
+ assert.equal(applied,0);assert.match(document.querySelector('[role="alert"]').textContent,/已變更/)
 })
 
 test('wizard offers recorded instruments from removed accounts and gives an empty-account-list explanation', async () => {
@@ -816,11 +822,11 @@ test('period wizard validates sale date, confirms overlap, preserves current pos
  await setInput(field('結束／賣出日期（不含，選填）'),'2026-10-02');await click(button('取得歷史估值'))
  assert.match(document.querySelector('[role="status"]').textContent,/結束不含/)
  await click(button('返回修改'));assert.equal(field('結束／賣出日期（不含，選填）').value,'2026-10-02')
- await click(button('取得歷史估值'));await click(button('套用歷史數量'))
+ await click(button('取得歷史估值'));await confirmCompletion();await click(button('套用歷史數量'))
  assert.equal(current.version,5);assert.equal(current.history.holdingPeriods.length,1);assert.deepEqual(current.accounts,initial.accounts)
- await enter('2026-10-01','','200');await click(button('取得歷史估值'));await click(button('套用歷史數量'))
+ await enter('2026-10-01','','200');await click(button('取得歷史估值'));await confirmCompletion();await click(button('套用歷史數量'))
  assert.equal(current.history.holdingPeriods.length,1);assert.match(document.querySelector('[role="alert"]').textContent,/確認重疊/)
- await click(document.querySelector('.quantity-editor input[type="checkbox"]'));await click(button('套用歷史數量'))
+ await click(document.querySelector('.quantity-editor input[type="checkbox"]'));await confirmCompletion();await click(button('套用歷史數量'))
  assert.equal(current.history.holdingPeriods.length,2)
  await click(button('復原上次歷史修改'));assert.equal(current.history.holdingPeriods.length,1)
  globalThis.confirm=()=>true
@@ -835,7 +841,7 @@ test('period preview rejects edits arriving after preview and cancellation ignor
  await setInput(field('開始日期（含）'),'2026-10-01');await setInput(field('合成歷史帳戶 · TWD · TWD 當日數量'),'100')
  await click(button('取得歷史估值'))
  const newer={...data,accounts:[{...data.accounts[0],name:'已修改帳戶'}]}
- await render(HistoryView,{...props,data:newer});await click(button('套用歷史數量'))
+ await render(HistoryView,{...props,data:newer});await confirmCompletion();await click(button('套用歷史數量'))
  assert.equal(applied,0);assert.match(document.querySelector('[role="alert"]').textContent,/重新預覽期間/)
  await click(button('取消歷史編輯'))
  const stock={...data,accounts:[{...data.accounts[0],positions:[{id:'stock',type:'holding',symbol:'DELAY',currency:'TWD',quantity:1,price:10}]}]}
@@ -861,8 +867,8 @@ test('review: single-target UI writes no placeholder for another account period,
  assert.match(snapshotRow.textContent,/原始快照/);assert.doesNotMatch(snapshotRow.textContent,/資料不完整/)
  const derivedRow=[...document.querySelectorAll('section.daily tbody tr')].find(x=>x.textContent.includes('2026/10/04'))
  assert.equal(derivedRow,undefined);assert.match(document.body.textContent,/持倉數量不足的推算日/)
- await click(button('＋ 補登歷史數量'));await chooseHistoryInstrument('b');await setInput(field('歷史日期'),'2026-09-15');await setInput(field('另一合成帳戶 · TWD · TWD 當日數量'),'3');await click(button('取得歷史估值'));assert.match(document.querySelector('[role="status"]').textContent,/NT\$ 13/);await click(button('套用歷史數量'))
- assert.equal(current.history.quantityDays[0].entries.length,1);assert.equal(current.history.quantityDays[0].entries[0].accountId,'b');assert.equal(current.version,6)
+ await click(button('＋ 補登歷史數量'));await chooseHistoryInstrument('b');await setInput(field('歷史日期'),'2026-09-15');await setInput(field('另一合成帳戶 · TWD · TWD 當日數量'),'3');await click(button('取得歷史估值'));assert.match(document.querySelector('[role="status"]').textContent,/NT\$ 13/);await confirmCompletion();await click(button('套用歷史數量'))
+ assert.equal(current.history.quantityDays[0].entries.length,1);assert.equal(current.history.quantityDays[0].entries[0].accountId,'b');assert.equal(current.version,9)
  const {periodQuantityOn}=await server.ssrLoadModule('/src/holdingPeriods.ts')
  assert.equal(periodQuantityOn(current,data.history.holdingPeriods[0],'2026-09-20').quantity,10)
  assert.equal(current.history.snapshots,data.history.snapshots)
@@ -941,7 +947,7 @@ test('crypto cash preview shows depeg conversion legs, persists provenance, and 
  assert.match(document.querySelector('.quantity-editor').textContent,/USDT-USD.*2026-09-01/)
  assert.match(document.querySelector('.quantity-editor').textContent,/TWD=X.*2026-09-01/)
  assert.equal(requests.includes('USDTTWD=X'),false)
- await click(button('套用歷史數量'));assert.equal(current.version,7);assert.equal(current.history.quantityDays[0].entries[0].fx.legs.length,2)
+ await confirmCompletion();await click(button('套用歷史數量'));assert.equal(current.version,9);assert.equal(current.history.quantityDays[0].entries[0].fx.legs.length,2)
  const row=()=>[...document.querySelectorAll('section.daily tbody tr')].find(x=>x.textContent.includes('2026/09/01'))
  assert.match(row().textContent,/NT\$ 220/)
  fail=true;await click(button('重新查詢歷史行情'));assert.match(row().textContent,/資料不完整/)
@@ -972,7 +978,7 @@ test('date-row editing chooses only recorded items, preserves siblings, and rese
  await click(button('改選其他項目'));await click(choices()[0]);assert.equal(document.querySelector('input[inputmode="decimal"]').value,'7')
  await setInput(document.querySelector('input[inputmode="decimal"]'),'11');await click(button('取得歷史估值'));await click(button('返回修改'))
  assert.equal(document.querySelector('input[inputmode="decimal"]').value,'11')
- await click(button('取得歷史估值'));await click(button('套用歷史數量'))
+ await click(button('取得歷史估值'));await confirmCompletion();await click(button('套用歷史數量'))
  assert.equal(current.history.quantityDays[0].entries.find(e=>e.accountId==='history-account').quantity,11)
  assert.deepEqual(current.history.quantityDays[0].entries.find(e=>e.accountId==='removed'),other)
  assert.deepEqual(current.history.quantityDays[1],data.history.quantityDays[1]);assert.deepEqual(current.accounts,data.accounts)
@@ -980,7 +986,7 @@ test('date-row editing chooses only recorded items, preserves siblings, and rese
  await open();await click(choices()[0]);assert.equal(document.querySelector('input[inputmode="decimal"]').value,'11')
  await act(()=>document.querySelector('.quantity-editor input[inputmode="decimal"]').dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
  assert.equal(document.querySelector('.quantity-editor'),null);assert.equal(current.history.quantityDays[0].entries.find(e=>e.accountId==='history-account').quantity,11)
- await open();assert.equal(choices().length,2);await click(button('取消歷史編輯'))
+ await open();assert.equal(choices().length,3);await click(button('取消歷史編輯'))
  await click(button('＋ 補登歷史數量'));assert.ok(field('補登帳戶'));assert.equal(field('補登帳戶').value,'');assert.match(document.querySelector('.eyebrow').textContent,/新增補登/)
 })
 
@@ -1012,9 +1018,9 @@ test('direct row edit saves only the selected historical quantity through the ex
  data.history.quantityDays=[{date:'2026-09-01',updatedAt:now,sparse:true,entries:[entry]},{date:localDate(now),updatedAt:now,sparse:true,entries:[{...entry,quantity:900}]}]
  const drive=setupDrive(data);await render(App);assert.equal(drive.writes,0)
  await click(button('編輯數量 2026-09-01'));assert.equal(document.querySelector('input[inputmode="decimal"]').value,'7')
- await setInput(document.querySelector('input[inputmode="decimal"]'),'11');await click(button('取得歷史估值'));await click(button('套用歷史數量'))
+ await setInput(document.querySelector('input[inputmode="decimal"]'),'11');await click(button('取得歷史估值'));await confirmCompletion();await click(button('套用歷史數量'))
  assert.equal(drive.writes,0);await click(button('儲存變更'));assert.equal(drive.writes,1)
- assert.equal(drive.uploaded.version,7);assert.equal(drive.uploaded.history.quantityDays[0].entries[0].quantity,11)
+ assert.equal(drive.uploaded.version,9);assert.equal(drive.uploaded.history.quantityDays[0].entries[0].quantity,11)
  assert.deepEqual(drive.uploaded.history.quantityDays[1],data.history.quantityDays[1]);assert.equal(drive.uploaded.accounts[0].positions[0].quantity,900)
  await drive.finish();assert.ok(document.querySelector('.synced'))
  await click(button('編輯數量 2026-09-01'));assert.equal(document.querySelector('input[inputmode="decimal"]').value,'11');await click(button('取消歷史編輯'));assert.equal(drive.writes,1)
@@ -1085,7 +1091,7 @@ test('baseline saves and reloads v8 through mock Drive, then row editing preserv
  assert.equal(drive.writes,0);await click(button('儲存變更'));assert.equal(drive.writes,1);assert.equal(drive.uploaded.version,8)
  const parsed=model.parseWealthData(JSON.parse(JSON.stringify(drive.uploaded)));assert.equal(parsed.history.quantityDays[0].inventory.source.date,'2026-10-09');assert.deepEqual(parsed.history.quantityDays[0].entries.map(e=>e.quantity),[300,2,0,3,4])
  await drive.finish();await click(button('編輯數量 2026-09-01'));await click([...document.querySelectorAll('.history-item-choices button')].find(x=>x.textContent.includes('合成基底帳戶 A')))
- assert.equal(button('清除數量（未知）'),undefined);await setInput(field('合成基底帳戶 A · TWD · TWD 當日數量'),'301');await click(button('取得歷史估值'));await click(button('套用歷史數量'));await click(button('儲存變更'))
+ assert.equal(button('清除數量（未知）'),undefined);await setInput(field('合成基底帳戶 A · TWD · TWD 當日數量'),'301');await click(button('取得歷史估值'));await confirmCompletion();await click(button('套用歷史數量'));await click(button('儲存變更'))
  assert.equal(drive.uploaded.version,8);assert.ok(drive.uploaded.history.quantityDays[0].inventory);assert.equal(drive.uploaded.history.quantityDays[0].entries[0].quantity,301);await drive.finish()
 })
 
@@ -1137,4 +1143,56 @@ test('review: ordinary day editor restores date-row and nested-item focus, and o
  await click(button('編輯數量 2026-10-09'));await setInput(field('合成基底帳戶 A · TWD · TWD 當日數量'),'300');await click(button('取消歷史編輯'));assert.equal(prompts,1);assert.equal(field('合成基底帳戶 A · TWD · TWD 當日數量').value,'300')
  allow=true;await click(button('取消歷史編輯'));assert.equal(prompts,2);assert.equal(document.activeElement,button('編輯數量 2026-10-09'))
  await click(button('編輯這項數量'));await click(button('取消歷史編輯'));assert.equal(prompts,2);assert.equal(document.activeElement,button('編輯這項數量'));assert.equal(document.activeElement.closest('details').open,true)
+})
+
+test('ordinary preview requires scope confirmation, can zero a source fill, preserves raw null and cancels without writes',async()=>{
+ const data=historicalFixture(),date='2026-09-01'
+ data.accounts.push({...data.accounts[0],id:'b',name:'來源補入帳戶',positions:[{id:'b',type:'cash',symbol:'',currency:'TWD',quantity:55,price:1}]})
+ const a={accountId:'history-account',account:'合成歷史帳戶',category:'股票',country:'TW',type:'cash',symbol:'',currency:'TWD',quantity:7}
+ const unknown={...a,accountId:'old',account:'原有未知帳戶',quantity:null}
+ data.history.quantityDays=[{date,updatedAt:date+'T12:00:00Z',sparse:true,entries:[a,unknown]}]
+ let current,writes=0
+ function Harness(){const [value,setValue]=useState(data);useEffect(()=>{current=value},[value]);return createElement(HistoryView,{data:value,dirty:true,busy:false,onChange:next=>{writes++;setValue(next)},onSave:()=>{},onOpenAccount:()=>{}})}
+ await render(Harness);await click(button(`編輯數量 ${date}`));await click(document.querySelector('.history-item-choices button'));await setInput(document.querySelector('input[inputmode="decimal"]'),'11');await click(button('取得歷史估值'))
+ assert.match(document.querySelector('.quantity-editor').textContent,/補齊來源/)
+ assert.match(document.querySelector('.quantity-editor').textContent,/保留未知/)
+ assert.match(document.querySelector('.quantity-editor').textContent,/來源補入：55/)
+ await click(button('套用歷史數量'));assert.equal(writes,0);assert.match(document.querySelector('[role="alert"]').textContent,/請確認/)
+ const zero=[...document.querySelectorAll('.quantity-editor label')].find(l=>l.textContent.includes('目的日未持有')).querySelector('input')
+ await click(zero);assert.match(document.querySelector('.quantity-editor').textContent,/來源補入：0/)
+ assert.equal(current.history.quantityDays[0].completion,undefined)
+ let prompts=0;globalThis.confirm=()=>{prompts++;return false}
+ await act(()=>document.querySelector('.quantity-editor').dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
+ assert.equal(prompts,1);assert.ok(document.querySelector('.quantity-editor'));assert.equal(writes,0)
+ await confirmCompletion();await click(button('套用歷史數量'))
+ assert.equal(writes,1);assert.equal(current.history.quantityDays[0].completion.entries[0].quantity,0)
+ assert.equal(current.history.quantityDays[0].entries.find(e=>e.accountId==='old').quantity,null)
+ assert.equal(document.activeElement,button(`編輯數量 ${date}`))
+})
+test('daily manual removal confirms restore semantics and preserves the original snapshot',async()=>{
+ const data=historicalFixture(),date='2026-09-01'
+ data.history.snapshots=[{date,at:date+'T12:00:00Z',total:123,accounts:[{id:'history-account',name:'合成歷史帳戶',value:123}],categories:{股票:123}}]
+ data.history.quantityDays=[{date,updatedAt:date+'T12:00:00Z',sparse:true,entries:[{accountId:'history-account',account:'合成歷史帳戶',category:'股票',country:'TW',type:'cash',symbol:'',currency:'TWD',quantity:5}]}]
+ let current,message
+ function Harness(){const [value,setValue]=useState(data);useEffect(()=>{current=value},[value]);return createElement(HistoryView,{data:value,dirty:true,busy:false,onChange:setValue,onSave:()=>{},onOpenAccount:()=>{}})}
+ await render(Harness);globalThis.confirm=text=>{message=text;return false}
+ await click(button(`移除補登 ${date}`));assert.equal(current.history.quantityDays.length,1);assert.match(message,/恢復原始快照/);assert.match(message,/後續日期/)
+ globalThis.confirm=()=>true;await click(button(`移除補登 ${date}`));assert.equal(current.history.quantityDays.length,0);assert.deepEqual(current.history.snapshots,data.history.snapshots)
+ const row=[...document.querySelectorAll('section.daily tr')].find(r=>r.textContent.includes('2026/09/01'))
+ assert.match(row.textContent,/原始快照/);assert.match(row.textContent,/123/)
+})
+test('daily removal without a snapshot restores periods or removes the day; period row manages without deleting',async()=>{
+ const date=new Date(Date.now()-86400000).toISOString().slice(0,10),data=historicalFixture()
+ const entry={accountId:'history-account',account:'合成歷史帳戶',category:'股票',country:'TW',type:'cash',symbol:'',currency:'TWD',quantity:5}
+ data.history.quantityDays=[{date,updatedAt:date+'T12:00:00Z',sparse:true,entries:[entry]}]
+ data.history.holdingPeriods=[{...entry,id:'period',start:date,quantity:10,updatedAt:date+'T12:00:00Z',timeZone:'UTC'}]
+ let current,message
+ function Harness(){const [value,setValue]=useState(data);useEffect(()=>{current=value},[value]);return createElement(HistoryView,{data:value,dirty:true,busy:false,onChange:setValue,onSave:()=>{},onOpenAccount:()=>{}})}
+ await render(Harness);globalThis.confirm=text=>{message=text;return true}
+ await click(button(`移除補登 ${date}`));assert.match(message,/依剩餘期間重新推算/);assert.equal(current.history.holdingPeriods.length,1)
+ const row=[...document.querySelectorAll('section.daily tr')].find(r=>r.textContent.includes(date.replaceAll('-','/')))
+ assert.match(row.textContent,/期間推算/);assert.match(row.textContent,/10/);assert.equal(button(`移除補登 ${date}`),undefined)
+ await click(button('管理持有期間'));assert.ok(document.querySelector('[data-period-management]').open);assert.equal(current.history.holdingPeriods.length,1)
+ await click(button(`移除期間 ${date}`));assert.equal(current.history.holdingPeriods.length,0)
+ assert.equal([...document.querySelectorAll('section.daily tr')].some(r=>r.textContent.includes(date.replaceAll('-','/'))),false)
 })
