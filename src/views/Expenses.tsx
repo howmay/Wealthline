@@ -52,12 +52,13 @@ function ExpenseEditor({expense,busy,onSave,onCancel}: {expense:Expense;busy:boo
 type Draft = Expense & {selected:boolean;amountText:string;needsReview?:boolean}
 function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];busy:boolean;onCancel:()=>void;onImport:(rows:Expense[],context:Expense[])=>void}) {
   const [files,setFiles] = useState<File[]>([])
-  const [reports,setReports] = useState<{name:string;bank?:string;month?:string;source?:string;count?:number;error?:string}[]>([])
+  const [reports,setReports] = useState<{name:string;bank?:string;month?:string;source?:string;count?:number;error?:string;ocr?:boolean;warning?:string}[]>([])
   const [password,setPassword] = useState('')
   const [card,setCard] = useState('')
   const [month,setMonth] = useState('')
   const [currency,setCurrency] = useState('TWD')
   const [parsing,setParsing] = useState(false)
+  const [progress,setProgress] = useState('')
   const [drafts,setDrafts] = useState<Draft[]|null>(null)
   const [skipped,setSkipped] = useState<string[]>([])
   const [error,setError] = useState('')
@@ -81,7 +82,7 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
   async function parse(e:FormEvent) {
     e.preventDefault()
     if(locked || !files.length) return
-    setError('');setReports([]);setParsing(true)
+    setError('');setReports([]);setProgress('');setParsing(true)
     const abort = new AbortController()
     controller.current = abort
     const secret = password
@@ -100,7 +101,7 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
           const fileHash = await sha256(bytes)
           const {readStatementPdf} = await import('../statementPdf')
           if(abort.signal.aborted) return
-          const pdf = await readStatementPdf(bytes,secret,abort.signal)
+          const pdf = await readStatementPdf(bytes,secret,abort.signal,file.name,message=>{if(!abort.signal.aborted)setProgress(message)})
           const info = statementMetadata(pdf.lines,pdf.title,file.name)
           const statementMonth = info.month || month
           const statementCard = card.trim() || info.bank || ''
@@ -108,11 +109,11 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
           if(!statementCard.trim()) throw new Error('無法辨識銀行，請填寫備用銀行／卡片名稱後重試')
           const parsed = parseStatement(pdf.lines,statementMonth,currency,info.bank || file.name)
           if(!parsed.rows.length) throw new Error('沒有辨識到交易。此帳單的排版暫不支援，尚未匯入任何資料。')
-          const rows = await prepareExpenses(parsed.rows,statementCard,fileHash)
+          const rows = await prepareExpenses(parsed.rows,statementCard,fileHash,info.bank === '匯豐' ? parsed.sourceIndexes : undefined)
           if(abort.signal.aborted) return
-          previews.push(...rows.map((r,i)=>({...r,selected:!parsed.review.includes(i),needsReview:parsed.review.includes(i),amountText:String(r.amount)})))
+          previews.push(...rows.map((r,i)=>({...r,selected:!pdf.ocrUsed && !parsed.review.includes(i),needsReview:pdf.ocrUsed || parsed.review.includes(i),amountText:String(r.amount)})))
           ignored.push(...parsed.skipped.map(line=>`${file.name}：${line}`))
-          outcomes.push({name:file.name,bank:statementCard,month:statementMonth,source:info.monthSource || '手動備用',count:rows.length})
+          outcomes.push({name:file.name,bank:statementCard,month:statementMonth,source:info.monthSource || '手動備用',count:rows.length,ocr:pdf.ocrUsed,warning:pdf.ocrError})
         } catch(e) {
           if(abort.signal.aborted) return
           outcomes.push({name:file.name,error:e instanceof Error?e.message:'無法解析帳單'})
@@ -128,9 +129,10 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
   return <section className="panel statement-import">
     <div className="panel-head"><h2>匯入信用卡帳單</h2><button onClick={()=>{controller.current?.abort();onCancel()}}>取消匯入</button></div>
     <p className="notice">PDF 與密碼只在此瀏覽器解密及解析，不傳送到伺服器、不保存原始檔或密碼。確認後的消費明細會隨資料檔儲存在此瀏覽器或你的 Google Drive。</p>
-    <p className="muted small">支援富邦與玉山文字帳單的入帳欄位，使用最後的臺幣帳單金額。匯豐缺少商家文字的交易預設不勾選，請對照原帳單補上商家並排除繳款後再選取。證券帳單不支援；掃描圖片及其他排版可能無法辨識，請核對完整性。退款以負數記錄，繳款與總計不當作消費。</p>
+    <p className="muted small">支援富邦與玉山文字帳單的入帳欄位，使用最後的臺幣帳單金額。匯豐圖片商家欄會在本機以 OCR 補上；OCR 交易預設不勾選，請核對商家、日期與金額並排除繳款後再選取。證券帳單不支援；掃描圖片及其他排版可能無法辨識，請核對完整性。退款以負數記錄，繳款與總計不當作消費。</p>
+    {parsing && progress && <p role="status">{progress}</p>}
     {error && <p className="banner error" role="alert">{error}</p>}
-    {!!reports.length && <ul className="notice" aria-label="各帳單解析結果">{reports.map((r,i)=><li key={i}><strong>{r.name}</strong>：{r.error || `${r.bank} · ${r.month}（${r.source}）· ${r.count} 筆待核對`}</li>)}</ul>}
+    {!!reports.length && <ul className="notice" aria-label="各帳單解析結果">{reports.map((r,i)=><li key={i}><strong>{r.name}</strong>：{r.error || `${r.bank} · ${r.month}（${r.source}）· ${r.count} 筆待核對${r.ocr?' · OCR 商家請核對':''}${r.warning?` · ${r.warning}`:''}`}</li>)}</ul>}
     {!drafts ? <form onSubmit={parse}>
       <fieldset className="expense-fields" disabled={locked}>
         <label className="field"><span>帳單 PDF（可選多份）</span><input type="file" multiple accept=".pdf,application/pdf" required onChange={e=>{setFiles(Array.from(e.target.files??[]));setPassword('');setError('');setReports([])}}/></label>

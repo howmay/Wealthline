@@ -192,3 +192,36 @@ test('two encrypted bank PDFs auto-detect distinct months and bank names',async(
   assert.equal(expenses.mergeExpenses(first.expenses,previews).added,0)
   assert.equal(expenses.mergeExpenses([],[...previews,...previews]).added,4)
 })
+
+
+test('merchant OCR preserves original date and billed amount, excludes repayments, and refuses uncertain text',()=>{
+  const line='04/03 04/05 USA USD 10.00 04/05 320'
+  const enriched=statements.ocrMerchantLine(line,'SYNTHETIC.SHOP123',92)
+  assert.equal(enriched,'04/03 04/05 SYNTHETIC.SHOP123 320')
+  assert.deepEqual(statements.parseStatement([enriched],'2026-04','TWD','HSBC').rows,[{date:'2026-04-03',description:'SYNTHETIC.SHOP123',amount:320,currency:'TWD'}])
+  assert.equal(statements.ocrMerchantLine(line,'unclear',20),line)
+  assert.equal(statements.ocrMerchantLine(line,'123',99),line)
+  assert.equal(statements.ocrMerchantLine(line,'word',NaN),line)
+  assert.equal(statements.parseStatement([statements.ocrMerchantLine('04/01 04/02 -2,000','自動转帳繳款',90)],'2026-04','TWD','HSBC').rows.length,0)
+  const item=(str,x,width)=>({str,width,height:9,transform:[1,0,0,1,x,100]})
+  const regions=statements.hsbcMerchantRegions([item('04/03',30,25),item('04/05',80,25),item('320',400,20)])
+  assert.equal(regions.length,1)
+  assert.deepEqual([regions[0].left,regions[0].right],[109,396])
+  assert.deepEqual(statements.hsbcMerchantRegions([item('04/03',30,25),item('04/05',80,25),item('READABLE SHOP',140,100),item('320',400,20)]),[])
+})
+
+
+test('HSBC source rows stay stable when OCR excludes repayments or merchants change',async()=>{
+  const raw=['04/01 04/02 -2000','04/03 04/04 210','04/03 04/04 210']
+  const initial=statements.parseStatement(raw,'2026-04','TWD','HSBC')
+  const recognized=raw.map((line,i)=>statements.ocrMerchantLine(line,['自動轉帳繳款','SYNTHETIC A','SYNTHETIC B'][i],90))
+  const next=statements.parseStatement(recognized,'2026-04','TWD','HSBC')
+  assert.deepEqual(next.sourceIndexes,[1,2])
+  const before=await expenses.prepareExpenses(initial.rows,'HSBC','a'.repeat(64),initial.sourceIndexes)
+  const after=await expenses.prepareExpenses(next.rows,'HSBC','a'.repeat(64),next.sourceIndexes)
+  assert.equal(before[1].sourceKey,after[0].sourceKey)
+  assert.equal(before[2].sourceKey,after[1].sourceKey)
+  assert.equal(expenses.mergeExpenses([before[1]],after).added,1)
+  assert.equal(expenses.mergeExpenses(after,after).added,0)
+  await assert.rejects(()=>expenses.prepareExpenses(next.rows,'HSBC','a',[1,1]),/來源列/)
+})

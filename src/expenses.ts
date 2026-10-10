@@ -31,13 +31,14 @@ export async function sha256(bytes: Uint8Array): Promise<string> {
 }
 const hashText = (text:string) => sha256(new TextEncoder().encode(text))
 
-export async function prepareExpenses(rows: StatementRow[], card: string, fileHash: string): Promise<Expense[]> {
+export async function prepareExpenses(rows: StatementRow[], card: string, fileHash: string, sourceIndexes?:number[]): Promise<Expense[]> {
+  if(sourceIndexes && (sourceIndexes.length !== rows.length || new Set(sourceIndexes).size !== rows.length || sourceIndexes.some(i=>!Number.isSafeInteger(i) || i<0))) throw new Error('帳單來源列無效')
   const counts = new Map<string,number>()
   return Promise.all(rows.map(async (row,index) => {
     const e = parseExpense({...row,card,id:crypto.randomUUID()})
     const key = signature(e), ordinal = (counts.get(key) ?? 0) + 1
     counts.set(key,ordinal)
-    return {...e,sourceKey:await hashText(JSON.stringify([normalized(card),fileHash,index])),importKey:await hashText(JSON.stringify([key,ordinal]))}
+    return {...e,sourceKey:await hashText(JSON.stringify(sourceIndexes ? [normalized(card),fileHash,'source-line',sourceIndexes[index]] : [normalized(card),fileHash,index])),importKey:await hashText(JSON.stringify([key,ordinal]))}
   }))
 }
 
