@@ -14,8 +14,8 @@ export interface QuantityEditRequest { focusKey?:string; mode?:'baseline'; date:
 const nameOf = (e: QuantityEntry) => `${e.account} · ${e.symbol || e.currency} · ${e.currency}`
 const stamp = () => new Date().toISOString()
 
-export function QuantityHistory({ data, onChange, request: editing, onRequest: setEditing, displayDays }: {
-  data: WealthData; onChange: (d: WealthData) => void; displayDays?: QuantityDay[];
+export function QuantityHistory({ data, busy = false, onChange, request: editing, onRequest: setEditing, displayDays }: {
+  data: WealthData; busy?: boolean; onChange: (d: WealthData) => void; displayDays?: QuantityDay[];
   request?: QuantityEditRequest; onRequest: (request: QuantityEditRequest | undefined) => void;
 }) {
   const [undo, setUndo] = useState<{ before: {days?:QuantityDay[];periods?:HoldingPeriod[]}; after: {days?:QuantityDay[];periods?:HoldingPeriod[]} } | null>(null)
@@ -32,17 +32,17 @@ export function QuantityHistory({ data, onChange, request: editing, onRequest: s
     previousEditing.current=editing
   },[editing])
   const days = data.history.quantityDays ?? []
-  const apply = (next: WealthData) => { setUndo({ before:{days:data.history.quantityDays,periods:data.history.holdingPeriods}, after:{days:next.history.quantityDays,periods:next.history.holdingPeriods} }); onChange(next) }
+  const apply = (next: WealthData) => { onChange(next); setUndo({ before:{days:data.history.quantityDays,periods:data.history.holdingPeriods}, after:{days:next.history.quantityDays,periods:next.history.holdingPeriods} }); }
   const accounts = [...new Map(days.flatMap(d => [...d.entries,...(d.completion?.entries ?? [])].map(e => [e.accountId, e.account] as const))).entries()]
   const activeFilter = accounts.some(([id]) => id === filter) ? filter : ''
   return <section className="panel quantity-panel" aria-label="歷史持倉數量">
-    <div className="panel-head"><h3>歷史持倉數量</h3>{!editing && <div className="history-entry-actions"><button data-history-entry="new" onClick={() => setEditing({ date: localDate(stamp()),focusKey:'new' })}>＋ 補登歷史數量</button><button data-history-entry="baseline" onClick={()=>setEditing({date:'',mode:'baseline',focusKey:'baseline'})}>沿用持倉回補差異</button></div>}</div>
+    <div className="panel-head"><h3>歷史持倉數量</h3>{!editing && <div className="history-entry-actions"><button disabled={busy} data-history-entry="new" onClick={() => setEditing({ date: localDate(stamp()),focusKey:'new' })}>＋ 補登歷史數量</button><button disabled={busy} data-history-entry="baseline" onClick={()=>setEditing({date:'',mode:'baseline',focusKey:'baseline'})}>沿用持倉回補差異</button></div>}</div>
     <p className="muted small">補登單日或持有期間；修改既有紀錄可從日期列直接選項目。所有操作只影響歷史數量。</p>
     {days.some(d=>[...d.entries,...(d.completion?.entries ?? [])].some(e=>e.quantity===null)) && <p className="notice">既有未知數量會保留並中斷對應持有期間。舊資料無法判別佔位或刻意清除，請逐項核對，不會自動移除。</p>}
     {error && <p role="alert" className="banner error">{error}</p>}
-    {editing?.mode==='baseline' ? <HistoryBaseline data={data} onCancel={()=>setEditing(undefined)} onApply={next=>{apply(next);setEditing(undefined)}}/> : editing ? <QuantityEditor key={`${editing.date}:${editing.entryKey ?? ''}`} data={data} date={editing.date} expected={editing.expected} entryKey={editing.entryKey}
+    {editing?.mode==='baseline' ? <HistoryBaseline data={data} busy={busy} onCancel={()=>setEditing(undefined)} onApply={next=>{apply(next);setEditing(undefined)}}/> : editing ? <QuantityEditor key={`${editing.date}:${editing.entryKey ?? ''}`} data={data} busy={busy} date={editing.date} expected={editing.expected} entryKey={editing.entryKey}
       onCancel={() => setEditing(undefined)} onApply={next => { apply(next); setEditing(undefined) }} /> : <>
-      {undo && <button onClick={() => {
+      {undo && <button disabled={busy} onClick={() => {
         if ((data.history.quantityDays !== undo.after.days || data.history.holdingPeriods !== undo.after.periods)) { setError('歷史已變更，無法直接復原；請重新檢查。'); return }
         onChange({ ...data, history: { ...data.history, quantityDays: undo.before.days ?? [], holdingPeriods: undo.before.periods } }); setUndo(null)
       }}>復原上次歷史修改</button>}
@@ -50,16 +50,16 @@ export function QuantityHistory({ data, onChange, request: editing, onRequest: s
         <summary>{period.start} → {period.end ?? '持續持有'} · {period.symbol || period.currency}</summary>
         <p>{period.account} · {period.currency} · 數量 {fmt(period.quantity,8)}</p>
         <p className="muted small">開始日含、結束／賣出日不含；日曆時區 {period.timeZone}。明確數量紀錄及較晚開始的期間優先。</p>
-        <button className="danger" onClick={() => { if(confirm('移除此持有期間？會依其他期間與單日紀錄重新估算，目前持倉不變。')) apply({...data,history:{...data.history,holdingPeriods:data.history.holdingPeriods?.filter(p=>p.id!==period.id)}}) }}>移除期間 {period.start}</button>
+        <button disabled={busy} className="danger" onClick={() => { if(confirm('移除此持有期間？會依其他期間與單日紀錄重新估算，目前持倉不變。')) apply({...data,history:{...data.history,holdingPeriods:data.history.holdingPeriods?.filter(p=>p.id!==period.id)}}) }}>移除期間 {period.start}</button>
       </details>)}
       {!days.length ? <p className="muted">尚未單日補登。舊每日快照只有總額，無法還原各持倉數量。</p> : <label className="field"><span>篩選已補登帳戶</span><select value={activeFilter} onChange={e => setFilter(e.target.value)}><option value="">全部帳戶</option>{accounts.map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label>}
       {[...days].reverse().filter(day => !activeFilter || day.entries.some(e => e.accountId === activeFilter)).map(day => <details className="quantity-day" key={day.date}>
         <summary>{day.date}{day.inventory ? ' · 完整回補' : day.completion ? ' · 當日補齊' : ''} · {day.entries.filter(e => (!activeFilter || e.accountId === activeFilter) && e.quantity !== null).length} 項已填數量</summary>
         <div className="quantity-rows">{(displayDays?.find(d => d.date === day.date)?.entries ?? day.entries).filter(e => !activeFilter || e.accountId === activeFilter).map(entry => <div className="quantity-row" key={instrumentKey(entry)}>
           <strong>{nameOf(entry)}</strong><span>數量 {entry.quantity === null ? '未知' : fmt(entry.quantity, 8)}</span><Valuation entry={entry} />
-          <button data-history-entry={`item:${day.date}:${instrumentKey(entry)}`} aria-label={`編輯 ${day.date} ${nameOf(entry)}`} onClick={() => setEditing({ date: day.date, expected: day, entryKey: instrumentKey(entry),focusKey:`item:${day.date}:${instrumentKey(entry)}` })}>編輯這項數量</button>
+          <button disabled={busy} data-history-entry={`item:${day.date}:${instrumentKey(entry)}`} aria-label={`編輯 ${day.date} ${nameOf(entry)}`} onClick={() => setEditing({ date: day.date, expected: day, entryKey: instrumentKey(entry),focusKey:`item:${day.date}:${instrumentKey(entry)}` })}>編輯這項數量</button>
         </div>)}</div>
-        <div className="row"><button data-history-entry={`list:${day.date}`} onClick={() => setEditing({ date: day.date, expected: day,focusKey:`list:${day.date}` })}>編輯 {day.date}</button><button className="danger" onClick={() => {
+        <div className="row"><button disabled={busy} data-history-entry={`list:${day.date}`} onClick={() => setEditing({ date: day.date, expected: day,focusKey:`list:${day.date}` })}>編輯 {day.date}</button><button disabled={busy} className="danger" onClick={() => {
           if (confirm(removalMessage(data,day.date))) apply({ ...data, history: { ...data.history, quantityDays: days.filter(d => d !== day) } })
         }}>移除 {day.date}</button></div>
       </details>)}
@@ -67,8 +67,8 @@ export function QuantityHistory({ data, onChange, request: editing, onRequest: s
   </section>
 }
 
-export function QuantityEditor({ data, date: initialDate, expected, entryKey, onCancel, onApply }: {
-  data: WealthData; date: string; expected?: QuantityDay; entryKey?: string; onCancel: () => void; onApply: (data: WealthData) => void;
+export function QuantityEditor({ data, busy = false, date: initialDate, expected, entryKey, onCancel, onApply }: {
+  data: WealthData; busy?: boolean; date: string; expected?: QuantityDay; entryKey?: string; onCancel: () => void; onApply: (data: WealthData) => void;
 }) {
   const catalog = historyCatalog(data)
   const editEntries = expected ? resolveCompletion(data,expected).entries : []
@@ -97,10 +97,11 @@ export function QuantityEditor({ data, date: initialDate, expected, entryKey, on
   const latest = useRef(data)
   const revision = useRef(0)
   const live = useRef(true)
-  const editor = useRef<HTMLDivElement>(null)
+  const editor = useRef<HTMLDialogElement>(null)
   useEffect(() => { latest.current = data }, [data])
   useEffect(() => { live.current = true; return () => { live.current = false } }, [])
-  useEffect(() => { editor.current?.scrollIntoView?.({ block: 'start' }); editor.current?.querySelector<HTMLElement>('h4')?.focus() }, [step])
+  useEffect(() => { const dialog = editor.current; if (dialog && !dialog.open) dialog.showModal() }, [])
+  useEffect(() => { editor.current?.querySelector<HTMLElement>('h4')?.focus() }, [step])
   const accounts = new Map(catalog.map(e => [e.accountId, { id:e.accountId, name:e.account, category:e.category, country:e.country }]))
   for (const a of data.accounts) accounts.set(a.id,a)
   const account = accounts.get(accountId)
@@ -166,7 +167,7 @@ export function QuantityEditor({ data, date: initialDate, expected, entryKey, on
   const exit=useHistoryExit(changed,()=>{revision.current++;onCancel()})
   const active = preview?.entries.find(e => selected && instrumentKey(e) === instrumentKey(selected))
   const steps = ['選帳戶','選標的','日期與數量','預覽確認']
-  return <div ref={editor} className="quantity-editor form" role="region" aria-label="編輯歷史數量" onKeyDown={exit.onKeyDown}>
+  return <dialog ref={editor} className="review quantity-editor form" aria-label="編輯歷史數量" onKeyDown={exit.onKeyDown} onCancel={e => { e.preventDefault(); exit.close() }}>
     <p className="eyebrow">{editingDay ? `編輯 ${initialDate} · ${step===-1 ? '選擇項目' : step===2 ? '修改數量' : '確認修改'}` : `新增補登 · 步驟 ${step + 1}／4`}</p><h4 tabIndex={-1}>{step===-1 ? '選擇要修改的項目' : editingDay && step===2 ? '修改當日數量' : steps[step]}</h4>
     {step===-1 && <>
       <p className="muted small">這天有 {editEntries.length} 項紀錄。選擇一項修改，其餘資料保留。</p>
@@ -217,7 +218,7 @@ export function QuantityEditor({ data, date: initialDate, expected, entryKey, on
         })}</ul>
         <label><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> 我已核對來源與目的日差異，確認當日補齊範圍；既有未知不自動補成 0。</label>
       </> : !preview?.inventory && <p className="notice">沒有可用的完整基底；維持單項補登，其餘未記錄數量保持未知。</p>}
-      <p className="muted small">價格與匯率只取市場來源；不使用手填歷史價。負債沿用當日紀錄，沒有紀錄時保持未知。</p>
+      <p className="muted small">價格與匯率只取市場來源；不使用手填歷史價。負債沿用當日紀錄，沒有紀錄時以 0 計，並標示為未記錄。</p>
     </>}
     {step===3 && periodPreview && <>
       <p><strong>{periodPreview.period.start} 至 {periodPreview.period.end ?? '持續持有'}</strong> · 基準數量 {fmt(periodPreview.period.quantity,8)}</p>
@@ -231,16 +232,17 @@ export function QuantityEditor({ data, date: initialDate, expected, entryKey, on
       {!!periodPreview.conflicts.length && <><details open><summary>需確認的重疊／明確紀錄（{periodPreview.conflicts.length}）</summary><ul>{periodPreview.conflicts.map((message,i)=><li key={i}>{message}</li>)}</ul></details><label><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> 我已核對差異，同意依上述優先順序套用；原紀錄保留。</label></>}
     </>}
     {error && <p role="alert" className="banner error">{error}</p>}
+    {busy && <p role="status">背景作業中，請稍後再儲存。</p>}
     <div className="quantity-actions">
       {step === 0 && <button className="primary" disabled={!account} onClick={() => setStep(1)}>下一步：選標的</button>}
       {step === 1 && <button className="primary" disabled={!selected} onClick={goToQuantity}>下一步：填數量</button>}
-      {step === 2 && <button className="primary" disabled={loading} onClick={() => void prepare()}>{loading ? '取得歷史行情中…' : '取得歷史估值'}</button>}
-      {step === 3 && <button className="primary" disabled={loading} onClick={() => { try { if(periodPreview) onApply(applyHoldingPeriod(latest.current,periodPreview.period,periodPreview.revision,confirmed)); else if (preview && completionView) onApply(applyCompletion(latest.current,preview,completionView.revision,confirmed)) } catch (e) { setError(e instanceof Error ? e.message : '無法套用') } }}>套用歷史數量</button>}
+      {step === 2 && <button className="primary" disabled={loading || busy} onClick={() => void prepare()}>{loading ? '取得歷史行情中…' : '取得歷史估值'}</button>}
+      {step === 3 && <button className="primary" disabled={loading || busy} onClick={() => { try { if (busy) throw new Error('背景作業中，請稍後再儲存'); if(periodPreview) onApply(applyHoldingPeriod(latest.current,periodPreview.period,periodPreview.revision,confirmed)); else if (preview && completionView) onApply(applyCompletion(latest.current,preview,completionView.revision,confirmed)) } catch (e) { setError(e instanceof Error ? e.message : '無法套用') } }}>儲存歷史數量</button>}
       {step > 0 && (!editingDay || step===3 || editEntries.length>1) && <button onClick={() => { resetPreview(); setStep(editingDay && step===2 ? -1 : step - 1) }}>{step === 3 ? '返回修改' : editingDay ? '改選其他項目' : '上一步'}</button>}
       <button onClick={exit.close}>取消歷史編輯</button>
     </div>
-    <p className="muted small">套用後仍需「儲存變更」才會寫入 Drive。</p>
-  </div>
+    <p className="muted small">確認後直接儲存歷史修改；目前持倉不變。</p>
+  </dialog>
 }
 
 function Valuation({ entry: e }: { entry: QuantityEntry }) {

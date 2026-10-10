@@ -144,25 +144,26 @@ test('v4 audit and quantity history survive recalibration, disabling and deletio
   assert.deepEqual(removed.history.quantityDays,data.history.quantityDays)
   assert.deepEqual(removed.history.liabilityChanges.at(-1).before.basisHistory,[basis])
 })
-test('quantity valuation preserves estimated debt labels and unknown historical debt', () => {
+test('quantity valuation preserves estimates and defaults absent debt to zero', () => {
   const day=quantityDay(), data={...model.emptyData(),version:4,liabilities:[loan({annualRate:0})]}
   const snap=history.snapshotOf(data,at(day.date))
   const point=quantity.quantityPoint(day,snap)
   assert.equal(point.total,500);assert.equal(point.liabilityTotal,1000);assert.equal(point.netWorth,-500);assert.equal(point.liabilityEstimated,true)
-  assert.equal(quantity.quantityPoint(day).liabilityTotal,undefined)
-  assert.equal(quantity.quantityPoint(day).netWorth,undefined)
+  assert.equal(quantity.quantityPoint(day).liabilityTotal,0)
+  assert.equal(quantity.quantityPoint(day).netWorth,500)
+  assert.equal(quantity.quantityPoint(day,{...snap,liabilityTotal:null,netWorth:null}).netWorth,null)
   const incomplete=quantity.quantityPoint({...day,entries:[{...day.entries[0],quantity:null}]},snap)
   assert.equal(incomplete.netWorth,null);assert.equal(incomplete.liabilityEstimated,true)
   data.history.quantityDays=[day];data.history.snapshots=[snap]
   assert.deepEqual(history.totalPoints(data,at('2024-03-01'))[0],point)
 })
-test('manual quantity today uses current estimate consistently, while past unknown debt stays unknown', () => {
+test('manual quantity today uses current estimate consistently, while past absent debt defaults to zero', () => {
   const day=quantityDay(), data={...model.emptyData(),version:4,liabilities:[loan({annualRate:0})]}
   data.history.quantityDays=[day]
   const now=at(day.date), current=history.snapshotOf(data,now), point=history.totalPoints(data,now)[0]
   assert.equal(point.liabilityTotal,current.liabilityTotal)
   assert.equal(point.liabilityEstimated,true);assert.equal(point.netWorth,500-current.liabilityTotal)
-  assert.equal(history.totalPoints(data,at('2024-03-01'))[0].liabilityTotal,undefined)
+  assert.equal(history.totalPoints(data,at('2024-03-01'))[0].liabilityTotal,0)
 })
 test('in-flight v3 save merges later schedule and quantity edits without dropping either or downgrading v4', () => {
   const day=quantityDay(), submitted={...model.emptyData(),version:3}

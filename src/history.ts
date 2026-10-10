@@ -176,7 +176,10 @@ export function totalPoints(data: WealthData, now: string): HistoricalPoint[] {
     const basis = day.date === today.date ? { ...(original ?? today), liabilityTotal: today.liabilityTotal, netWorth: today.netWorth, liabilityEstimated: today.liabilityEstimated } : original
     byDate.set(day.date, quantityPoint(day, basis))
   }
-  return [...byDate.values()].sort((a,b) => a.date.localeCompare(b.date))
+  return [...byDate.values()].map(point => {
+    const liabilityTotal = point.liabilityTotal === undefined ? 0 : point.liabilityTotal
+    return { ...point, liabilityAssumed: point.liabilityAssumed ?? point.liabilityTotal === undefined, liabilityTotal, netWorth: point.netWorth === null || point.total === null || liabilityTotal === null ? null : point.total - liabilityTotal }
+  }).sort((a,b) => a.date.localeCompare(b.date))
 }
 
 // The edits a save would record, for review before saving.

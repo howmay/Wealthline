@@ -34,6 +34,7 @@ export type HistoricalPoint = Omit<Snapshot, 'total' | 'accounts' | 'categories'
   total: number | null
   accounts: { id: string; name: string; value: number | null }[]
   categories: Record<string, number | null>
+  liabilityAssumed?: boolean
   periodDerived?: boolean
   manual?: boolean
 }
@@ -188,9 +189,10 @@ export function quantityPoint(day: QuantityDay, original?: Snapshot): Historical
   // Unknown legacy inventory in an original snapshot must not disappear; an account
   // that was empty that day has nothing to add.
   if ((!day.inventory && (original?.accounts.some(a => !accounts.has(a.id) && a.value !== 0) || !day.entries.length)) || !Number.isFinite(total)) total = null
-  const debt = original?.liabilityTotal
+  const liabilityAssumed = original?.liabilityTotal === undefined
+  const debt = liabilityAssumed ? 0 : original?.liabilityTotal
   return { date: day.date, at: day.updatedAt, total, accounts: [...accounts.values()], categories, manual: !day.periodDerived, ...(day.periodDerived && {periodDerived:true}),
-    ...(debt !== undefined && { liabilityTotal: debt }),
+    liabilityAssumed, liabilityTotal: debt,
     ...(original?.liabilityEstimated !== undefined && { liabilityEstimated: original.liabilityEstimated }),
     ...(debt !== undefined && { netWorth: total === null || debt === null ? null : total - debt }) }
 }

@@ -9,7 +9,7 @@ import { historyCatalog, instrumentKey, quantityPoint, valueEntries, type Quanti
 import { fmt } from '../format'
 import { HistoricalFxValue } from './HistoricalFxValue'
 
-export function HistoryBaseline({data,onApply,onCancel}:{data:WealthData;onApply:(data:WealthData)=>void;onCancel:()=>void}) {
+export function HistoryBaseline({data,busy=false,onApply,onCancel}:{data:WealthData;busy?:boolean;onApply:(data:WealthData)=>void;onCancel:()=>void}) {
   const now=useCalendarNow()
   const [sourceId,setSourceId]=useState('')
   const [date,setDate]=useState('')
@@ -19,11 +19,12 @@ export function HistoryBaseline({data,onApply,onCancel}:{data:WealthData;onApply
   const [error,setError]=useState('')
   const [loading,setLoading]=useState(false)
   const [preview,setPreview]=useState<{day:QuantityDay;revision:string;before:WealthData;source:QuantityBaseline}|null>(null)
-  const latest=useRef(data), live=useRef(true), request=useRef(0), region=useRef<HTMLDivElement>(null)
+  const latest=useRef(data), live=useRef(true), request=useRef(0), region=useRef<HTMLDialogElement>(null)
   useEffect(()=>{latest.current=data},[data])
   useEffect(()=>{live.current=true;return()=>{live.current=false}},[])
   const previewing=!!preview
-  useEffect(()=>{region.current?.scrollIntoView?.({block:'start'});region.current?.querySelector<HTMLElement>('h4')?.focus()},[previewing])
+  useEffect(()=>{const dialog=region.current;if(dialog&&!dialog.open)dialog.showModal()},[])
+  useEffect(()=>{region.current?.querySelector<HTMLElement>('h4')?.focus()},[previewing])
   const sources=quantityBaselines(data,now),source=sources.find(s=>s.id===sourceId)
   const selectedRevision=useRef('')
   const reset=()=>{request.current++;setLoading(false);setPreview(null);setConfirmed(false);setError('')}
@@ -58,7 +59,7 @@ export function HistoryBaseline({data,onApply,onCancel}:{data:WealthData;onApply
   const total=preview ? quantityPoint(preview.day,snapshot).total : null
   const changed=!!date || complete || confirmed || !!preview || loading || !!source?.entries.some(e=>values[instrumentKey(e)]!==e.quantity?.toString())
   const exit=useHistoryExit(changed,()=>{request.current++;onCancel()})
-  return <div className="quantity-editor form baseline-editor" ref={region} role="region" aria-label="沿用持倉回補" onKeyDown={exit.onKeyDown}>
+  return <dialog className="review quantity-editor form baseline-editor" ref={region} aria-label="沿用持倉回補" onKeyDown={exit.onKeyDown} onCancel={e=>{e.preventDefault();exit.close()}}>
     <p className="eyebrow">完整清單回補 · 只影響目的日</p>
     <h4 tabIndex={-1}>{preview?'確認回補差異':'沿用某日持倉，只修改差異'}</h4>
     {!preview ? <>
@@ -74,12 +75,12 @@ export function HistoryBaseline({data,onApply,onCancel}:{data:WealthData;onApply
             return <label className="field" key={key}><span>{e.type==='cash'?'現金餘額':e.symbol} · {e.currency}</span><input aria-label={`${a.name} · ${e.symbol||e.currency} 目的日數量`} inputMode="decimal" value={text} onChange={event=>{reset();setValues(v=>({...v,[key]:event.target.value}))}}/><span className="muted small">來源 {fmt(e.quantity!,8)} → 目的 {Number.isFinite(quantity)?fmt(quantity,8):'待填'} · 差異 {delta===null?'待填':`${delta>0?'+':''}${fmt(delta,8)}`}</span></label>
           })}{!source.entries.some(e=>e.accountId===a.id)&&<p className="muted small">來源清單為空，目的日亦確認無持倉。</p>}</fieldset>)}
           <label className="baseline-confirm"><input type="checkbox" checked={complete} onChange={e=>{reset();setComplete(e.target.checked)}}/><span>我已核對來源清單，並確認以上是目的日的全部帳戶與持倉；未修改項目沿用來源數量，未列項目於目的日未持有。此確認不更動來源日。</span></label>
-          <button className="primary" disabled={loading||!complete} onClick={()=>void prepare()}>{loading?'取得目的日行情中…':'預覽回補差異'}</button>
+          <button className="primary" disabled={busy||loading||!complete} onClick={()=>void prepare()}>{loading?'取得目的日行情中…':'預覽回補差異'}</button>
         </>}
       </>}
     </> : <>
       <p className="quantity-selection">來源：{preview.day.inventory!.source.kind==='current'?'目前持倉 · ':''}{preview.day.inventory!.source.date}<br/>目的：{preview.day.date}<br/>完整範圍：{preview.day.inventory!.accounts.length} 個帳戶 · {preview.day.entries.length} 項</p>
-      <p className="notice">目的日總資產：{total===null?'資料不完整（缺少目的日行情）':`NT$ ${fmt(total,2)}`}。價格與匯率只取目的日可用市場行情；負債沿用目的日原紀錄，未記錄則保持未知。</p>
+      <p className="notice">目的日總資產：{total===null?'資料不完整（缺少目的日行情）':`NT$ ${fmt(total,2)}`}。價格與匯率只取目的日可用市場行情；負債沿用目的日原紀錄，未記錄則以 0 計並標示。</p>
       <div className="baseline-differences">{preview.day.entries.map(e=>{
         const key=instrumentKey(e),from=preview.source.entries.find(x=>instrumentKey(x)===key),old=previous?.entries.find(x=>instrumentKey(x)===key)
         return <div className="quantity-row" key={key}><strong>{e.account} · {e.symbol||'現金餘額'} · {e.currency}</strong><span>來源 {from?.quantity ?? '未知'} → 目的 {fmt(e.quantity!,8)}（{from?.quantity===e.quantity?'未變':`差異 ${e.quantity!-from!.quantity!>0?'+':''}${fmt(e.quantity!-from!.quantity!,8)}`}）</span>{previous&&<span>目的日原紀錄：{old ? old.quantity===null?'未知':fmt(old.quantity,8) : '未列出'}</span>}{e.price&&<p className="small">Yahoo {e.price.symbol} · {e.price.date} · {fmt(e.price.value,6)} {e.currency}</p>}{e.fx&&<HistoricalFxValue quote={e.fx}/>} {e.error&&<p className="notice">{e.error}</p>}</div>
@@ -89,10 +90,10 @@ export function HistoryBaseline({data,onApply,onCancel}:{data:WealthData;onApply
       {!!periodBefore.length&&<div className="notice"><strong>目的日原有期間推算</strong><p>完整回補只在目的日優先，以下期間基準及後續日期保持不變。</p>{periodBefore.map(e=><p key={instrumentKey(e)}>{e.account} · {e.symbol||e.currency}：基準日 {e.basisDate}，基準數量 {e.quantity===null?'未知':fmt(e.quantity,8)}（非目的日重新核對數量）</p>)}</div>}
       {(previous||snapshot)&&<p className="notice">目的日已有{previous?'持倉數量紀錄':'原始總額快照'}。套用會以此完整清單取代目的日的歷史估值；原始快照保留，其他日期不變。</p>}
       <label className="baseline-confirm"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/><span>我已確認來源、目的日期、完整範圍與上述差異{previous||snapshot||periodBefore.length?'，同意覆寫目的日的數量／估值':''}。目前持倉及來源日保持不變。</span></label>
-      <div className="quantity-actions"><button className="primary" disabled={!confirmed} onClick={()=>{try{onApply(applyBaseline(latest.current,preview.day,sourceId,preview.revision,confirmed))}catch(e){setError(e instanceof Error?e.message:'無法套用')}}}>套用完整回補</button><button onClick={reset}>返回調整差異</button></div>
+      <div className="quantity-actions"><button className="primary" disabled={busy||!confirmed} onClick={()=>{try{if(busy)throw new Error('背景作業中，請稍後再儲存');onApply(applyBaseline(latest.current,preview.day,sourceId,preview.revision,confirmed))}catch(e){setError(e instanceof Error?e.message:'無法套用')}}}>儲存完整回補</button><button onClick={reset}>返回調整差異</button></div>
     </>}
     {error&&<p role="alert" className="banner error">{error}</p>}
     <div className="quantity-actions"><button onClick={exit.close}>取消回補</button></div>
-    <p className="muted small">套用後仍需「儲存變更」才會寫入 Drive。</p>
-  </div>
+    <p className="muted small">確認後直接儲存歷史修改；目前持倉不變。</p>
+  </dialog>
 }

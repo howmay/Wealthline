@@ -1,21 +1,20 @@
+import { MODES, seriesFor, type Mode } from './historySeries'
 import { removalMessage } from '../historyCompletion'
 import { useCalendarNow } from '../useCalendarNow'
 import { useState, type ReactNode } from 'react'
 import { useHistoricalValuations } from '../useHistoricalValuations'
 import { fmt, pct } from '../format'
 import { localDate, snapshotOf, totalPoints, type Change } from '../history'
-import { CATEGORIES, type WealthData } from '../model'
+import { type WealthData } from '../model'
 import { displaySymbol } from '../quotes'
 import { LiabilityChangeRow } from './LiabilityChange'
 import { QuantityHistory, type QuantityEditRequest } from './QuantityHistory'
 import type { HistoricalPoint } from '../quantityHistory'
-import { TrendChart, type Series } from './TrendChart'
+import { TrendChart } from './TrendChart'
 
-const MODES = { total: '總資產', account: '依帳戶', category: '依類別' }
-type Mode = keyof typeof MODES
-const SLOTS = 8
 
 interface Props {
+  embedded?: boolean
   data: WealthData
   dirty: boolean
   busy: boolean
@@ -24,7 +23,7 @@ interface Props {
   onOpenAccount: (id: string) => void
 }
 
-export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount }: Props) {
+export function HistoryView({ embedded = false, data, dirty, busy, onSave, onChange, onOpenAccount }: Props) {
   const historical = useHistoricalValuations(data)
   const [visibleDays, setVisibleDays] = useState(30)
   const [mode, setMode] = useState<Mode>('total')
@@ -46,10 +45,10 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
   for (const s of points) for (const a of s.accounts) accountNames.set(a.id, a.name)
 
   return (
-    <div className="history-page">
+    <div className="history-page history-management">
       <div className="page-head history-heading">
         <div>
-          <h2>歷史</h2>
+          <h2>歷史管理</h2>
           <p className="muted">查看資產變化，補登或修正過去的持有數量。</p>
         </div>
         {!savedToday && !dirty && (data.accounts.length > 0 || !!data.liabilities?.length) && (
@@ -69,19 +68,19 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
         {historical.status && <p className="muted small" aria-live="polite">{historical.status}</p>}
         {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
       </section>
-      <QuantityHistory data={data} onChange={onChange} request={quantityRequest} onRequest={setQuantityRequest} displayDays={historical.data.history.valuedQuantityDays ?? historical.data.history.quantityDays}/>
-      <section className="stats">
+      <QuantityHistory data={data} busy={busy} onChange={onChange} request={quantityRequest} onRequest={setQuantityRequest} displayDays={historical.data.history.valuedQuantityDays ?? historical.data.history.quantityDays}/>
+      {!embedded && <section className="stats">
         <Stat label="目前總資產" value={`NT$ ${fmt(today.total, 0)}`} note={savedToday && !dirty ? '今天已記錄' : '儲存後記錄為今天'} />
         <Stat label="較上次紀錄" base={previous} total={today.total} />
         <Stat label="較最早紀錄" base={first} total={today.total} />
-      </section>
+      </section>}
 
-      <section className="panel">
+      {!embedded && <section className="panel">
         <div className="panel-head">
           <h3>資產走勢</h3>
           <div className="segmented" role="group" aria-label="顯示方式">
             {(Object.keys(MODES) as Mode[]).map((m) => (
-              <button key={m} className={m === mode ? 'on' : ''} aria-pressed={m === mode} onClick={() => setMode(m)}>
+              <button disabled={busy} key={m} className={m === mode ? 'on' : ''} aria-pressed={m === mode} onClick={() => setMode(m)}>
                 {MODES[m]}
               </button>
             ))}
@@ -89,7 +88,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
         </div>
         <TrendChart dates={dates} series={seriesFor(mode, points, accountNames)} area={mode === 'total'} />
         {points.length < 2 && <p className="muted small chart-note">目前只有一天的紀錄。之後每天登入時會自動記一筆，就能看到資產隨時間的變化。</p>}
-      </section>
+      </section>}
 
       <section className="panel">
         <div className="panel-head">
@@ -119,14 +118,14 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
       <section className="panel">
         <h3>負債異動</h3>
         {!data.history.liabilityChanges?.length ? <p className="muted">修改負債並儲存後，這裡會保留修改前後的資料。</p> :
-          <ul className="liability-changes">{[...(data.history.liabilityChanges ?? [])].sort((a, b) => b.at.localeCompare(a.at)).map((c, i) => <LiabilityChangeRow key={`${c.at}-${i}`} change={c} extra={<button className="icon" aria-label="刪除這筆負債紀錄" onClick={() => {
+          <ul className="liability-changes">{[...(data.history.liabilityChanges ?? [])].sort((a, b) => b.at.localeCompare(a.at)).map((c, i) => <LiabilityChangeRow key={`${c.at}-${i}`} change={c} extra={<button disabled={busy} className="icon" aria-label="刪除這筆負債紀錄" onClick={() => {
             if (confirm('刪除這筆負債異動紀錄？目前負債餘額不會改變。')) onChange({ ...data, history: { ...data.history, liabilityChanges: data.history.liabilityChanges?.filter((x) => x !== c) } })
           }}>×</button>} />)}</ul>}
       </section>
-      <section className="stats">
+      {!embedded && <section className="stats">
         <Stat label={today.liabilityEstimated ? "目前總負債（預估）" : "目前總負債"} value={today.liabilityTotal == null ? '尚無法換算' : `NT$ ${fmt(today.liabilityTotal, 0)}`} />
         <Stat label={today.liabilityEstimated ? "目前淨資產（預估）" : "目前淨資產"} value={today.netWorth == null ? '尚無法換算' : `NT$ ${fmt(today.netWorth, 0)}`} note="總資產 − 總負債" />
-      </section>
+      </section>}
       {points.length > 0 && (
         <section className="panel daily" aria-label="每日紀錄">
           <div className="panel-head">
@@ -150,12 +149,12 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
                   <tr key={s.date}>
                     <td data-label="日期"><span className="daily-cell-value">{s.date.replace(/-/g, '/')}<span className="muted small">{s.periodDerived ? ' · 期間推算' : s.manual ? (data.history.quantityDays?.find(d=>d.date===s.date)?.inventory ? ' · 完整回補' : ' · 手動') : s.date === today.date ? ' · 目前' : ' · 原始快照'}</span></span></td>
                     <td className="num" data-label="總資產"><span className="daily-cell-value">{s.total === null ? '資料不完整' : `NT$ ${fmt(s.total, 0)}`}</span></td>
-                    <td className="num" data-label="總負債"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.liabilityTotal === undefined ? '未記錄' : s.liabilityTotal === null ? '無法換算' : `NT$ ${fmt(s.liabilityTotal, 0)}`}</span></td>
+                    <td className="num" data-label="總負債"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.liabilityAssumed ? '未記錄（以 0 計）' : s.liabilityTotal === undefined ? '未記錄' : s.liabilityTotal === null ? '無法換算' : `NT$ ${fmt(s.liabilityTotal, 0)}`}</span></td>
                     <td className="num" data-label="淨資產"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</span></td>
                     <td className="num" data-label="帳戶數"><span className="daily-cell-value">{s.accounts.length}</span></td>
                     <td className="num daily-actions">
-                      <button data-history-entry={`day:${s.date}`} disabled={!!quantityRequest} onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date),focusKey:`day:${s.date}`})}>{data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} {s.date}</button>
-                      {data.history.quantityDays?.some(d=>d.date===s.date) && <button className="danger" disabled={!!quantityRequest} onClick={()=>{
+                      <button data-history-entry={`day:${s.date}`} disabled={busy || !!quantityRequest} onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date),focusKey:`day:${s.date}`})}>{data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} {s.date}</button>
+                      {data.history.quantityDays?.some(d=>d.date===s.date) && <button className="danger" disabled={busy || !!quantityRequest} onClick={()=>{
                         if(confirm(removalMessage(data,s.date))) {
                           onChange({...data,history:{...data.history,quantityDays:data.history.quantityDays?.filter(d=>d.date!==s.date)}})
                           requestAnimationFrame(()=>{
@@ -164,13 +163,13 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
                           })
                         }
                       }}>移除補登 {s.date}</button>}
-                      {s.periodDerived && <button disabled={!!quantityRequest} onClick={()=>{
+                      {s.periodDerived && <button disabled={busy || !!quantityRequest} onClick={()=>{
                         const section=document.querySelector<HTMLElement>('[aria-label="歷史持倉數量"]')
                         section?.querySelectorAll<HTMLDetailsElement>('[data-period-management]').forEach(d=>{d.open=true})
                         section?.scrollIntoView?.({block:'start'})
                         section?.querySelector<HTMLElement>('[data-period-management] summary')?.focus()
                       }}>管理持有期間</button>}
-                      {!s.manual && !s.periodDerived && saved.some(x=>x.date===s.date) && <button
+                      {!s.manual && !s.periodDerived && saved.some(x=>x.date===s.date) && <button disabled={busy}
                         className="icon"
                         aria-label={`刪除 ${s.date} 的紀錄`}
                         title="刪除這天的原始快照"
@@ -187,7 +186,7 @@ export function HistoryView({ data, dirty, busy, onSave, onChange, onOpenAccount
               </tbody>
             </table>
           </div>
-          {points.length > visibleDays && <button onClick={()=>setVisibleDays(n=>n+30)}>顯示更早 30 日（尚有 {points.length-visibleDays} 日）</button>}
+          {points.length > visibleDays && <button disabled={busy} onClick={()=>setVisibleDays(n=>n+30)}>顯示更早 30 日（尚有 {points.length-visibleDays} 日）</button>}
           {saved.some((s) => s.date === today.date) && (
             <p className="muted small hint">未補登的今天會顯示目前值；已補登日期優先採手動數量估值。移除手動補登可恢復原始快照。</p>
           )}
@@ -230,39 +229,6 @@ function Stat({ label, value, note, base, total }: { label: string; value?: stri
   )
 }
 
-// One line per entity in a fixed color slot; past the eighth, the rest fold into 其餘.
-function seriesFor(mode: Mode, points: HistoricalPoint[], accountNames: Map<string, string>): Series[] {
-  if (mode === 'total') return [{ key: 'total', label: '總資產', color: 'var(--s1)', values: points.map((p) => p.total) }]
-
-  const valueOf = (p: HistoricalPoint, key: string) =>
-    p.total === null ? null : mode === 'account' ? (p.accounts.find((a) => a.id === key)?.value ?? 0) : (p.categories[key] ?? 0)
-  const keys = new Set<string>()
-  for (const p of points) for (const k of mode === 'account' ? p.accounts.map((a) => a.id) : Object.keys(p.categories)) keys.add(k)
-
-  const latest = points[points.length - 1]
-  // Categories keep the same colors as on the overview; the largest accounts today get their own.
-  const order =
-    mode === 'category'
-      ? [...CATEGORIES, ...[...keys].filter((k) => !CATEGORIES.includes(k)).sort()]
-      : [...keys].sort((a, b) => (valueOf(latest, b) ?? 0) - (valueOf(latest, a) ?? 0))
-  const own = order.slice(0, SLOTS).filter((k) => keys.has(k))
-  const rest = [...keys].filter((k) => !own.includes(k))
-  const series: Series[] = own.map((k) => ({
-    key: k,
-    label: mode === 'account' ? (accountNames.get(k) ?? k) : k,
-    color: `var(--s${order.indexOf(k) + 1})`,
-    values: points.map((p) => valueOf(p, k)),
-  }))
-  if (rest.length) {
-    series.push({
-      key: '__rest',
-      label: `其餘 ${rest.length} 個`,
-      color: 'var(--other)',
-      values: points.map((p) => p.total === null ? null : rest.reduce((s, k) => s + (valueOf(p, k) ?? 0), 0)),
-    })
-  }
-  return series
-}
 
 const signed = (n: number, digits: number) => `${n >= 0 ? '+' : '−'}${fmt(Math.abs(n), digits)}`
 
