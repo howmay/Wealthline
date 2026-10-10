@@ -114,3 +114,32 @@ test('CJK PDF character maps preserve Chinese names and exclude repayment; textl
   assert.deepEqual(await pdfLines('synthetic-scan.pdf'),[])
   assert.equal(parse(await pdfLines('synthetic-statement.pdf')).rows.length,4)
 })
+
+
+test('Fubon ROC posting columns and E.SUN original amounts use the final billed TWD amount',()=>{
+  const fubon = statements.parseStatement(['消費日期 消費明細 入帳日期 外幣金額 台幣金額',
+    '115/04/01 自動轉帳繳款 115/04/02 -5,000',
+    '115/04/03 合成旅遊商店 115/04/05 1150404/ HKD 50.30/ NLD 205',
+    '115/04/06 合成商店 123 分店 115/04/08 TWD 25'], '2026-04','USD','富邦信用卡.pdf')
+  assert.deepEqual(fubon.rows,[{date:'2026-04-03',description:'合成旅遊商店',amount:205,currency:'TWD'},
+    {date:'2026-04-06',description:'合成商店 123 分店',amount:25,currency:'TWD'}])
+  const esun = statements.parseStatement(['消費日 入帳日 消費明細 幣別',
+    '11/01 11/02 合成海外商店 11/02 USD 10.00 TWD 320',
+    '11/03 11/04 合成退款 TWD -100',
+    '11/05 感謝您辦理自動轉帳繳款 TWD -900'],'2025-11','USD','玉山信用卡.pdf')
+  assert.deepEqual(esun.rows,[{date:'2025-11-01',description:'合成海外商店',amount:320,currency:'TWD'},
+    {date:'2025-11-03',description:'合成退款',amount:-100,currency:'TWD'}])
+})
+
+test('HSBC unreadable merchant rows require review; foreign source amount never replaces billed TWD',()=>{
+  const result=statements.parseStatement(['04/01 04/02 1,200', '04/03 04/04 USA USD 10.00 04/04 320'],'2026-04','TWD','HSBC信用卡.pdf')
+  assert.deepEqual(result.rows.map(r=>[r.amount,r.currency]),[[1200,'TWD'],[320,'TWD']])
+  assert.deepEqual(result.review,[0,1])
+  assert.ok(result.rows.every(r=>r.description.includes('未能辨識')))
+})
+
+test('securities statements are rejected by filename and strong content markers, not credit-card ads',()=>{
+  assert.throws(()=>statements.assertCreditCardFile('台新證券綜合月對帳單.pdf'),/證券/)
+  assert.throws(()=>parse(['綜合月對帳單','成交日期 買賣別 證券帳號']),/證券/)
+  assert.doesNotThrow(()=>parse(['信用卡優惠與證券廣告',...lines]))
+})

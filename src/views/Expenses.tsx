@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { mergeExpenses, parseExpense, prepareExpenses, sha256, type Expense } from '../expenses'
-import { parseStatement } from '../statements'
+import { assertCreditCardFile, parseStatement } from '../statements'
 import { fmt } from '../format'
 import type { WealthData } from '../model'
 
@@ -49,7 +49,7 @@ function ExpenseEditor({expense,busy,onSave,onCancel}: {expense:Expense;busy:boo
   </form>
 }
 
-type Draft = Expense & {selected:boolean;amountText:string}
+type Draft = Expense & {selected:boolean;amountText:string;needsReview?:boolean}
 function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];busy:boolean;onCancel:()=>void;onImport:(rows:Expense[],context:Expense[])=>void}) {
   const [file,setFile] = useState<File|null>(null)
   const [password,setPassword] = useState('')
@@ -71,6 +71,7 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
   let validation = ''
   try {
     result = mergeExpenses(existing,selected.map(r=>{
+      if(r.needsReview && r.description.includes('商家未能辨識')) throw new Error('請先補上未辨識的商家，並核對是否為繳款')
       if(!r.amountText.trim()) throw new Error('請填寫每筆金額')
       return {...r,amount:Number(r.amountText)}
     }),drafts ?? [])
@@ -85,6 +86,7 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
     const secret = password
     setPassword('')
     try {
+      assertCreditCardFile(file.name)
       if(file.size > 20*1024*1024) throw new Error('帳單超過 20 MB，請拆分後再匯入')
       const bytes = new Uint8Array(await file.arrayBuffer())
       if(new TextDecoder().decode(bytes.slice(0,5)) !== '%PDF-') throw new Error('請選擇有效的 PDF 檔案')
@@ -92,11 +94,11 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
       const {readStatementPdf} = await import('../statementPdf')
       if(abort.signal.aborted) return
       const lines = await readStatementPdf(bytes,secret,abort.signal)
-      const parsed = parseStatement(lines,month,currency)
+      const parsed = parseStatement(lines,month,currency,file.name)
       if(!parsed.rows.length) throw new Error('沒有辨識到交易。此帳單的排版暫不支援，尚未匯入任何資料。')
       const rows = await prepareExpenses(parsed.rows,card,fileHash)
       if(abort.signal.aborted) return
-      setDrafts(rows.map(r=>({...r,selected:true,amountText:String(r.amount)})))
+      setDrafts(rows.map((r,i)=>({...r,selected:!parsed.review.includes(i),needsReview:parsed.review.includes(i),amountText:String(r.amount)})))
       setSkipped(parsed.skipped)
       setFile(null)
     } catch(e) {if(!abort.signal.aborted) setError(e instanceof Error?e.message:'無法解析帳單')}
@@ -105,7 +107,7 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
   return <section className="panel statement-import">
     <div className="panel-head"><h2>匯入信用卡帳單</h2><button onClick={()=>{controller.current?.abort();onCancel()}}>取消匯入</button></div>
     <p className="notice">PDF 與密碼只在此瀏覽器解密及解析，不傳送到伺服器、不保存原始檔或密碼。確認後的消費明細會隨資料檔儲存在此瀏覽器或你的 Google Drive。</p>
-    <p className="muted small">第一版支援文字 PDF 的單一金額交易列。掃描圖片、複雜外幣欄位及跨行交易可能無法辨識；請核對帳單，解析結果不保證完整。退款以負數記錄，繳款與總計不當作消費。</p>
+    <p className="muted small">支援富邦與玉山文字帳單的入帳欄位，使用最後的臺幣帳單金額。匯豐缺少商家文字的交易預設不勾選，請對照原帳單補上商家並排除繳款後再選取。證券帳單不支援；掃描圖片及其他排版可能無法辨識，請核對完整性。退款以負數記錄，繳款與總計不當作消費。</p>
     {error && <p className="banner error" role="alert">{error}</p>}
     {!drafts ? <form onSubmit={parse}>
       <fieldset className="expense-fields" disabled={locked}>
@@ -121,7 +123,7 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
       <div className="expense-preview">{drafts.map((r,i)=>{
         const duplicate = (r.sourceKey && existingSourceKeys.has(r.sourceKey)) || (r.importKey && existingImportKeys.has(r.importKey))
         return <fieldset key={r.id} className="expense-draft" disabled={busy} aria-label={`交易 ${i+1}`}>
-          <label className="expense-select"><input type="checkbox" checked={r.selected} onChange={e=>patch(r.id,{selected:e.target.checked})}/><strong>第 {i+1} 筆</strong>{duplicate && <span className="tag">原始交易已匯入</span>}</label>
+          <label className="expense-select"><input type="checkbox" checked={r.selected} onChange={e=>patch(r.id,{selected:e.target.checked})}/><strong>第 {i+1} 筆</strong>{r.needsReview && <span className="tag">請核對商家與繳款</span>}{duplicate && <span className="tag">原始交易已匯入</span>}</label>
           <div className="expense-fields">
             <label className="field"><span>日期</span><input type="date" aria-label={`第 ${i+1} 筆日期`} value={r.date} onChange={e=>patch(r.id,{date:e.target.value})}/></label>
             <label className="field expense-description"><span>商家／說明</span><input maxLength={500} aria-label={`第 ${i+1} 筆商家`} value={r.description} onChange={e=>patch(r.id,{description:e.target.value})}/></label>
