@@ -58,10 +58,20 @@ export function loadLocal(): LocalFile | null {
   return { data: parseWealthData(json, 'browser'), raw }
 }
 
-// Writes `data` unless another tab changed the stored data since `expected` was read
-// (null: nothing was stored). Returns the new stored text, the version for the next save.
-export function saveLocal(data: WealthData, expected: string | null): string {
-  if (read(DATA_KEY) !== expected) throw new LocalConflictError()
+// Every write (save, upload, delete) runs under one lock shared by all tabs of this site, so
+// checking the stored version and writing cannot interleave with another tab's write.
+// localStorage itself has no cross-tab locking, so without Web Locks local mode does not write at all.
+const LOCK = 'wealthline.local'
+
+function locked<T>(task: () => T): Promise<T> {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
+  if (!locks) {
+    return Promise.reject(new Error('這個瀏覽器不支援跨分頁鎖定（Web Locks），為避免分頁互相覆蓋資料，本機模式無法寫入。請改用新版瀏覽器，並先下載本機備份。'))
+  }
+  return locks.request(LOCK, () => task())
+}
+
+function write(data: WealthData): string {
   const raw = JSON.stringify(data)
   try {
     localStorage.setItem(DATA_KEY, raw)
@@ -71,19 +81,27 @@ export function saveLocal(data: WealthData, expected: string | null): string {
   return raw
 }
 
-// Replaces the stored data with an uploaded file, whatever was there. Returns the new stored text.
-export function replaceLocal(data: WealthData): string {
-  return saveLocal(data, read(DATA_KEY))
+// Writes `data` unless another tab changed the stored data since `expected` was read
+// (null: nothing was stored). Resolves to the new stored text, the version for the next save.
+export function saveLocal(data: WealthData, expected: string | null): Promise<string> {
+  return locked(() => {
+    if (read(DATA_KEY) !== expected) throw new LocalConflictError()
+    return write(data)
+  })
+}
+
+// Replaces the stored data with an uploaded file, whatever was there, unless `wanted` says the
+// user has since left local mode or deleted the data. Resolves to the new stored text, or null.
+export function replaceLocal(data: WealthData, wanted: () => boolean): Promise<string | null> {
+  return locked(() => (wanted() ? write(data) : null))
 }
 
 // Removes the data and leaves local mode. Downloaded files are not affected.
-export function clearLocal() {
-  try {
+export function clearLocal(): Promise<void> {
+  return locked(() => {
     localStorage.removeItem(DATA_KEY)
     localStorage.removeItem(ACTIVE_KEY)
-  } catch {
-    // Nothing to clear.
-  }
+  })
 }
 
 // Reads a data file the user picked: a download from local mode, or the Drive mode's data file.

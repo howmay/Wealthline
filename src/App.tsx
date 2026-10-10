@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import {
   clearSession,
   fetchProfile,
@@ -50,6 +50,8 @@ export default function App() {
   const [local, setLocal] = useState(() => isLocalActive() && !loadSession()?.token)
   const localMode = useRef(local)
   const localRaw = useRef<string | null>(null)
+  // The home page reads whether local data exists on render; this re-renders it after a delete.
+  const [, rerender] = useReducer((n: number) => n + 1, 0)
   const [data, setData] = useState<WealthData | null>(null)
   const [dirty, setDirty] = useState(false)
   const dirtyRef = useRef(false)
@@ -208,11 +210,12 @@ export default function App() {
 
   // Writes the data file to Drive, or to this browser in local mode.
   async function write(next: WealthData) {
+    const session = sessionVersion.current
     if (localMode.current) {
-      localRaw.current = saveLocal(next, localRaw.current)
+      const raw = await saveLocal(next, localRaw.current)
+      if (session === sessionVersion.current) localRaw.current = raw
       return
     }
-    const session = sessionVersion.current
     const result = await saveData(await validToken(), next, driveVersion.current)
     if (session === sessionVersion.current) driveVersion.current = result
   }
@@ -297,10 +300,16 @@ export default function App() {
   // Restores a downloaded data file into this browser, replacing what is stored here.
   const upload = (file: File) =>
     run('讀取資料檔…', async () => {
+      // Leaving local mode, deleting its data or opening another session meanwhile cancels the upload.
+      const session = sessionVersion.current
+      const current = () => session === sessionVersion.current
       const uploaded = await readDataFile(file)
+      if (!current()) return
       const replacing = localMode.current ? !!saved.current || dirtyRef.current : hasLocalData()
       if (replacing && !confirm('上傳的資料檔會取代此瀏覽器中目前的資料，包括未儲存的修改。建議先下載目前的資料備份。要繼續嗎？')) return
-      openLocal({ data: uploaded, raw: replaceLocal(uploaded) })
+      const raw = await replaceLocal(uploaded, current)
+      if (raw === null || !current()) return
+      openLocal({ data: uploaded, raw })
       navigate('/app')
     })
 
@@ -310,9 +319,9 @@ export default function App() {
       ? '要刪除此瀏覽器中的 Wealthline 資料嗎？刪除後無法復原，建議先下載資料檔備份。'
       : dirtyRef.current ? '有尚未儲存的修改，離開本機模式後會遺失。要繼續嗎？' : ''
     if (question && !confirm(question)) return
-    if (erase) clearLocal()
-    else setLocalActive(false)
+    // First, so an upload still being read or waiting to write is dropped (see `upload`).
     sessionVersion.current++
+    setLocalActive(false)
     localMode.current = false
     localRaw.current = null
     saved.current = null
@@ -323,6 +332,11 @@ export default function App() {
     setReviewing(false)
     setStatus({ kind: 'idle' })
     navigate('/', { replace: true })
+    if (erase) {
+      void clearLocal()
+        .then(rerender)
+        .catch((e) => setStatus({ kind: 'error', text: `資料沒有刪除：${e instanceof Error ? e.message : String(e)}` }))
+    }
   }
 
   const persist = async (submitted: WealthData) => {
@@ -478,10 +492,10 @@ export default function App() {
                 <Link to={PAGES.privacy.path} className="small">
                   隱私權政策 Privacy Policy
                 </Link>
-                <button onClick={() => leaveLocal()} disabled={busy}>
+                <button onClick={() => leaveLocal()} disabled={saving}>
                   離開本機模式
                 </button>
-                <button className="danger" onClick={() => leaveLocal(true)} disabled={busy}>
+                <button className="danger" onClick={() => leaveLocal(true)} disabled={saving}>
                   刪除此瀏覽器中的資料
                 </button>
               </div>

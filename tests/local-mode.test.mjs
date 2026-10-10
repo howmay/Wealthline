@@ -6,7 +6,7 @@ import { act, createElement } from 'react'
 
 // Local mode: the app without Google sign-in, with the data file kept in localStorage.
 
-let server, dom, root, App, model, auth, createRoot
+let server, dom, root, App, model, auth, store, createRoot
 const DATA_KEY = 'wealthline.local.data'
 const ACTIVE_KEY = 'wealthline.local.active'
 const originalFetch = globalThis.fetch
@@ -27,8 +27,23 @@ before(async () => {
   App = (await server.ssrLoadModule('/src/App.tsx')).default
   model = await server.ssrLoadModule('/src/model.ts')
   auth = await server.ssrLoadModule('/src/google/auth.ts')
+  store = await server.ssrLoadModule('/src/localStore.ts')
 })
+// Web Locks as a browser provides them: one holder per name, the others wait in order.
+const fakeLocks = () => {
+  const tails = new Map()
+  return {
+    request(name, callback) {
+      const run = (tails.get(name) ?? Promise.resolve()).then(() => callback())
+      tails.set(name, run.catch(() => {}))
+      return run
+    },
+  }
+}
+const setLocks = (locks) => Object.defineProperty(globalThis.navigator, 'locks', { configurable: true, value: locks })
+
 beforeEach(() => {
+  setLocks(fakeLocks())
   requests = []
   downloads = []
   // Market lookups fail offline; nothing else may be requested.
@@ -194,6 +209,7 @@ test('leaving local mode keeps the data for next time; deleting removes it', asy
   await settle()
   assert.equal(window.location.pathname, '/app')
   await click(button('刪除此瀏覽器中的資料'))
+  await settle()
   assert.equal(localStorage.getItem(DATA_KEY), null)
   assert.equal(localStorage.getItem(ACTIVE_KEY), null)
   assert.ok(button('不登入，直接在瀏覽器使用'))
@@ -237,4 +253,97 @@ test('a tab signed in to Google keeps its Drive session on reload when another t
   assert.ok(document.querySelector('summary[aria-label="帳號選單"]'))
   assert.equal(document.querySelector('summary[aria-label="本機模式選單"]'), null)
   assert.ok(requests.some((u) => u.includes('googleapis.com/drive')))
+})
+
+// A file whose contents arrive only when the test says so.
+const delayedUpload = async (text) => {
+  let release
+  const contents = new Promise((resolve) => { release = () => resolve(text) })
+  const input = document.querySelector('input[type="file"]')
+  assert.ok(input)
+  Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'wealthline-data.json', size: text.length, text: () => contents }] })
+  await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+  return async () => { release(); await settle() }
+}
+
+test('deleting the data while an upload is being read cancels the upload', async () => {
+  localStorage.setItem(DATA_KEY, JSON.stringify(fixture()))
+  localStorage.setItem(ACTIVE_KEY, '1')
+  window.history.replaceState(null, '', '/app')
+  await render()
+  await settle()
+  const finish = await delayedUpload(JSON.stringify({ ...fixture(), fxRates: { USD: 1 } }))
+  await click(button('刪除此瀏覽器中的資料'))
+  await settle()
+  assert.equal(localStorage.getItem(DATA_KEY), null)
+  await finish()
+  assert.equal(localStorage.getItem(DATA_KEY), null)
+  assert.equal(localStorage.getItem(ACTIVE_KEY), null)
+  assert.equal(window.location.pathname, '/')
+  assert.equal(document.querySelector('.topbar'), null)
+})
+
+test('leaving local mode while an upload is being read cancels the upload', async () => {
+  const data = JSON.stringify(fixture())
+  localStorage.setItem(DATA_KEY, data)
+  localStorage.setItem(ACTIVE_KEY, '1')
+  window.history.replaceState(null, '', '/app')
+  await render()
+  await settle()
+  const finish = await delayedUpload(JSON.stringify({ ...fixture(), fxRates: { USD: 1 } }))
+  await click(button('離開本機模式'))
+  await finish()
+  assert.equal(JSON.stringify(stored()), JSON.stringify(JSON.parse(data)))
+  assert.equal(localStorage.getItem(ACTIVE_KEY), null)
+  assert.equal(window.location.pathname, '/')
+  assert.ok(button('繼續使用此瀏覽器中的資料'))
+})
+
+test('the version check and the write happen under one lock, so another tab cannot write in between', async () => {
+  const before = JSON.stringify(fixture())
+  localStorage.setItem(DATA_KEY, before)
+  // Another tab holds the lock and writes its own version before releasing it.
+  let release
+  const otherTab = navigator.locks.request('wealthline.local', () => new Promise((resolve) => { release = resolve }))
+  const saving = store.saveLocal({ ...fixture(), fxRates: { USD: 33 } }, before)
+  await new Promise((r) => setTimeout(r, 0))
+  assert.equal(localStorage.getItem(DATA_KEY), before, 'nothing is written while another tab holds the lock')
+  const theirs = JSON.stringify({ ...fixture(), fxRates: { USD: 40 } })
+  localStorage.setItem(DATA_KEY, theirs)
+  release()
+  await otherTab
+  await assert.rejects(saving, /其他分頁/)
+  assert.equal(localStorage.getItem(DATA_KEY), theirs)
+})
+
+test('two writers racing on the same version: exactly one wins and the other gets a conflict', async () => {
+  const before = JSON.stringify(fixture())
+  localStorage.setItem(DATA_KEY, before)
+  const a = { ...fixture(), fxRates: { USD: 33 } }
+  const b = { ...fixture(), fxRates: { USD: 34 } }
+  const results = await Promise.allSettled([store.saveLocal(a, before), store.saveLocal(b, before)])
+  assert.deepEqual(results.map((r) => r.status).sort(), ['fulfilled', 'rejected'])
+  const winner = results.findIndex((r) => r.status === 'fulfilled')
+  assert.match(results[1 - winner].reason.message, /其他分頁/)
+  assert.equal(localStorage.getItem(DATA_KEY), results[winner].value)
+  assert.deepEqual(stored().fxRates, [a, b][winner].fxRates)
+})
+
+test('without Web Locks local mode refuses to write instead of saving unlocked', async () => {
+  setLocks(undefined)
+  localStorage.setItem(DATA_KEY, JSON.stringify(fixture()))
+  localStorage.setItem(ACTIVE_KEY, '1')
+  const before = localStorage.getItem(DATA_KEY)
+  window.history.replaceState(null, '', '/rates')
+  await render()
+  await settle()
+  await editRate('USD', '36')
+  await click(button('儲存變更'))
+  await settle()
+  assert.match(document.querySelector('[role="alert"]').textContent, /Web Locks/)
+  assert.equal(localStorage.getItem(DATA_KEY), before)
+  assert.ok(button('儲存變更'))
+  await assert.rejects(store.replaceLocal(fixture(), () => true), /Web Locks/)
+  await assert.rejects(store.clearLocal(), /Web Locks/)
+  assert.equal(localStorage.getItem(DATA_KEY), before)
 })
