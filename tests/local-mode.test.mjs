@@ -347,3 +347,25 @@ test('without Web Locks local mode refuses to write instead of saving unlocked',
   await assert.rejects(store.clearLocal(), /Web Locks/)
   assert.equal(localStorage.getItem(DATA_KEY), before)
 })
+
+test('after Google fails to load, choosing local mode in that tab survives a reload despite the leftover token', async () => {
+  const profile = { sub: 'account-a', email: 'a@example.com', name: 'Alice' }
+  auth.storeSession({ token: { value: 'test-token', expiresAt: Date.now() + 3600_000 }, profile })
+  localStorage.setItem(DATA_KEY, JSON.stringify(fixture()))
+  window.history.replaceState(null, '', '/app')
+  await render()
+  await settle()
+  // Loading Drive failed (fetch is offline): back on the home page, with the token still stored.
+  assert.equal(document.querySelector('.topbar'), null)
+  assert.ok(auth.loadSession()?.token)
+  await click(button('繼續使用此瀏覽器中的資料'))
+  await settle()
+  assert.ok(document.querySelector('summary[aria-label="本機模式選單"]'))
+
+  requests = []
+  await render()
+  await settle()
+  assert.ok(document.querySelector('summary[aria-label="本機模式選單"]'))
+  assert.equal(window.location.pathname, '/app')
+  noGoogle()
+})

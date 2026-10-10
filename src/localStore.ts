@@ -9,6 +9,10 @@ const DATA_KEY = 'wealthline.local.data'
 // Set while the user is in local mode, so a reload of an app page reopens it.
 // index.html reads this key too, to hide the prerendered sign-in page on such a reload.
 const ACTIVE_KEY = 'wealthline.local.active'
+// Set in sessionStorage when the user chose local mode in this tab. That choice outlasts a
+// Google token left in the same tab (one whose loading failed), while in another tab a live
+// Google session still wins over the shared flag above.
+const TAB_KEY = 'wealthline.local.tab'
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
@@ -34,12 +38,24 @@ function read(key: string): string | null {
 }
 
 export const isLocalActive = () => read(ACTIVE_KEY) === '1'
+export function localChosenInTab(): boolean {
+  try {
+    return sessionStorage.getItem(TAB_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 export const hasLocalData = () => read(DATA_KEY) !== null
 
 export function setLocalActive(active: boolean) {
   try {
-    if (active) localStorage.setItem(ACTIVE_KEY, '1')
-    else localStorage.removeItem(ACTIVE_KEY)
+    if (active) {
+      localStorage.setItem(ACTIVE_KEY, '1')
+      sessionStorage.setItem(TAB_KEY, '1')
+    } else {
+      localStorage.removeItem(ACTIVE_KEY)
+      sessionStorage.removeItem(TAB_KEY)
+    }
   } catch {
     // Storage blocked: local mode still works in this tab, it just won't reopen on reload.
   }
