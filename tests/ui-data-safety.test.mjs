@@ -1477,7 +1477,7 @@ test('oversized statement is rejected before file reading or PDF loading, and pa
   await act(async()=>input.dispatchEvent(new Event('change',{bubbles:true})))
   await setInput(document.querySelector('input[type="password"]'),'synthetic-password')
   await act(async()=>document.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
-  assert.match(document.querySelector('[role="alert"]').textContent,/20 MB/)
+  assert.match(document.querySelector('[aria-label="各帳單解析結果"]').textContent,/20 MB/)
   assert.equal(document.querySelector('input[type="password"]').value,'')
   assert.equal(drive.writes,0)
 })
@@ -1493,7 +1493,32 @@ test('securities statement is rejected before reading even when password protect
   await act(async()=>input.dispatchEvent(new Event('change',{bubbles:true})))
   await setInput(document.querySelector('input[type="password"]'),'synthetic-password')
   await act(async()=>document.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
-  assert.match(document.querySelector('[role="alert"]').textContent,/證券對帳單不支援/)
+  assert.match(document.querySelector('[aria-label="各帳單解析結果"]').textContent,/證券對帳單不支援/)
+  assert.equal(document.querySelector('input[type="password"]').value,'')
+  assert.equal(drive.writes,0)
+})
+
+
+test('multiple file import isolates failures and leaves financial data untouched',async()=>{
+  window.history.replaceState(null,'','/expenses')
+  const drive=setupDrive(fixture())
+  await render(App)
+  await click(button('匯入信用卡帳單'))
+  const input=document.querySelector('input[type="file"]')
+  assert.equal(input.multiple,true)
+  Object.defineProperty(input,'files',{value:[
+    {name:'證券月報.pdf',size:100,arrayBuffer:()=>assert.fail('must reject securities')},
+    {name:'huge.pdf',size:21*1024*1024,arrayBuffer:()=>assert.fail('must reject oversized')},
+    {name:'invalid.pdf',size:10,arrayBuffer:async()=>new TextEncoder().encode('invalid').buffer},
+  ]})
+  await act(async()=>input.dispatchEvent(new Event('change',{bubbles:true})))
+  await setInput(document.querySelector('input[type="password"]'),'first,second')
+  await act(async()=>document.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
+  const results=document.querySelector('[aria-label="各帳單解析結果"]')
+  assert.equal(results.querySelectorAll('li').length,3)
+  assert.match(results.textContent,/證券對帳單不支援/)
+  assert.match(results.textContent,/20 MB/)
+  assert.match(results.textContent,/有效的 PDF/)
   assert.equal(document.querySelector('input[type="password"]').value,'')
   assert.equal(drive.writes,0)
 })

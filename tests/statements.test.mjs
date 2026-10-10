@@ -143,3 +143,52 @@ test('securities statements are rejected by filename and strong content markers,
   assert.throws(()=>parse(['綜合月對帳單','成交日期 買賣別 證券帳號']),/證券/)
   assert.doesNotThrow(()=>parse(['信用卡優惠與證券廣告',...lines]))
 })
+
+
+test('PDF heading identifies bank and ROC statement month before filename, without payment/advertisement dates',()=>{
+  assert.deepEqual(statements.statementMetadata(['玉山銀行','114年11月 信用卡電子帳單'],'','renamed-2026-04.pdf'),{bank:'玉山',month:'2025-11',monthSource:'帳單標題'})
+  assert.deepEqual(statements.statementMetadata(['台北富邦銀行','本期結帳日 繳款截止日','115/04/25 115/05/10'],'','renamed.pdf'),{bank:'富邦',month:'2026-04',monthSource:'帳單結帳日'})
+  assert.equal(statements.statementMetadata(['繳款截止日 115/05/10','消費日 商家','廣告活動 115年06月']).month,undefined)
+  assert.equal(statements.statementMetadata(['本期結帳日 115/02/30']).month,undefined)
+  assert.deepEqual(statements.statementMetadata([],'HSBC credit card statement','2026-04.pdf'),{bank:'匯豐',month:'2026-04',monthSource:'檔名'})
+  assert.equal(statements.statementMetadata(['114年13月 信用卡帳單']).month,undefined)
+})
+
+test('comma separated passwords retry locally and exhaust safely; plaintext needs no prompt',async()=>{
+  const {getDocument}=await import('pdfjs-dist/legacy/build/pdf.mjs')
+  for(const [file,secrets,success] of [['synthetic-statement-encrypted.pdf','wrong, fixture-password, wrong',true],
+    ['synthetic-statement-encrypted.pdf','wrong,also-wrong',false],['synthetic-statement.pdf','',true]]) {
+    const task=getDocument({data:new Uint8Array(await readFile(new URL(`./fixtures/${file}`,import.meta.url))),password:'',verbosity:0})
+    task.onPassword=statements.statementPasswordHandler(secrets)
+    try {
+      if(success) assert.equal((await task.promise).numPages,1)
+      else await assert.rejects(task.promise,{name:'PasswordException'})
+    } finally {await task.destroy()}
+  }
+})
+
+
+test('two encrypted bank PDFs auto-detect distinct months and bank names',async()=>{
+  const {getDocument}=await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const previews=[]
+  for(const bank of ['esun','fubon']) {
+    const task=getDocument({data:new Uint8Array(await readFile(new URL(`./fixtures/synthetic-batch-${bank}-encrypted.pdf`,import.meta.url))),password:'',
+      cMapUrl:fileURLToPath(new URL('../node_modules/pdfjs-dist/cmaps/',import.meta.url)),verbosity:0})
+    task.onPassword=statements.statementPasswordHandler('wrong, fixture-esun, fixture-fubon')
+    try {
+      const pdf=await task.promise
+      const text=statements.textLines((await (await pdf.getPage(1)).getTextContent()).items)
+      const {info}=await pdf.getMetadata()
+      const metadata=statements.statementMetadata(text,info.Title,'renamed.pdf')
+      assert.equal(metadata.bank,bank==='esun'?'玉山':'富邦')
+      assert.equal(metadata.month,bank==='esun'?'2025-11':'2025-12')
+      const parsed=statements.parseStatement(text,metadata.month,'TWD',metadata.bank)
+      assert.deepEqual(parsed.rows.map(r=>r.amount),[200,-50])
+      previews.push(...await expenses.prepareExpenses(parsed.rows,metadata.bank,bank==='esun'?'a'.repeat(64):'b'.repeat(64)))
+    } finally {await task.destroy()}
+  }
+  const first=expenses.mergeExpenses([],previews)
+  assert.equal(first.added,4)
+  assert.equal(expenses.mergeExpenses(first.expenses,previews).added,0)
+  assert.equal(expenses.mergeExpenses([],[...previews,...previews]).added,4)
+})

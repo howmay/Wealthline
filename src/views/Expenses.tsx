@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { mergeExpenses, parseExpense, prepareExpenses, sha256, type Expense } from '../expenses'
-import { assertCreditCardFile, parseStatement } from '../statements'
+import { assertCreditCardFile, parseStatement, statementMetadata } from '../statements'
 import { fmt } from '../format'
 import type { WealthData } from '../model'
 
@@ -51,10 +51,11 @@ function ExpenseEditor({expense,busy,onSave,onCancel}: {expense:Expense;busy:boo
 
 type Draft = Expense & {selected:boolean;amountText:string;needsReview?:boolean}
 function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];busy:boolean;onCancel:()=>void;onImport:(rows:Expense[],context:Expense[])=>void}) {
-  const [file,setFile] = useState<File|null>(null)
+  const [files,setFiles] = useState<File[]>([])
+  const [reports,setReports] = useState<{name:string;bank?:string;month?:string;source?:string;count?:number;error?:string}[]>([])
   const [password,setPassword] = useState('')
   const [card,setCard] = useState('')
-  const [month,setMonth] = useState(()=>new Date().toISOString().slice(0,7))
+  const [month,setMonth] = useState('')
   const [currency,setCurrency] = useState('TWD')
   const [parsing,setParsing] = useState(false)
   const [drafts,setDrafts] = useState<Draft[]|null>(null)
@@ -79,52 +80,74 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
 
   async function parse(e:FormEvent) {
     e.preventDefault()
-    if(locked || !file) return
-    setError('');setParsing(true)
+    if(locked || !files.length) return
+    setError('');setReports([]);setParsing(true)
     const abort = new AbortController()
     controller.current = abort
     const secret = password
     setPassword('')
+    const previews:Draft[] = [], ignored:string[] = []
+    const outcomes:typeof reports = []
     try {
-      assertCreditCardFile(file.name)
-      if(file.size > 20*1024*1024) throw new Error('帳單超過 20 MB，請拆分後再匯入')
-      const bytes = new Uint8Array(await file.arrayBuffer())
-      if(new TextDecoder().decode(bytes.slice(0,5)) !== '%PDF-') throw new Error('請選擇有效的 PDF 檔案')
-      const fileHash = await sha256(bytes)
-      const {readStatementPdf} = await import('../statementPdf')
+      for(const file of files) {
+        if(abort.signal.aborted) return
+        try {
+          assertCreditCardFile(file.name)
+          if(file.size > 20*1024*1024) throw new Error('帳單超過 20 MB，請拆分後再匯入')
+          const bytes = new Uint8Array(await file.arrayBuffer())
+          if(abort.signal.aborted) return
+          if(new TextDecoder().decode(bytes.slice(0,5)) !== '%PDF-') throw new Error('請選擇有效的 PDF 檔案')
+          const fileHash = await sha256(bytes)
+          const {readStatementPdf} = await import('../statementPdf')
+          if(abort.signal.aborted) return
+          const pdf = await readStatementPdf(bytes,secret,abort.signal)
+          const info = statementMetadata(pdf.lines,pdf.title,file.name)
+          const statementMonth = info.month || month
+          const statementCard = card.trim() || info.bank || ''
+          if(!statementMonth) throw new Error('無法辨識帳單月份，請填寫備用月份後重試')
+          if(!statementCard.trim()) throw new Error('無法辨識銀行，請填寫備用銀行／卡片名稱後重試')
+          const parsed = parseStatement(pdf.lines,statementMonth,currency,info.bank || file.name)
+          if(!parsed.rows.length) throw new Error('沒有辨識到交易。此帳單的排版暫不支援，尚未匯入任何資料。')
+          const rows = await prepareExpenses(parsed.rows,statementCard,fileHash)
+          if(abort.signal.aborted) return
+          previews.push(...rows.map((r,i)=>({...r,selected:!parsed.review.includes(i),needsReview:parsed.review.includes(i),amountText:String(r.amount)})))
+          ignored.push(...parsed.skipped.map(line=>`${file.name}：${line}`))
+          outcomes.push({name:file.name,bank:statementCard,month:statementMonth,source:info.monthSource || '手動備用',count:rows.length})
+        } catch(e) {
+          if(abort.signal.aborted) return
+          outcomes.push({name:file.name,error:e instanceof Error?e.message:'無法解析帳單'})
+        }
+      }
       if(abort.signal.aborted) return
-      const lines = await readStatementPdf(bytes,secret,abort.signal)
-      const parsed = parseStatement(lines,month,currency,file.name)
-      if(!parsed.rows.length) throw new Error('沒有辨識到交易。此帳單的排版暫不支援，尚未匯入任何資料。')
-      const rows = await prepareExpenses(parsed.rows,card,fileHash)
-      if(abort.signal.aborted) return
-      setDrafts(rows.map((r,i)=>({...r,selected:!parsed.review.includes(i),needsReview:parsed.review.includes(i),amountText:String(r.amount)})))
-      setSkipped(parsed.skipped)
-      setFile(null)
-    } catch(e) {if(!abort.signal.aborted) setError(e instanceof Error?e.message:'無法解析帳單')}
-    finally {if(!abort.signal.aborted) setParsing(false)}
+      setReports(outcomes)
+      if(previews.length) {setDrafts(previews);setSkipped(ignored);setFiles([])}
+      else setError('所有檔案都未匯入，請查看各檔案的原因後重試。')
+    } finally {if(!abort.signal.aborted) setParsing(false)}
   }
+
   return <section className="panel statement-import">
     <div className="panel-head"><h2>匯入信用卡帳單</h2><button onClick={()=>{controller.current?.abort();onCancel()}}>取消匯入</button></div>
     <p className="notice">PDF 與密碼只在此瀏覽器解密及解析，不傳送到伺服器、不保存原始檔或密碼。確認後的消費明細會隨資料檔儲存在此瀏覽器或你的 Google Drive。</p>
     <p className="muted small">支援富邦與玉山文字帳單的入帳欄位，使用最後的臺幣帳單金額。匯豐缺少商家文字的交易預設不勾選，請對照原帳單補上商家並排除繳款後再選取。證券帳單不支援；掃描圖片及其他排版可能無法辨識，請核對完整性。退款以負數記錄，繳款與總計不當作消費。</p>
     {error && <p className="banner error" role="alert">{error}</p>}
+    {!!reports.length && <ul className="notice" aria-label="各帳單解析結果">{reports.map((r,i)=><li key={i}><strong>{r.name}</strong>：{r.error || `${r.bank} · ${r.month}（${r.source}）· ${r.count} 筆待核對`}</li>)}</ul>}
     {!drafts ? <form onSubmit={parse}>
       <fieldset className="expense-fields" disabled={locked}>
-        <label className="field"><span>帳單 PDF</span><input type="file" accept=".pdf,application/pdf" required onChange={e=>{setFile(e.target.files?.[0]??null);setPassword('');setError('')}}/></label>
-        <label className="field"><span>PDF 密碼（若有）</span><input type="password" autoComplete="off" value={password} onChange={e=>setPassword(e.target.value)}/></label>
-        <label className="field"><span>銀行／卡片名稱</span><input required maxLength={100} placeholder="例如：玉山 / 旅遊卡" value={card} onChange={e=>setCard(e.target.value)}/><small className="muted">同一張卡請沿用相同名稱，供重複交易比對。毋須完整卡號。</small></label>
-        <label className="field"><span>帳單月份</span><input type="month" required value={month} onChange={e=>setMonth(e.target.value)}/><small className="muted">用於補齊未列年份的日期，跨年交易使用前一年。</small></label>
+        <label className="field"><span>帳單 PDF（可選多份）</span><input type="file" multiple accept=".pdf,application/pdf" required onChange={e=>{setFiles(Array.from(e.target.files??[]));setPassword('');setError('');setReports([])}}/></label>
+        <label className="field"><span>PDF 密碼（多組以逗號 , 分隔）</span><input type="password" autoComplete="off" placeholder="密碼一,密碼二" value={password} onChange={e=>setPassword(e.target.value)}/></label>
+        <label className="field"><span>銀行／卡片名稱（選填）</span><input maxLength={100} placeholder="例如：玉山 / 旅遊卡" value={card} onChange={e=>setCard(e.target.value)}/><small className="muted">留空自動辨識銀行；填寫時套用到本次全部帳單。多家銀行請留空，在預覽逐筆調整。同張卡請沿用既有名稱，避免重複匯入。</small></label>
+        <label className="field"><span>備用帳單月份</span><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/><small className="muted">自動讀取標題／結帳日，例如 114年11月 → 2025-11，再參考檔名。辨識不到才使用此值。</small></label>
         <label className="field"><span>帳單金額幣別</span><input required pattern="[A-Z]{3}" maxLength={3} value={currency} onChange={e=>setCurrency(e.target.value.toUpperCase())}/></label>
       </fieldset>
-      <button className="primary" disabled={locked || !file}>{parsing?'正在本機解析…':'解析並預覽'}</button>
+      <button className="primary" disabled={locked || !files.length}>{parsing?'正在本機解析…':`解析並預覽${files.length?`（${files.length} 份）`:''}`}</button>
     </form> : <>
-      <div className="page-head"><div><h3>確認交易 · {card}</h3><p className="muted">辨識 {drafts.length} 筆。可取消勾選或修改內容；相同交易依出現次數比對，保留同日同額的多筆消費。</p></div></div>
+      <div className="page-head"><div><h3>確認交易 · {reports.filter(r=>!r.error).length} 份帳單</h3><p className="muted">辨識 {drafts.length} 筆。可取消勾選或修改內容；相同交易依出現次數比對，保留同日同額的多筆消費。</p></div></div>
       <div className="expense-preview">{drafts.map((r,i)=>{
         const duplicate = (r.sourceKey && existingSourceKeys.has(r.sourceKey)) || (r.importKey && existingImportKeys.has(r.importKey))
         return <fieldset key={r.id} className="expense-draft" disabled={busy} aria-label={`交易 ${i+1}`}>
           <label className="expense-select"><input type="checkbox" checked={r.selected} onChange={e=>patch(r.id,{selected:e.target.checked})}/><strong>第 {i+1} 筆</strong>{r.needsReview && <span className="tag">請核對商家與繳款</span>}{duplicate && <span className="tag">原始交易已匯入</span>}</label>
           <div className="expense-fields">
+            <label className="field expense-card"><span>銀行／卡片名稱</span><input maxLength={100} aria-label={`第 ${i+1} 筆卡片`} value={r.card} onChange={e=>patch(r.id,{card:e.target.value})}/></label>
             <label className="field"><span>日期</span><input type="date" aria-label={`第 ${i+1} 筆日期`} value={r.date} onChange={e=>patch(r.id,{date:e.target.value})}/></label>
             <label className="field expense-description"><span>商家／說明</span><input maxLength={500} aria-label={`第 ${i+1} 筆商家`} value={r.description} onChange={e=>patch(r.id,{description:e.target.value})}/></label>
             <label className="field"><span>金額</span><input type="number" step="0.01" aria-label={`第 ${i+1} 筆金額`} value={r.amountText} onChange={e=>patch(r.id,{amountText:e.target.value})}/></label>
@@ -132,7 +155,7 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
           </div>
         </fieldset>
       })}</div>
-      <button disabled={busy} onClick={()=>setDrafts(rows=>[...(rows??[]),{id:crypto.randomUUID(),date:`${month}-01`,description:'',amount:0,amountText:'',currency,card,selected:true}])}>＋ 補上一筆交易</button>
+      <button disabled={busy} onClick={()=>setDrafts(rows=>[...(rows??[]),{id:crypto.randomUUID(),date:`${month || reports.find(r=>r.month)?.month || new Date().toISOString().slice(0,7)}-01`,description:'',amount:0,amountText:'',currency,card:card || reports.find(r=>r.bank)?.bank || '',selected:true}])}>＋ 補上一筆交易</button>
       {!!skipped.length && <details className="notice"><summary>未匯入的文字列（{skipped.length}）：含總計、繳款與無法辨識內容</summary><p className="small">只在本次預覽顯示，離開後不保存。請核對是否有漏掉的交易。</p><ul>{skipped.map((line,i)=><li key={i}>{line}</li>)}</ul></details>}
       {validation && <p role="alert" className="banner error">{validation}</p>}
       <p role="status">選取 {selected.length} 筆 · 可新增 {result?.added ?? 0} 筆 · 略過重複 {result?.duplicates ?? 0} 筆</p>

@@ -2521,6 +2521,8 @@ button.timeline-arrow { display: grid; place-items: center; flex: 0 0 36px; widt
 .expense-preview { display: grid; gap: 12px; }
 .expense-draft { border: 1px solid var(--hairline); border-radius: 10px; padding: 16px; min-width: 0; }
 .expense-draft .expense-fields { grid-template-columns: 150px minmax(180px, 1fr) 130px 80px; margin: 12px 0 0; }
+.expense-draft .expense-card { grid-column: 1 / -1; }
+.statement-import > ul { overflow-wrap: anywhere; }
 .expense-select { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .statement-import details { margin-top: 16px; overflow-wrap: anywhere; }
 .statement-import > p { margin: 12px 0; }

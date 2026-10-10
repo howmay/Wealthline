@@ -1,6 +1,6 @@
 import { GlobalWorkerOptions, getDocument, PasswordException } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { textLines } from './statements'
+import { statementPasswordHandler, textLines } from './statements'
 
 GlobalWorkerOptions.workerSrc = workerUrl
 // Bundle CMaps locally: Chinese PDFs must not depend on a CDN or send document data to it.
@@ -16,8 +16,9 @@ class LocalBinaryData {
   }
 }
 
-export async function readStatementPdf(bytes: Uint8Array, password:string, signal:AbortSignal): Promise<string[]> {
-  const task = getDocument({data:new Uint8Array(bytes),password,BinaryDataFactory:LocalBinaryData,useWorkerFetch:false,useWasm:false,stopAtErrors:true,verbosity:0})
+export async function readStatementPdf(bytes: Uint8Array, password:string, signal:AbortSignal): Promise<{lines:string[];title:string}> {
+  const task = getDocument({data:new Uint8Array(bytes),password:'',BinaryDataFactory:LocalBinaryData,useWorkerFetch:false,useWasm:false,stopAtErrors:true,verbosity:0})
+  task.onPassword = statementPasswordHandler(password)
   const cancel = () => { void task.destroy() }
   signal.addEventListener('abort',cancel,{once:true})
   if(signal.aborted) {cancel();throw new Error('已取消解析')}
@@ -34,7 +35,10 @@ export async function readStatementPdf(bytes: Uint8Array, password:string, signa
       if(lines.join('').length > 500_000) throw new Error('帳單文字過多，請拆分後再匯入')
     }
     if(!lines.length) throw new Error('此 PDF 沒有可讀取的文字。第一版暫不支援掃描／圖片帳單。')
-    return lines
+    const metadata = await pdf.getMetadata().catch(()=>null)
+    const info = metadata?.info as {Title?:unknown} | undefined
+    const title = typeof info?.Title === 'string' ? info.Title : ''
+    return {lines,title}
   } catch(e) {
     if(e instanceof PasswordException) throw new Error('帳單需要密碼，或密碼不正確。請重新輸入。')
     throw new Error(e instanceof Error && /帳單|PDF 沒有|已取消/.test(e.message) ? e.message : '無法讀取此 PDF，請確認檔案完整且為支援的文字帳單。')
