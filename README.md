@@ -76,7 +76,7 @@
 
 ### 介面與網站
 - [x] 深色／淺色模式自動跟隨系統，支援手機版面。
-- [x] 未登入首頁、隱私權政策、使用條款與免責聲明頁面（`/privacy`、`/terms`、`/disclaimer`）。
+- [x] 公開產品首頁 `/`，登入後總覽 `/app`；隱私權政策、使用條款與免責聲明頁面（`/privacy`、`/terms`、`/disclaimer`）。
 - [x] App 圖示、PWA manifest 與 Apple touch icon。
 - [x] SEO：`sitemap.xml`、`robots.txt`（允許搜尋引擎與 AI 爬蟲讀取公開頁面）、給 AI 助理閱讀的 `llms.txt`、各頁的 canonical 與描述、首頁的 schema.org 結構化資料；登入後的 App 頁面一律標示 `noindex`。
 
@@ -146,6 +146,8 @@
 - 建置時會預先產生 `index.html`、`privacy.html`、`terms.html`、`disclaimer.html`，不執行 JavaScript 也能讀到內容，同時寫出只列這四頁的 `sitemap.xml`。
 - 在 Google Search Console 提交 `https://wealthline.haomeh.com/sitemap.xml`。若 Cloudflare 開啟了「AI 爬蟲封鎖」或「受管理的 robots.txt」，它會改寫或擋掉 `robots.txt` 的設定，需依需求調整。
 - 正式網站為 `https://wealthline.haomeh.com`：在 Worker 的「網域與路由」加入 `wealthline.haomeh.com`。
+- 公開頁面不需要登入；直接開啟政策不會載入 Drive。已登入從 `/` 進入會以 replace 導向 `/app`，原有帳戶與歷史連結保留。
+- 品牌驗證重送前，確認正式部署已包含最新政策與公開首頁，再於 Google Auth Platform 核對應用程式名稱 Wealthline、首頁 `https://wealthline.haomeh.com/`、隱私權 `/privacy`、服務條款 `/terms`，並確認網域驗證及支援信箱。政策已列出四個實際登入權限、負債與歷史資料、自動儲存、行情傳輸、保存及刪除方式，保留 Limited Use 聲明；不能保證審查結果。
 - 把正式網址加入 OAuth 用戶端的「已授權的 JavaScript 來源」，並在 OAuth 同意畫面填入首頁、隱私權政策（`/privacy`）與服務條款（`/terms`）網址。
 
 ## 程式結構

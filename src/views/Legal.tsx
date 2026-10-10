@@ -6,7 +6,7 @@ import { DATA_FILE_NAME, FOLDER_NAME } from '../google/drive'
 import { AUTHOR, ISSUES_URL, LICENSE_URL, LICENSE_ZH_URL, OPERATOR, OPERATOR_URL, PAGES, REPO_URL, SECURITY_URL, SITE_HOST, SITE_URL, hasPrevious, type PageKey } from '../site'
 import { Link, Logo, SiteFooter } from './Site'
 
-const EFFECTIVE = '2026 年 10 月 9 日'
+const EFFECTIVE = '2026 年 10 月 10 日'
 const DATA_PATH = `我的雲端硬碟 / ${FOLDER_NAME} / ${DATA_FILE_NAME}`
 
 // Going back returns to the page the notice was opened from, so the browser's back button
@@ -25,7 +25,7 @@ export function LegalPage({ page, signedIn }: { page: PageKey; signedIn: boolean
           <Logo />
           <span>Wealthline</span>
         </Link>
-        <Link to="/" className="legal-back" onClick={backToApp}>
+        <Link to={signedIn ? "/app" : "/"} className="legal-back" onClick={backToApp}>
           {signedIn ? '← 回到我的資產' : '← 回到首頁'}
         </Link>
       </header>
@@ -94,7 +94,7 @@ function Privacy() {
       <h2 className="legal-zh-title">中文版</h2>
       <p className="legal-lead">
         Wealthline（<a href={SITE_URL}>{SITE_HOST}</a>）是一個開放原始碼的個人資產統計工具，讓你記錄銀行存款、股票、基金與加密貨幣，並換算成新臺幣看清資產配置。
-        我們的設計原則很簡單：<strong>你的資產資料只存在你自己的 Google Drive</strong>，營運者沒有任何伺服器或資料庫保存它，也看不到它。
+        我們的設計原則很簡單：<strong>資產與負債資料由瀏覽器處理，儲存在你自己的 Google Drive</strong>，營運者不建立財務資料庫。
         本政策說明本服務存取哪些資料、如何使用、存放、分享與刪除。英文版本在本頁上方，兩者內容相同。
       </p>
 
@@ -120,32 +120,32 @@ function Privacy() {
             <strong>Google 存取權杖</strong>：Google 發給本服務、約一小時後失效的權杖，用來代表你呼叫 Google Drive API。
           </li>
           <li>
-            <strong>你輸入的資產資料</strong>：帳戶名稱、類型、國家、各幣別餘額、持有標的代號與數量、匯率、每日資產快照、標的加入日期與修改紀錄。用途：計算與呈現你的資產統計。
+            <strong>你輸入的資產資料</strong>：帳戶名稱、類型、國家、各幣別餘額、持有標的代號與數量、匯率、每日資產快照、歷史數量與持倉期間、修改紀錄，以及負債名稱、金額、幣別、利率與還款排程。用途：計算與呈現你的資產統計。
           </li>
         </ul>
         <p>本服務不蒐集你的銀行帳號、密碼、身分證字號、交易憑證或任何金融機構的登入資訊。</p>
       </Section>
 
       <Section title="四、資料如何使用">
-        <p>上述資料只用於提供你在畫面上看到的功能：登入、讀寫你的資料檔、計算總資產與資產配置、顯示歷史走勢。我們不會：</p>
+        <p>上述資料只用於提供你在畫面上看到的功能：登入、讀寫你的資料檔、計算總資產、負債與淨資產、呈現配置與歷史走勢，以及估算還款。手動儲存與儲存歷史修改時會更新 Drive 檔案；每天首次開啟已有資料的帳號時，也可能自動保存當日快照。我們不會：</p>
         <ul>
-          <li>出售、出租或與任何第三方分享你的資料；</li>
+          <li>出售或出租你的 Google 帳號資料及完整財務資料；</li>
           <li>將資料用於廣告、行銷、信用評估或建立使用者檔案；</li>
           <li>將資料用於訓練任何人工智慧或機器學習模型；</li>
-          <li>讓任何人（包括營運者）閱讀你的資料。</li>
+          <li>透過營運者的後端讀取你的 Google 帳號資料或完整財務資料。</li>
         </ul>
       </Section>
 
       <Section title="五、資料存放在哪裡、保存多久">
         <ul>
           <li>
-            <strong>資產資料</strong>：以 JSON 檔存放在你的 Google Drive：<code>{DATA_PATH}</code>。由你自己保管，直到你刪除它為止。
+            <strong>資產資料</strong>：以 JSON 檔存放在你的 Google Drive：<code>{DATA_PATH}</code>。由你自己保管，直到你刪除它為止。瀏覽器執行期間也會在記憶體中處理資料，手動下載的備份則存放在你選擇的位置。
           </li>
           <li>
-            <strong>登入資訊</strong>：存取權杖只存放在目前分頁的 sessionStorage：重新整理頁面仍保持登入，關閉分頁或瀏覽器即失去，也不會與其他分頁共用。localStorage 只保存帳號識別碼、電子郵件、名稱與大頭貼網址，供下次繼續登入，另記錄你最後看過的隱私權政策版本。登出立即清除本機登入資訊，並嘗試向 Google 撤銷權杖；若網路失敗，可至 Google 帳戶撤銷授權。
+            <strong>登入資訊</strong>：存取權杖只存放在目前分頁的 sessionStorage：重新整理頁面仍保持登入，通常在關閉分頁後清除；瀏覽器的工作階段復原功能可能保留它，因此共用裝置請務必登出。localStorage 只保存帳號識別碼、電子郵件、名稱與大頭貼網址，供下次繼續登入，另記錄你最後看過的隱私權政策版本。登出立即清除本機登入資訊，並嘗試向 Google 撤銷權杖；若網路失敗，可至 Google 帳戶撤銷授權。
           </li>
           <li>
-            <strong>營運者的伺服器</strong>：沒有。本服務沒有後端資料庫，不會把你的資產資料或個人資料傳送、複製或保存到營運者控制的任何地方。
+            <strong>網站與報價服務</strong>：由 Cloudflare 託管網站及報價轉發程式，不建立 Google 帳號或完整財務資料的後端資料庫。報價請求的資料與連線資訊見下一節。
           </li>
         </ul>
       </Section>
@@ -157,7 +157,7 @@ function Privacy() {
             <strong>Google</strong>（登入、使用者資料、Google Drive API）：讀寫你的資料檔。適用 <a href="https://policies.google.com/privacy">Google 隱私權政策</a>。
           </li>
           <li>
-            <strong>報價查詢 /api/quote 與 /api/history</strong>：本服務部署在 Cloudflare Workers 上的轉發程式，只收到<strong>股票或匯率代號</strong>（例如 2330.TW、USDTWD=X），查歷史價格時另有一個起始日期，再向 Yahoo Finance 查詢價格。不包含數量、金額或你的身分，也不記錄任何內容。
+            <strong>報價查詢 /api/quote 與 /api/history</strong>：本服務部署在 Cloudflare Workers 上的轉發程式，收到<strong>股票或匯率代號</strong>（例如 2330.TW、USDTWD=X），查歷史價格時另有一個起始日期，再向 Yahoo Finance 查詢價格。不包含數量、金額、Google 帳號資料或存取權杖；程式沒有實作請求內容的持久化紀錄。股票代號可能來自你在 Drive 保存的持倉。
           </li>
           <li>
             <strong>ExchangeRate-API</strong>（open.er-api.com）與 <strong>CoinGecko</strong>：查詢匯率與加密貨幣價格，請求中只有幣別或幣種名稱。
@@ -166,27 +166,27 @@ function Privacy() {
             <strong>Cloudflare</strong>：網站託管服務。和任何網站一樣，託管商可能依其政策記錄連線的 IP 位址等技術資訊。
           </li>
         </ul>
-        <p>從 Google API 取得的資料（包括你的帳號資料與 Drive 檔案內容）不會傳送給上述 Google 以外的任何服務。</p>
+        <p>Google 帳號資料、存取權杖與完整 Drive 檔案不會傳送給報價服務。查價所需的標的代號可能來自 Drive 檔案；第三方服務也會收到一般連線資訊，例如 IP 位址。Google、Cloudflare 與行情供應商依各自政策處理資料。</p>
       </Section>
 
       <Section title="七、Google API 使用者資料：有限使用聲明">
         <p>
           Wealthline 對於從 Google API 取得之資訊的使用與傳輸，遵守{' '}
           <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API 服務使用者資料政策</a>
-          ，包括其中的「有限使用」（Limited Use）規定。從 Google 取得的資料只用於提供或改善使用者看得到的功能；不會轉讓給第三方；不會用於廣告；除非取得你的明確同意、基於安全目的或為遵守法律，任何人都不會閱讀這些資料。
+          ，包括其中的「有限使用」（Limited Use）規定。從 Google 取得的資料只用於提供或改善使用者看得到的功能；不出售 Google 使用者資料；傳輸僅限上述功能所需；不會用於廣告；除非取得你的明確同意、基於安全目的或為遵守法律，任何人都不會閱讀這些資料。
         </p>
       </Section>
 
       <Section title="八、如何刪除資料與撤銷授權">
         <ul>
           <li>
-            <strong>刪除資產資料</strong>：在 Google Drive 刪除「{FOLDER_NAME}」資料夾並清空垃圾桶，資料即完全移除。營運者沒有副本，無需另外申請。
+            <strong>刪除資產資料</strong>：在 Google Drive 刪除「{FOLDER_NAME}」資料夾並清空垃圾桶，本服務便無法再讀取該檔案。請先登出並關閉其他已開啟的分頁，以免未儲存修改再次寫入；也請自行刪除下載的備份。Google 的備份與保留期限依其政策處理。營運者沒有完整財務資料副本。
           </li>
           <li>
             <strong>清除本機登入資訊</strong>：在本服務中按「登出」，或清除瀏覽器的網站資料。
           </li>
           <li>
-            <strong>撤銷 Google 授權</strong>：到 <a href="https://myaccount.google.com/connections">Google 帳戶的第三方連結</a> 移除 Wealthline 的存取權。
+            <strong>撤銷 Google 授權</strong>：到 <a href="https://myaccount.google.com/connections">Google 帳戶的第三方連結</a> 移除 Wealthline 的存取權。撤銷授權不會刪除 Drive 檔案，需另外執行上述刪除步驟。
           </li>
           <li>
             依中華民國《個人資料保護法》，你可以行使查詢、閱覽、更正、停止處理與刪除等權利。由於營運者並未保存你的個人資料，這些權利大多可以透過上述方式自行完成；如仍有需要，請透過第一節的管道聯絡。
@@ -195,12 +195,12 @@ function Privacy() {
       </Section>
 
       <Section title="九、Cookie 與追蹤">
-        <p>本服務不使用 Cookie、分析工具、廣告或任何追蹤技術。localStorage 與 sessionStorage 只用來保存上述登入資訊與你最後看過的隱私權政策版本。</p>
+        <p>本服務本身不設定追蹤 Cookie、不加入分析工具或廣告。Google 登入及第三方服務可能依各自政策使用 Cookie 或連線資訊。localStorage 與 sessionStorage 只用來保存上述登入資訊與你最後看過的隱私權政策版本。</p>
       </Section>
 
       <Section title="十、安全">
         <p>
-          正式網站連線使用 HTTPS。資料檔由 Google Drive 的帳號安全機制保護，請為你的 Google 帳號啟用兩步驟驗證。本服務的程式碼完全公開在{' '}
+          正式網站連線使用 HTTPS。資料檔是一般 JSON，本服務沒有對它加上額外的端對端加密；HTTPS 保護傳輸，Google Drive 的帳號權限保護檔案存取。請勿將資料檔公開分享，請為你的 Google 帳號啟用兩步驟驗證。本服務的程式碼完全公開在{' '}
           <a href={REPO_URL}>GitHub</a>，任何人都可以檢查上述說明是否屬實。
         </p>
       </Section>
@@ -248,12 +248,11 @@ function PrivacyEnglish() {
   return (
     <section className="legal-en" lang="en" id="english">
       <h2>Wealthline Privacy Policy (English)</h2>
-      <p className="muted small">Effective date: October 8, 2026 · Last updated: October 9, 2026 · App: Wealthline · Website: {SITE_URL} · Operator: {OPERATOR} ({OPERATOR_URL})</p>
+      <p className="muted small">Effective date: October 8, 2026 · Last updated: October 10, 2026 · App: Wealthline · Website: {SITE_URL} · Operator: {OPERATOR} ({OPERATOR_URL})</p>
       <p>
         This privacy policy explains how <strong>Wealthline</strong> (<a href={SITE_URL}>{SITE_HOST}</a>), a free, open-source personal asset tracking web app,
         accesses, uses, stores, shares and deletes Google user data. Wealthline lets you record bank balances, stocks, funds and crypto holdings and shows your
-        total net worth and asset allocation. <strong>All of your data is stored only in your own Google Drive.</strong> Wealthline has no backend database,
-        and its operator cannot see your data.
+        total net worth and asset allocation. <strong>Your financial records are processed in your browser and saved in your own Google Drive.</strong> The operator does not maintain a financial records database. Website hosting and market-data requests are described below.
       </p>
 
       <h3>1. Google user data we access</h3>
@@ -264,7 +263,7 @@ function PrivacyEnglish() {
         <li>your Google account <strong>identifier, email address, name and profile picture URL</strong>; the identifier verifies the account on reauthorization;</li>
         <li>
           the <strong>single data file</strong> that Wealthline creates in your Google Drive (<code>My Drive / {FOLDER_NAME} / {DATA_FILE_NAME}</code>),
-          which holds the accounts, balances, holdings, exchange rates, daily snapshots, the date each holding was added, and the edit log that you enter;
+          which holds the accounts, balances, holdings, exchange rates, daily snapshots, historical quantities, holding periods, edit logs, and liabilities including names, amounts, currencies, interest rates and repayment schedules that you enter;
         </li>
         <li>a short-lived <strong>OAuth access token</strong> (about one hour) used to call the Google Drive API on your behalf.</li>
       </ul>
@@ -274,27 +273,25 @@ function PrivacyEnglish() {
       <p>Google user data is used only to provide the features you see in the app:</p>
       <ul>
         <li>your email, name and picture are shown in the account menu so you know which account is signed in, and your email lets you sign in again with one click;</li>
-        <li>the Drive file is read to display your asset statistics and written when you press “Save”.</li>
+        <li>the Drive file is read to calculate assets, debts, net worth, allocation, historical values and repayment estimates. It is updated when you save changes or historical edits, and may also be updated automatically to record the day’s first snapshot when you open an existing account.</li>
       </ul>
       <p>
         Wealthline does not use Google user data for advertising, does not sell it, does not use it for credit or lending decisions, does not build user
-        profiles or databases from it, and does not let any person read it. Wealthline does not use Google user data, including data obtained through
+        profiles or databases from it, and does not provide a backend for the operator to read your account profile or complete financial records. Wealthline does not use Google user data, including data obtained through
         Google Workspace APIs, to develop, improve or train generalized or non-personalized AI or machine learning models.
       </p>
 
       <h3>3. How we share, transfer or disclose Google user data</h3>
       <p>
-        <strong>We do not share, transfer or disclose Google user data with any third party.</strong> Google user data travels only between your browser
-        and Google. To look up market prices, the browser sends only ticker or currency-pair symbols (for example 2330.TW or USDTWD=X), plus a start date for past prices, to the
-        app's own quote relay on Cloudflare Workers, which asks Yahoo Finance, and only currency or coin codes to ExchangeRate-API and CoinGecko. These requests contain no Google user data, no
-        amounts and no identity. Cloudflare hosts the website and may log technical data such as IP addresses under its own policy.
+        <strong>We do not sell Google user data or send your Google profile, access token or complete Drive file to market-data services.</strong> Your browser communicates directly with Google for sign-in and Drive storage. To look up market prices, the browser sends only ticker or currency-pair symbols (for example 2330.TW or USDTWD=X), plus a start date for past prices, to the
+        app's own quote relay on Cloudflare Workers, which asks Yahoo Finance, and only currency or coin codes to ExchangeRate-API and CoinGecko. Ticker symbols may be read from your saved Drive holdings. Market requests exclude balances, quantities, account names, Google profile data and access tokens. The relay code does not persist request contents. These services also receive ordinary connection metadata, such as IP addresses. Cloudflare hosts the website and may log technical data such as IP addresses under its own policy.
       </p>
 
       <h3>4. How we store and protect Google user data</h3>
       <ul>
-        <li>Your asset data is stored in your own Google Drive and protected by your Google account's security. Wealthline keeps no copy on any server.</li>
+        <li>Your asset data is stored in your own Google Drive and protected by your Google account's permissions. The file is ordinary JSON without additional end-to-end encryption by Wealthline; do not share it publicly. Records are also processed in browser memory while the app runs, and downloaded backups remain wherever you save them. The operator keeps no complete financial file on its servers.</li>
         <li>
-          The access token is kept only in the current tab's sessionStorage: it survives a reload but is lost when the tab or browser is closed, and is not shared with other tabs. Your account identifier, email, name and picture URL
+          The access token is kept only in the current tab's sessionStorage: it survives a reload and is normally cleared when a tab closes, but browser session restoration may retain it. Always sign out on a shared device. Your account identifier, email, name and picture URL
           are kept in localStorage as a hint for your next sign-in, along with the version of this policy you last saw.
         </li>
         <li>All traffic between your browser, Google and Wealthline uses HTTPS (TLS) encryption.</li>
@@ -306,7 +303,7 @@ function PrivacyEnglish() {
 
       <h3>5. Data retention and deletion</h3>
       <ul>
-        <li>The Drive data file stays in your Drive until you delete it. Delete the "{FOLDER_NAME}" folder and empty the trash to remove it completely.</li>
+        <li>The Drive data file stays in your Drive until you delete it. Sign out and close other open tabs before deleting the "{FOLDER_NAME}" folder and emptying the trash, so unsaved changes cannot recreate it. Delete any downloaded backups separately. Revoking access does not delete the file; Google’s backup and retention rules apply to its copies.</li>
         <li>
           The account hint stays in your browser until you sign out. Signing out immediately clears local sign-in information and attempts to revoke
           the token with Google. If that request fails, you can revoke access in your Google account. Clearing browser site data also removes the hint.
@@ -316,7 +313,7 @@ function PrivacyEnglish() {
           <a href="https://myaccount.google.com/connections">Google Account → Third-party apps &amp; services</a>.
         </li>
         <li>
-          Because the operator stores none of your data, there is nothing to delete on our side. If you have a deletion or privacy request, open an issue
+          The operator keeps no complete financial file or Google profile database to delete. If you have a deletion or privacy request, open an issue
           at <a href={ISSUES_URL}>GitHub Issues</a> or contact the operator, the {OPERATOR} organization, at <a href={OPERATOR_URL}>{OPERATOR_URL}</a>.
         </li>
       </ul>
@@ -329,7 +326,7 @@ function PrivacyEnglish() {
       </p>
 
       <h3>7. Cookies and tracking</h3>
-      <p>Wealthline uses no cookies, analytics, advertising or tracking technologies. It uses browser storage only for the sign-in information described above and the version of this policy you last saw.</p>
+      <p>Wealthline itself does not set tracking cookies or include analytics or advertising. Google sign-in and other third-party services may use cookies or connection metadata under their own policies. It uses browser storage only for the sign-in information described above and the version of this policy you last saw.</p>
 
       <h3>8. Children</h3>
       <p>Wealthline is not directed at children under 13 and does not knowingly process their personal data.</p>

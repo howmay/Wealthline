@@ -187,7 +187,7 @@ export default function App() {
   // Restore the session after a reload while this tab's token is still valid.
   const restored = useRef(false)
   useEffect(() => {
-    if (restored.current) return
+    if (page || restored.current) return
     restored.current = true
     const stored = loadSession()?.token
     if (!stored) return
@@ -202,7 +202,11 @@ export default function App() {
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [page])
+
+  useEffect(() => {
+    if (user && path === '/') navigate('/app', { replace: true })
+  }, [user, path])
 
   const signIn = () =>
     run('登入中…', async () => {

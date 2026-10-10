@@ -42,11 +42,11 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
               <span className="accent-text">Google Drive</span>
             </p>
             <p className="lead">
-              Wealthline 是免費、開放原始碼的個人資產統計工具：用帳戶整理銀行存款、股票、基金與加密貨幣，自動換算匯率與報價，一眼看清資產配置。沒有後端資料庫，營運者也看不到你的資料。
+              Wealthline 是免費、開放原始碼的個人資產統計工具：用帳戶整理銀行存款、股票、基金與加密貨幣，自動換算匯率與報價，一眼看清資產配置。財務資料由瀏覽器處理，儲存到你自己的 Google Drive。也能記錄負債與還款，回看每日淨資產快照。
             </p>
             <p className="lead lead-en" lang="en">
               Wealthline is a free, open-source web app that tracks your bank balances, stocks, funds and crypto in one place and shows your net worth and asset
-              allocation. Your data is saved only in your own Google Drive.
+              allocation. Financial records are processed in your browser and saved in your own Google Drive. Track debts, repayment estimates and daily net-worth snapshots too.
             </p>
             <div className="signin-box">
               {returning ? (
@@ -82,7 +82,7 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
                 會自動查詢價格與匯率，換算成新臺幣，呈現總資產、資產配置、幣別曝險與每日走勢。
               </p>
               <p>
-                使用 Google 登入，是為了把你的資料存進<strong>你自己的 Google Drive</strong>：本服務只要求 <code>drive.file</code> 權限，只能存取它自己建立的一個資料檔，以及你的名稱、電子郵件與大頭貼，用來顯示登入身分。詳見
+                使用 Google 登入，是為了把你的資料存進<strong>你自己的 Google Drive</strong>：本服務要求 <code>openid</code>、<code>email</code>、<code>profile</code> 來確認與顯示登入身分，並使用 <code>drive.file</code> 建立和更新自己的資料夾與資料檔，不要求讀取整個雲端硬碟。詳見
                 <Link to={PAGES.privacy.path}>隱私權政策</Link>。
               </p>
             </div>
@@ -93,8 +93,7 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
                 exposure and daily trend.
               </p>
               <p>
-                Google sign-in is used to save your data in <strong>your own Google Drive</strong>. Wealthline requests only the <code>drive.file</code> scope, so it can
-                access only the single data file it creates, plus your name, email and profile picture to show who is signed in. See the{' '}
+                Google sign-in is used to save your data in <strong>your own Google Drive</strong>. Wealthline requests <code>openid</code>, <code>email</code> and <code>profile</code> to identify the signed-in account, plus <code>drive.file</code> to create and update its own folder and data file. It does not request access to your entire Drive. See the{' '}
                 <Link to={PAGES.privacy.path}>privacy policy</Link>.
               </p>
             </div>
@@ -114,7 +113,7 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
               依類別、帳戶、幣別、國家拆解總資產，看清集中度與幣別曝險。
             </Feature>
             <Feature icon={<IconClock />} title="歷史與變動紀錄">
-              每天保存一次資產快照，每次修改都留下前後數值，儲存前會提醒異常變動。
+              每天首次開啟時保存資產快照，每次修改都留下前後數值，儲存前會提醒異常變動。
             </Feature>
           </div>
         </section>
@@ -123,7 +122,7 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
           <div>
             <h2>資料只放在你看得到的地方</h2>
             <ul className="checks">
-              <li>只要求 Google Drive 的 drive.file 權限，看不到你雲端硬碟中的其他檔案。</li>
+              <li>Google Drive 僅要求 drive.file 權限，看不到你雲端硬碟中的其他檔案。</li>
               <li>資料是一個普通的 JSON 檔，可以隨時下載、備份或刪除。</li>
               <li>不使用分析工具、廣告或追蹤 Cookie。</li>
               <li>隨時可以在 Google 帳戶設定中撤銷授權。</li>

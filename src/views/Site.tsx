@@ -58,7 +58,7 @@ export function SiteFooter() {
         <nav aria-label="網站資訊">
           {(Object.keys(PAGES) as PageKey[]).map((k) => (
             <Link key={k} to={PAGES[k].path}>
-              {PAGES[k].title}
+              {PAGES[k].title} {PAGES[k].en}
             </Link>
           ))}
           <a href={LICENSE_ZH_URL}>授權條款</a>
