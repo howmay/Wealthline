@@ -46,7 +46,8 @@ export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null)
   // Local mode: no sign-in, the data file is kept in this browser (localStore.ts). The ref is for
   // background tasks started before the state re-renders; `localRaw` is the stored text this tab last read or wrote.
-  const [local, setLocal] = useState(isLocalActive)
+  // The flag is shared by every tab, so a tab signed in to Google keeps its own session on reload.
+  const [local, setLocal] = useState(() => isLocalActive() && !loadSession()?.token)
   const localMode = useRef(local)
   const localRaw = useRef<string | null>(null)
   const [data, setData] = useState<WealthData | null>(null)
@@ -63,7 +64,7 @@ export default function App() {
   // Between getting a token and showing the app. A reload with a live token starts here,
   // so the signed-out page never flashes before the app.
   const [opening, setOpening] = useState<{ step: OpeningStep; profile?: UserProfile } | null>(() =>
-    loadSession()?.token && !isLocalActive() ? { step: 'auth' } : null,
+    loadSession()?.token ? { step: 'auth' } : null,
   )
   // Prices and rates being fetched after the data file has loaded.
   const [refreshing, setRefreshing] = useState(false)
@@ -477,10 +478,10 @@ export default function App() {
                 <Link to={PAGES.privacy.path} className="small">
                   隱私權政策 Privacy Policy
                 </Link>
-                <button onClick={() => leaveLocal()} disabled={saving}>
+                <button onClick={() => leaveLocal()} disabled={busy}>
                   離開本機模式
                 </button>
-                <button className="danger" onClick={() => leaveLocal(true)} disabled={saving}>
+                <button className="danger" onClick={() => leaveLocal(true)} disabled={busy}>
                   刪除此瀏覽器中的資料
                 </button>
               </div>

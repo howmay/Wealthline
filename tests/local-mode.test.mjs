@@ -6,7 +6,7 @@ import { act, createElement } from 'react'
 
 // Local mode: the app without Google sign-in, with the data file kept in localStorage.
 
-let server, dom, root, App, model, createRoot
+let server, dom, root, App, model, auth, createRoot
 const DATA_KEY = 'wealthline.local.data'
 const ACTIVE_KEY = 'wealthline.local.active'
 const originalFetch = globalThis.fetch
@@ -26,6 +26,7 @@ before(async () => {
   server = await createServer({ configFile: false, envDir: false, server: { middlewareMode: true, watch: null, hmr: false, ws: false } })
   App = (await server.ssrLoadModule('/src/App.tsx')).default
   model = await server.ssrLoadModule('/src/model.ts')
+  auth = await server.ssrLoadModule('/src/google/auth.ts')
 })
 beforeEach(() => {
   requests = []
@@ -217,4 +218,23 @@ test('public pages stay readable in local mode and link back to the app', async 
   assert.match(document.querySelector('.legal article').textContent, /本機模式/)
   assert.equal(document.querySelector('.legal-back').getAttribute('href'), '/app')
   assert.deepEqual(requests, [])
+})
+
+test('a tab signed in to Google keeps its Drive session on reload when another tab turned local mode on', async () => {
+  const profile = { sub: 'account-a', email: 'a@example.com', name: 'Alice' }
+  auth.storeSession({ token: { value: 'test-token', expiresAt: Date.now() + 3600_000 }, profile })
+  localStorage.setItem(DATA_KEY, JSON.stringify(fixture()))
+  localStorage.setItem(ACTIVE_KEY, '1')
+  globalThis.fetch = async (url) => {
+    requests.push(String(url))
+    if (String(url).includes('userinfo')) return Response.json(profile)
+    if (String(url).includes('googleapis.com/drive')) return Response.json({ files: [] })
+    throw new Error('offline')
+  }
+  window.history.replaceState(null, '', '/app')
+  await render()
+  await settle()
+  assert.ok(document.querySelector('summary[aria-label="帳號選單"]'))
+  assert.equal(document.querySelector('summary[aria-label="本機模式選單"]'), null)
+  assert.ok(requests.some((u) => u.includes('googleapis.com/drive')))
 })
