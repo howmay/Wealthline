@@ -1,20 +1,18 @@
-import { MODES, seriesFor, type Mode } from './historySeries'
 import { removalMessage } from '../historyCompletion'
 import { useCalendarNow } from '../useCalendarNow'
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useHistoricalValuations } from '../useHistoricalValuations'
-import { fmt, pct } from '../format'
+import { fmt } from '../format'
 import { localDate, snapshotOf, totalPoints, type Change } from '../history'
 import { type WealthData } from '../model'
 import { displaySymbol } from '../quotes'
 import { LiabilityChangeRow } from './LiabilityChange'
-import { QuantityHistory, type QuantityEditRequest } from './QuantityHistory'
-import type { HistoricalPoint } from '../quantityHistory'
-import { TrendChart } from './TrendChart'
+import { QuantityHistory, Valuation, type QuantityEditRequest } from './QuantityHistory'
+import { instrumentKey } from '../quantityHistory'
 
 
 interface Props {
-  embedded?: boolean
+  initialDate?: string
   data: WealthData
   dirty: boolean
   busy: boolean
@@ -23,10 +21,11 @@ interface Props {
   onOpenAccount: (id: string) => void
 }
 
-export function HistoryView({ embedded = false, data, dirty, busy, onSave, onChange, onOpenAccount }: Props) {
+export function HistoryView({ initialDate, data, dirty, busy, onSave, onChange, onOpenAccount }: Props) {
   const historical = useHistoricalValuations(data)
+  const [sourceDate, setSourceDate] = useState(initialDate ?? '')
+  const sourcePanel = useRef<HTMLElement>(null)
   const [visibleDays, setVisibleDays] = useState(30)
-  const [mode, setMode] = useState<Mode>('total')
   const [accountFilter, setAccountFilter] = useState('')
   const now = useCalendarNow()
   const [quantityRequest,setQuantityRequest] = useState<QuantityEditRequest>()
@@ -36,9 +35,8 @@ export function HistoryView({ embedded = false, data, dirty, busy, onSave, onCha
   const today = snapshotOf({ ...data, liabilities: data.liabilities ?? [] }, now)
   const savedToday = saved.some((s) => s.date === today.date)
   const points = totalPoints(historical.data, now)
-  const dates = points.map((s) => s.date)
-  const previous = points.length > 1 ? points[points.length - 2] : null
-  const first = points.length > 1 ? points[0] : null
+  const sourcePoint = points.find(p => p.date === sourceDate) ?? points.at(-1)
+  const sourceDay = sourcePoint && (sourcePoint.manual || sourcePoint.periodDerived) ? historical.data.history.valuedQuantityDays?.find(d => d.date === sourcePoint.date) ?? historical.data.history.quantityDays?.find(d => d.date === sourcePoint.date) : undefined
 
   // Accounts that have since been deleted keep their name from the last snapshot they appear in.
   const accountNames = new Map<string, string>()
@@ -48,8 +46,8 @@ export function HistoryView({ embedded = false, data, dirty, busy, onSave, onCha
     <div className="history-page history-management">
       <div className="page-head history-heading">
         <div>
-          <h2>歷史管理</h2>
-          <p className="muted">查看資產變化，補登或修正過去的持有數量。</p>
+          <h2>歷史明細</h2>
+          <p className="muted">逐日查看總覽的資料明細與估值來源，補登或修正過去的持有數量。</p>
         </div>
         {!savedToday && !dirty && (data.accounts.length > 0 || !!data.liabilities?.length) && (
           <button className="primary" onClick={onSave} disabled={busy}>
@@ -58,38 +56,33 @@ export function HistoryView({ embedded = false, data, dirty, busy, onSave, onCha
         )}
       </div>
 
+      {dirty && <p className="notice">請先儲存或捨棄其他未儲存修改，再編輯歷史。</p>}
       <section className="history-source" aria-label="歷史資料與行情來源">
         <div className="history-source-head"><h3>資料與行情</h3>{!!(data.history.quantityDays?.length || data.history.holdingPeriods?.length) && <button disabled={historical.loading} onClick={historical.refresh}>{historical.loading ? '查詢歷史行情中…' : '重新查詢歷史行情'}</button>}</div>
         <div className="history-source-notes">
           <p><strong>紀錄規則</strong><span>原始快照保留原值；期間推算補上沒有快照的日期，單日補登優先。</span></p>
           <p><strong>市場來源</strong><span>價格與匯率採 Yahoo 實際行情日期，可能延遲。缺價或缺匯率保持未知，不使用儲存價格代替。</span></p>
         </div>
-        {historical.omittedDays > 0 && <p className="muted small">總額圖與比較略過 {historical.omittedDays} 個沒有原始紀錄、且持倉數量不足的推算日；不代表資產為零。明確未知及缺少行情的日期仍保留缺口。</p>}
+        {historical.omittedDays > 0 && <p className="muted small">總覽時間線略過 {historical.omittedDays} 個沒有原始紀錄、且持倉數量不足的推算日；不代表資產為零。明確未知及缺少行情的日期仍保留缺口。</p>}
         {historical.status && <p className="muted small" aria-live="polite">{historical.status}</p>}
         {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
       </section>
+      {sourcePoint && <section ref={sourcePanel} className="panel" aria-label="快照資料明細" tabIndex={-1}>
+        <div className="panel-head"><h3>快照資料明細</h3><label className="field"><span>明細日期</span><select value={sourcePoint.date} onChange={e => setSourceDate(e.target.value)}>{[...points].reverse().map(p => <option key={p.date} value={p.date}>{p.date}</option>)}</select></label></div>
+        {initialDate && !points.some(p => p.date === initialDate) && <p className="notice">{initialDate} 沒有可展示的快照，先顯示最近紀錄。</p>}
+        <p className="muted">{sourcePoint.periodDerived ? '持有期間推算' : sourcePoint.manual ? '單日補登／完整回補' : sourcePoint.date === today.date ? '目前餘額／當日快照' : '原始每日快照'} · {sourcePoint.date} · 總資產 {sourcePoint.total === null ? '資料不完整' : `NT$ ${fmt(sourcePoint.total, 0)}`}</p>
+        {sourceDay?.inventory && <p className="muted small">持倉清單來源：{sourceDay.inventory.source.date} · {sourceDay.inventory.source.kind === 'current' ? '目前完整持倉' : '已確認完整清單'}</p>}
+        {sourceDay?.completion && <p className="muted small">當日補齊來源：{sourceDay.completion.source.date} · {sourceDay.completion.source.kind === 'current' ? '目前完整持倉' : '已確認完整清單'}</p>}
+        <ul className="snapshot-accounts">{sourcePoint.accounts.map(a => <li key={a.id}><span>{a.name}</span><strong>{a.value === null ? '資料不完整' : `NT$ ${fmt(a.value, 0)}`}</strong></li>)}</ul>
+        <p className="muted small">分類總額：{Object.entries(sourcePoint.categories).map(([name, value]) => `${name} ${value === null ? '未知' : `NT$ ${fmt(value, 0)}`}`).join(' · ') || '未記錄'}</p>
+        {sourceDay ? <div className="quantity-rows">{sourceDay.entries.map(entry => <div className="quantity-row" key={instrumentKey(entry)}>
+          <strong>{entry.account} · {entry.symbol || entry.currency} · {entry.currency}</strong>
+          <span>數量 {entry.quantity === null ? '未知' : fmt(entry.quantity, 8)}{entry.quantityAsOf && ` · 數量基準 ${entry.quantityAsOf}`}</span>
+          <Valuation entry={entry} />
+          <button disabled={busy || !!quantityRequest} data-history-entry={`source:${sourcePoint.date}:${instrumentKey(entry)}`} onClick={() => setQuantityRequest({ date: sourcePoint.date, expected: data.history.quantityDays?.find(d => d.date === sourcePoint.date), entryKey: instrumentKey(entry), focusKey: `source:${sourcePoint.date}:${instrumentKey(entry)}` })}>編輯來源數量</button>
+        </div>)}</div> : <p className="muted small">原始快照只保存帳戶與分類總額，無法還原當時各項數量與行情；可從下方每日紀錄補登數量。目前持倉可在帳戶頁編輯。</p>}
+      </section>}
       <QuantityHistory data={data} busy={busy} onChange={onChange} request={quantityRequest} onRequest={setQuantityRequest} displayDays={historical.data.history.valuedQuantityDays ?? historical.data.history.quantityDays}/>
-      {!embedded && <section className="stats">
-        <Stat label="目前總資產" value={`NT$ ${fmt(today.total, 0)}`} note={savedToday && !dirty ? '今天已記錄' : '儲存後記錄為今天'} />
-        <Stat label="較上次紀錄" base={previous} total={today.total} />
-        <Stat label="較最早紀錄" base={first} total={today.total} />
-      </section>}
-
-      {!embedded && <section className="panel">
-        <div className="panel-head">
-          <h3>資產走勢</h3>
-          <div className="segmented" role="group" aria-label="顯示方式">
-            {(Object.keys(MODES) as Mode[]).map((m) => (
-              <button disabled={busy} key={m} className={m === mode ? 'on' : ''} aria-pressed={m === mode} onClick={() => setMode(m)}>
-                {MODES[m]}
-              </button>
-            ))}
-          </div>
-        </div>
-        <TrendChart dates={dates} series={seriesFor(mode, points, accountNames)} area={mode === 'total'} />
-        {points.length < 2 && <p className="muted small chart-note">目前只有一天的紀錄。之後每天登入時會自動記一筆，就能看到資產隨時間的變化。</p>}
-      </section>}
-
       <section className="panel">
         <div className="panel-head">
           <h3>異動紀錄</h3>
@@ -108,7 +101,7 @@ export function HistoryView({ embedded = false, data, dirty, busy, onSave, onCha
           changes={accountFilter ? changes.filter((c) => c.accountId === accountFilter) : changes}
           showAccount={!accountFilter}
           onOpenAccount={(id) => data.accounts.some((a) => a.id === id) && onOpenAccount(id)}
-          onDelete={(c) => {
+          onDelete={busy ? undefined : (c) => {
             if (!confirm(`刪除「${c.account}」${c.type === 'cash' ? `${c.currency} 餘額` : c.symbol} 的這筆異動紀錄？目前的數字不會改變。`)) return
             onChange({ ...data, history: { ...data.history, changes: changes.filter((x) => x !== c) } })
           }}
@@ -122,15 +115,11 @@ export function HistoryView({ embedded = false, data, dirty, busy, onSave, onCha
             if (confirm('刪除這筆負債異動紀錄？目前負債餘額不會改變。')) onChange({ ...data, history: { ...data.history, liabilityChanges: data.history.liabilityChanges?.filter((x) => x !== c) } })
           }}>×</button>} />)}</ul>}
       </section>
-      {!embedded && <section className="stats">
-        <Stat label={today.liabilityEstimated ? "目前總負債（預估）" : "目前總負債"} value={today.liabilityTotal == null ? '尚無法換算' : `NT$ ${fmt(today.liabilityTotal, 0)}`} />
-        <Stat label={today.liabilityEstimated ? "目前淨資產（預估）" : "目前淨資產"} value={today.netWorth == null ? '尚無法換算' : `NT$ ${fmt(today.netWorth, 0)}`} note="總資產 − 總負債" />
-      </section>}
       {points.length > 0 && (
         <section className="panel daily" aria-label="每日紀錄">
           <div className="panel-head">
             <h3>每日紀錄</h3>
-            <span className="muted small">{points.length} 天 · 與走勢圖共用資料；未知值不視為零。表格可左右滑動</span>
+            <span className="muted small">{points.length} 天 · 與總覽時間線共用資料；未知值不視為零。表格可左右滑動</span>
           </div>
           <div className="scroll">
             <table className="data">
@@ -153,6 +142,7 @@ export function HistoryView({ embedded = false, data, dirty, busy, onSave, onCha
                     <td className="num" data-label="淨資產"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</span></td>
                     <td className="num" data-label="帳戶數"><span className="daily-cell-value">{s.accounts.length}</span></td>
                     <td className="num daily-actions">
+                      <button onClick={() => { setSourceDate(s.date); sourcePanel.current?.scrollIntoView?.({ block: 'start' }); sourcePanel.current?.focus() }}>查看明細 {s.date}</button>
                       <button data-history-entry={`day:${s.date}`} disabled={busy || !!quantityRequest} onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date),focusKey:`day:${s.date}`})}>{data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} {s.date}</button>
                       {data.history.quantityDays?.some(d=>d.date===s.date) && <button className="danger" disabled={busy || !!quantityRequest} onClick={()=>{
                         if(confirm(removalMessage(data,s.date))) {
@@ -195,40 +185,6 @@ export function HistoryView({ embedded = false, data, dirty, busy, onSave, onCha
     </div>
   )
 }
-
-function Stat({ label, value, note, base, total }: { label: string; value?: string; note?: string; base?: HistoricalPoint | null; total?: number }) {
-  if (base === null || base?.total === null) {
-    return (
-      <div className="panel stat">
-        <span className="eyebrow">{label}</span>
-        <strong className="muted">—</strong>
-        <span className="muted small">{base ? `${base.date.replace(/-/g,'/')} 資料不完整，無法比較` : '尚無更早的紀錄'}</span>
-      </div>
-    )
-  }
-  if (base && total !== undefined) {
-    const diff = total - base.total
-    return (
-      <div className="panel stat">
-        <span className="eyebrow">{label}</span>
-        <strong>
-          {diff >= 0 ? '+' : '−'}
-          {fmt(Math.abs(diff), 0)}
-          {base.total > 0 && <small> {diff >= 0 ? '+' : '−'}{pct(Math.abs(diff) / base.total)}</small>}
-        </strong>
-        <span className="muted small">{base.date.replace(/-/g, '/')} 為 NT$ {fmt(base.total, 0)}</span>
-      </div>
-    )
-  }
-  return (
-    <div className="panel stat">
-      <span className="eyebrow">{label}</span>
-      <strong>{value}</strong>
-      <span className="muted small">{note}</span>
-    </div>
-  )
-}
-
 
 const signed = (n: number, digits: number) => `${n >= 0 ? '+' : '−'}${fmt(Math.abs(n), digits)}`
 

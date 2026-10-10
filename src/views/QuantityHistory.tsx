@@ -245,7 +245,7 @@ export function QuantityEditor({ data, busy = false, date: initialDate, expected
   </dialog>
 }
 
-function Valuation({ entry: e }: { entry: QuantityEntry }) {
+export function Valuation({ entry: e }: { entry: QuantityEntry }) {
   const value = entryValue(e)
   const price = e.price?.source === 'Yahoo' ? `Yahoo ${e.price.symbol} · ${e.price.date} 收盤 ${fmt(e.price.value, 6)} ${e.currency}` : undefined
   return (

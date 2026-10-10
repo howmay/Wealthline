@@ -20,6 +20,7 @@ import { fetchRates } from './rates'
 import { Accounts, type AccountsView } from './views/Accounts'
 import { Liabilities } from './views/Liabilities'
 import { Overview } from './views/Overview'
+import { HistoryView } from './views/History'
 import { Rates } from './views/Rates'
 import { SaveReview } from './views/SaveReview'
 import { Landing } from './views/Landing'
@@ -64,7 +65,6 @@ export default function App() {
   // Every page of the signed-in app has its own URL, so back and forward move between them.
   const path = usePath()
   const route = parseRoute(path)
-  useEffect(() => { if (path === '/history') navigate('/', { replace: true }) }, [path])
   const tab = route.tab
 
   // Warn before closing the tab with unsaved edits.
@@ -407,14 +407,7 @@ export default function App() {
         {data && tab === 'overview' && (
           <Overview
             data={data}
-            busy={busy}
-            dirty={dirty}
-            onSave={requestSave}
-            onCommitHistory={(next) => {
-              if (savingRef.current) throw new Error('背景儲存中，請稍後再儲存歷史修改。')
-              if (dirtyRef.current) throw new Error('請先儲存或捨棄其他未儲存修改，再儲存歷史。')
-              update(next); void persist(next)
-            }}
+            onGoHistory={(date) => go(date ? { tab: 'history', date } : { tab: 'history' })}
             onGoLiabilities={() => go({ tab: 'liabilities' })}
             onGoRates={() => go({ tab: 'rates' })}
             onNewAccount={() => goAccounts({ page: 'new' })}
@@ -425,6 +418,12 @@ export default function App() {
             }}
           />
         )}
+        {data && route.tab === 'history' && <HistoryView key={route.date ?? 'history'} initialDate={route.date} data={data} dirty={dirty} busy={busy || dirty} onSave={requestSave}
+          onChange={(next) => {
+            if (savingRef.current) throw new Error('背景儲存中，請稍後再儲存歷史修改。')
+            if (dirtyRef.current) throw new Error('請先儲存或捨棄其他未儲存修改，再儲存歷史。')
+            update(next); void persist(next)
+          }} onOpenAccount={(id) => goAccounts({ page: 'detail', id })} />}
         {data && route.tab === 'accounts' && (
           <Accounts
             data={data}

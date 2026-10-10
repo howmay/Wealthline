@@ -2,10 +2,7 @@ import { useCalendarNow } from '../useCalendarNow'
 import { useState } from 'react'
 import type { HistoricalPoint } from '../quantityHistory'
 import { snapshotOf, totalPoints } from '../history'
-import { HistoryView } from './History'
 import { seriesFor, MODES, type Mode } from './historySeries'
-import { removalMessage } from '../historyCompletion'
-import { QuantityEditor, type QuantityEditRequest } from './QuantityHistory'
 import { SnapshotDetails } from './SnapshotDetails'
 import { TrendChart } from './TrendChart'
 import { useHistoricalValuations } from '../useHistoricalValuations'
@@ -26,10 +23,7 @@ import { Allocation, RankBars } from './charts'
 
 interface Props {
   data: WealthData
-  busy?: boolean
-  dirty?: boolean
-  onSave?: () => void
-  onCommitHistory?: (data: WealthData) => void
+  onGoHistory?: (date?: string) => void
   onGoRates: () => void
   onGoLiabilities?: () => void
   onNewAccount: () => void
@@ -37,19 +31,12 @@ interface Props {
   onOpenAccount: (name: string) => void
 }
 
-export function Overview({ data, busy = false, dirty = false, onSave, onCommitHistory, onGoRates, onGoLiabilities, onNewAccount, onImport, onOpenAccount }: Props) {
+export function Overview({ data, onGoHistory, onGoRates, onGoLiabilities, onNewAccount, onImport, onOpenAccount }: Props) {
   const now = useCalendarNow()
   const estimated = data.liabilities?.some(d => d.schedule)
   const historical = useHistoricalValuations(data)
   const [selected, setSelected] = useState('current')
   const [mode, setMode] = useState<Mode>('total')
-  const locked = busy || dirty
-  const [editing, setEditing] = useState<QuantityEditRequest>()
-  const [undo, setUndo] = useState<{ before: WealthData['history']; after: WealthData['history'] }>()
-  const commit = (next: WealthData) => {
-    onCommitHistory?.(next)
-    setUndo({ before: data.history, after: next.history })
-  }
   const live = snapshotOf(data, now)
   const points: HistoricalPoint[] = [...totalPoints(historical.data, now).filter(p => p.date !== live.date || p.manual), live]
   const chartPoints = totalPoints(historical.data, now)
@@ -88,18 +75,9 @@ export function Overview({ data, busy = false, dirty = false, onSave, onCommitHi
           <div><span className="eyebrow">資產時間線</span><h2>{current ? '目前資產' : point.date.replaceAll('-', '/')}</h2></div>
           <div className="row">
             {!current && <button onClick={() => setSelected('current')}>回到目前</button>}
-            {onCommitHistory && <>
-              <button disabled={locked} onClick={() => setEditing({ date: point.date, expected: data.history.quantityDays?.find(d => d.date === point.date) })}>編輯這天</button>
-              <button disabled={locked} onClick={() => setEditing({ date: live.date })}>補登日期</button>
-              {!current && point.manual && <button disabled={locked} onClick={() => {
-                if (confirm(removalMessage(data, point.date))) commit({ ...data, history: { ...data.history, quantityDays: data.history.quantityDays?.filter(d => d.date !== point.date) } })
-              }}>移除這天補登</button>}
-              {undo && data.history.quantityDays === undo.after.quantityDays && data.history.holdingPeriods === undo.after.holdingPeriods && <button disabled={locked} onClick={() => { onCommitHistory({ ...data, history: { ...data.history, quantityDays: undo.before.quantityDays, holdingPeriods: undo.before.holdingPeriods } }); setUndo(undefined) }}>復原上次歷史修改</button>}
-            </>}
+            {onGoHistory && <button onClick={() => onGoHistory(current ? undefined : point.date)}>{current ? '查看歷史明細' : '查看這天的明細'}</button>}
           </div>
         </div>
-        {dirty && <p className="notice">請先儲存或捨棄其他未儲存修改，再編輯歷史。</p>}
-        {busy && <p className="muted" role="status">背景儲存或更新中，完成後即可編輯歷史。</p>}
         <div className="segmented" role="group" aria-label="顯示方式">{(Object.keys(MODES) as Mode[]).map(m => <button key={m} aria-pressed={m === mode} className={m === mode ? 'on' : ''} onClick={() => setMode(m)}>{MODES[m]}</button>)}</div>
         <TrendChart dates={chartPoints.map(p => p.date)} series={seriesFor(mode, chartPoints, accountNames)} area={mode === 'total'} />
         <div className="timeline-controls">
@@ -112,13 +90,6 @@ export function Overview({ data, busy = false, dirty = false, onSave, onCommitHi
         {historical.status && <p className="muted small" aria-live="polite">{historical.status}</p>}
         {historical.error && <p role="alert" className="banner error">{historical.error}</p>}
       </section>
-      {editing && onCommitHistory && <QuantityEditor key={editing.date} data={data} busy={locked} date={editing.date} expected={editing.expected}
-        onCancel={() => setEditing(undefined)} onApply={next => {
-          const changed = next.history.quantityDays?.find(d => !data.history.quantityDays?.includes(d))
-          commit(next)
-          if (changed) setSelected(changed.date)
-          setEditing(undefined)
-        }} />}
       {!current ? <SnapshotDetails point={point} day={historical.data.history.valuedQuantityDays?.find(d => d.date === point.date)} /> : <>
       <section className="panel hero">
         <span className="eyebrow">總資產</span>
@@ -181,9 +152,7 @@ export function Overview({ data, busy = false, dirty = false, onSave, onCommitHi
       )}
       </>}
       </>}
-      {onCommitHistory && <details className="panel span-2"><summary>歷史管理與異動紀錄</summary>
-        <HistoryView embedded data={data} dirty={dirty} busy={locked} onSave={onSave ?? (() => {})} onChange={commit} onOpenAccount={id => { const account = data.accounts.find(a => a.id === id); if (account) onOpenAccount(account.name) }} />
-      </details>}
+
     </div>
   )
 }
