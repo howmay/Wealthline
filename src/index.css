@@ -704,6 +704,13 @@ a.button.ghost {
   gap: 8px;
 }
 
+.site-footer-note {
+  order: 3;
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
 .site-footer nav {
   display: flex;
   flex-wrap: wrap;

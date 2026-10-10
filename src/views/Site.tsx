@@ -55,6 +55,9 @@ export function SiteFooter() {
             © 2026 <a href={AUTHOR_URL}>{AUTHOR}</a> · 由 <a href={OPERATOR_URL}>{OPERATOR}</a> 營運 · 開放原始碼，非商業授權
           </span>
         </div>
+        <p className="site-footer-note">
+          目前免費提供。使用人數過多時，Google Cloud 專案可能無法繼續支援，服務可能因此受限或調整，詳見<Link to={PAGES.terms.path}>使用條款</Link>。
+        </p>
         <nav aria-label="網站資訊">
           {(Object.keys(PAGES) as PageKey[]).map((k) => (
             <Link key={k} to={PAGES[k].path}>

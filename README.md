@@ -26,6 +26,8 @@
 
 打開 **<https://wealthline.haomeh.com>**，用 Google 帳號登入即可，不需要註冊或安裝。
 
+> Wealthline 目前是免費提供的服務。登入使用的 Google Cloud 專案有使用人數與配額限制，如果使用者過多而無法繼續支援，服務可能會限制新使用者、調整功能或改變提供方式，屆時會在網站與這個 repo 公告。你的資料檔存放在自己的 Google Drive，不會因此消失。
+
 - 隱私權政策：<https://wealthline.haomeh.com/privacy>
 - 使用條款：<https://wealthline.haomeh.com/terms>
 - 免責聲明：<https://wealthline.haomeh.com/disclaimer>

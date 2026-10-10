@@ -55,5 +55,6 @@ npm run dev
 | `401 invalid_client` + `no registered origin` | 這個用戶端 ID 沒有登記目前的網址來源。到該用戶端的「已授權的 JavaScript 來源」加入瀏覽器網址列的來源（例如 `http://localhost:5173`），不是填在「重新導向 URI」。也請確認類型是「網頁應用程式」、`.env.local` 的 ID 和 Console 中的是同一個，改完 `.env.local` 要重新啟動 `npm run dev`。與測試使用者名單無關 |
 | `origin_mismatch` / `redirect_uri_mismatch` | 目前網址沒有列在「已授權的 JavaScript 來源」，注意 port 與 http/https 要完全一致 |
 | `access_denied`（存取遭封鎖） | 帳號不在測試使用者名單中 |
+| 「目標對象」頁仍顯示 100 位使用者上限 | 品牌驗證只確認名稱、標誌與網域，不會改變發布狀態。發布狀態仍是「測試中」時，只有最多 100 位測試使用者能登入：到「目標對象」按「發布應用程式」改為「正式版」。另請確認「資料存取」只列出上面四個範圍，若多了敏感或受限範圍（例如完整的 `.../auth/drive`），未通過該範圍的驗證前仍會有 100 位使用者上限，移除不用的範圍即可 |
 | `Google Drive API has not been used in project…` | 尚未在專案中啟用 Google Drive API |
 | 彈出視窗被擋 | 允許瀏覽器對此網站顯示彈出視窗 |

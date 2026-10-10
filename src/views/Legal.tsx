@@ -355,6 +355,9 @@ function Terms() {
         <p>
           本服務是由 GitHub 組織 {OPERATOR}（<a href={OPERATOR_URL}>{OPERATOR_URL}</a>，以下稱「營運者」）以開放原始碼方式提供的免費個人資產統計工具，協助你整理帳戶、持倉與匯率，資料保存在你自己的 Google Drive。本服務為開源專案，不保證持續提供、不保證可用時間，也可能隨時修改或停止。
         </p>
+        <p>
+          本服務目前免費提供。登入所使用的 Google Cloud 專案有使用人數與配額限制，若使用者過多而無法繼續支援，營運者可能限制新使用者登入、調整功能或改變提供方式，並會在本網站與 GitHub 公告。你的資料檔存放在你自己的 Google Drive，不會因服務調整而被刪除。
+        </p>
       </Section>
 
       <Section title="二、帳號與資料責任">

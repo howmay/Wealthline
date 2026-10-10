@@ -159,6 +159,9 @@ export function Landing({ returning, busy, message, onSignIn, onResume }: Props)
             <p className="muted">
               處理你財務資料的程式，應該讓任何人都能檢查。完整原始碼放在 GitHub，個人學習、研究與教育用途可以自由使用與修改；商業用途需取得作者書面授權。Wealthline 由 GitHub 組織 howmay 營運。
             </p>
+            <p className="muted">
+              Wealthline 目前是免費提供的服務。登入使用的 Google Cloud 專案有使用人數與配額限制，如果使用者過多而無法繼續支援，可能需要限制新使用者、調整功能或改變提供方式，屆時會在本網站與 GitHub 公告。你的資料檔存放在自己的 Google Drive，不會因此消失。
+            </p>
           </div>
           <div className="row">
             <a className="button" href={REPO_URL}>
