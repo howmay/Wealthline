@@ -150,11 +150,11 @@ export function quantityPoint(day: QuantityDay, original?: Snapshot): Historical
   // Unknown legacy inventory in an original snapshot must not disappear; an account
   // that was empty that day has nothing to add.
   if (original?.accounts.some(a => !accounts.has(a.id) && a.value !== 0) || !day.entries.length || !Number.isFinite(total)) total = null
-  const debt = original?.liabilityTotal
+  const debt = original?.liabilityTotal === undefined ? 0 : original.liabilityTotal
   return { date: day.date, at: day.updatedAt, total, accounts: [...accounts.values()], categories, manual: true,
-    ...(debt !== undefined && { liabilityTotal: debt }),
+    liabilityTotal: debt,
     ...(original?.liabilityEstimated !== undefined && { liabilityEstimated: original.liabilityEstimated }),
-    ...(debt !== undefined && { netWorth: total === null || debt === null ? null : total - debt }) }
+    netWorth: total === null || debt === null ? null : total - debt }
 }
 export function applyQuantityDay(data: WealthData, day: QuantityDay, expected?: QuantityDay): WealthData {
   validatePastDate(day.date)

@@ -60,7 +60,7 @@ test('manual days override history only, preserve unknown debt, order dates and 
  const next=q.applyQuantityDay(data,manual)
  assert.equal(next.accounts,data.accounts);assert.equal(next.liabilities,data.liabilities);assert.equal(next.version,3)
  assert.equal(h.totalPoints(next,'2025-10-08T12:00:00Z')[0].total,100)
- assert.equal(h.totalPoints(next,'2025-10-08T12:00:00Z')[0].netWorth,undefined)
+ assert.equal(h.totalPoints(next,'2025-10-08T12:00:00Z')[0].netWorth,100)
  assert.throws(()=>q.applyQuantityDay(next,manual),/已新增或變更/)
  const corrected=q.applyQuantityDay(next,{...manual,entries:[entry({type:'cash',symbol:'',currency:'TWD',quantity:50})]},next.history.quantityDays[0])
  assert.equal(h.totalPoints(corrected,'2025-10-08T12:00:00Z')[0].total,50)

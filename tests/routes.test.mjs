@@ -19,7 +19,6 @@ test('each signed-in page has its own URL that parses back to the same page', ()
     [{ tab: 'accounts', page: 'detail', id: 'a b/c' }, '/accounts/a%20b%2Fc'],
     [{ tab: 'accounts', page: 'edit', id: 'abc' }, '/accounts/abc/edit'],
     [{ tab: 'liabilities' }, '/liabilities'],
-    [{ tab: 'history' }, '/history'],
     [{ tab: 'rates' }, '/rates'],
   ]
   for (const [route, path] of pages) {
@@ -30,7 +29,7 @@ test('each signed-in page has its own URL that parses back to the same page', ()
 })
 
 test('unknown paths fall back to the overview', () => {
-  for (const path of ['/nope', '/history/x', '/accounts/abc/delete', '/accounts/abc/edit/x']) {
+  for (const path of ['/history', '/nope', '/history/x', '/accounts/abc/delete', '/accounts/abc/edit/x']) {
     assert.deepEqual(routes.parseRoute(path), { tab: 'overview' })
   }
 })

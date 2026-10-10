@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
 import { act, createElement, useState, useEffect } from 'react'
 
-let server, root, dom, App, Accounts, Liabilities, Overview, HistoryView, SaveReview, model, auth, createRoot
+let server, root, dom, App, Accounts, Liabilities, Overview, SaveReview, model, auth, createRoot
 const originalFetch = globalThis.fetch
 const token = { value: 'test-token', expiresAt: Date.now() + 3600_000 }
 const profile = { sub: 'account-a', email: 'a@example.com', name: 'Alice' }
@@ -21,7 +21,6 @@ before(async () => {
   ;({ Accounts } = await server.ssrLoadModule('/src/views/Accounts.tsx'))
   ;({ Liabilities } = await server.ssrLoadModule('/src/views/Liabilities.tsx'))
   ;({ Overview } = await server.ssrLoadModule('/src/views/Overview.tsx'))
-  ;({ HistoryView } = await server.ssrLoadModule('/src/views/History.tsx'))
   ;({ SaveReview } = await server.ssrLoadModule('/src/views/SaveReview.tsx'))
   model = await server.ssrLoadModule('/src/model.ts')
   auth = await server.ssrLoadModule('/src/google/auth.ts')
@@ -269,19 +268,32 @@ test('overview displays negative net worth for debt-only data and hides totals w
   assert.match(document.body.textContent, /EUR 沒有匯率/)
 })
 
-test('history distinguishes legacy unrecorded debt values and preserves asset chart modes', async () => {
+async function selectSnapshot(value) {
+  await act(async () => {
+    const select = document.querySelector('.timeline-controls select')
+    Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set.call(select, value)
+    select.dispatchEvent(new window.Event('change', { bubbles: true }))
+  })
+}
+test('homepage snapshots default absent debt to zero while preserving explicit unknown debt', async () => {
   const data = { ...fixture(), liabilities: [syntheticDebt], history: { changes: [], snapshots: [
-    { date: '2024-01-01', at: '2024-01-01T12:00:00Z', total: 500, accounts: [], categories: {} },
+    { date: '2024-01-01', at: '2024-01-01T12:00:00Z', total: 500, accounts: [{id:'old',name:'舊帳戶',value:500}], categories: {現金:500} },
     { date: '2024-01-02', at: '2024-01-02T12:00:00Z', total: 500, accounts: [], categories: {}, liabilityTotal: 800, netWorth: -300 },
+    { date: '2024-01-03', at: '2024-01-03T12:00:00Z', total: 500, accounts: [], categories: {}, liabilityTotal: null, netWorth: null },
+    { date: '2024-01-04', at: '2024-01-04T12:00:00Z', total: 500, accounts: [], categories: {}, liabilityTotal: 0, netWorth: null },
   ] } }
-  await render(HistoryView, { data, dirty: false, busy: false, onSave: () => {}, onChange: () => {}, onOpenAccount: () => {} })
-  assert.ok(document.querySelector('section[aria-label="每日紀錄"]'))
-  assert.equal(document.querySelector('details.daily'), null)
-  assert.equal((document.querySelector('table').textContent.match(/未記錄/g) ?? []).length, 2)
-  assert.match(document.querySelector('table').textContent, /-300/)
-  assert.ok(button('總資產'))
-  assert.ok(button('依帳戶'))
-  assert.ok(button('依類別'))
+  await render(Overview, { data })
+  await selectSnapshot('2024-01-01')
+  assert.match(document.querySelector('[aria-label="總負債"]').textContent, /NT\$ 0/)
+  assert.match(document.querySelector('[aria-label="淨資產"]').textContent, /NT\$ 500/)
+  assert.match(document.querySelector('[aria-label="快照帳戶"]').textContent, /舊帳戶.*500/)
+  assert.match(document.body.textContent, /沒有完整的幣別明細/)
+  await selectSnapshot('2024-01-02')
+  assert.match(document.querySelector('[aria-label="淨資產"]').textContent, /-300/)
+  await selectSnapshot('2024-01-03')
+  assert.match(document.querySelector('[aria-label="總負債"]').textContent, /資料不完整/)
+  await selectSnapshot('2024-01-04')
+  assert.match(document.querySelector('[aria-label="淨資產"]').textContent, /資料不完整/)
 })
 
 test('liability edit during daily save survives, stays dirty, and next save reviews the correct difference', async () => {
@@ -508,68 +520,69 @@ test('failed scheduled-debt save retains edits and original principal, with no p
 const historicalFixture = () => ({ ...fixture(), accounts: [{ id: 'history-account', name: '合成歷史帳戶', kind: 'investment', country: 'TW', category: '股票', positions: [
   { id: 'history-cash', type: 'cash', currency: 'TWD', symbol: '', quantity: 900, price: 1 },
 ] }] })
-test('historical quantity add/edit/cancel/restore changes only chosen date; charts and list use the same value', async () => {
+test('homepage modal saves once, switches snapshots, cancels and restores only historical quantities', async () => {
   let current
   function Harness() {
     const [data,setData] = useState(historicalFixture)
     useEffect(()=>{current=data},[data])
-    return createElement(HistoryView,{data,dirty:true,busy:false,onChange:setData,onSave:()=>{},onOpenAccount:()=>{}})
+    return createElement(Overview,{data,onCommitHistory:setData})
   }
   await render(Harness)
-  await click(button('＋ 補登歷史數量'))
+  await click(button('補登日期'))
+  assert.ok(document.querySelector('dialog[open]'))
   await setInput(field('歷史日期'),'2025-10-04')
   const label='合成歷史帳戶 · TWD · TWD 當日數量'
   assert.equal(field(label).value,'')
   await setInput(field(label),'100')
   await click(button('取消歷史編輯'))
   assert.equal(current.history.quantityDays,undefined)
-  await click(button('＋ 補登歷史數量'))
+  await click(button('補登日期'))
   await setInput(field('歷史日期'),'2025-10-04')
   await setInput(field(label),'100')
-  await click(button('取得歷史估值'))
-  assert.match(document.querySelector('[role="status"]').textContent,/100/)
-  await click(button('套用歷史數量'))
+  await click(button('儲存這天'))
+  assert.equal(document.querySelector('dialog'),null)
   assert.equal(current.accounts[0].positions[0].quantity,900)
   assert.equal(current.history.quantityDays[0].entries[0].quantity,100)
-  const row=[...document.querySelectorAll('section.daily tbody tr')].find(r=>r.textContent.includes('2025/10/04'))
-  assert.match(row.textContent,/100/)
-  assert.match(row.textContent,/未記錄/)
-  await click(button('編輯數量 2025-10-04'))
+  assert.match(document.querySelector('[aria-label="快照總資產"]').textContent,/100/)
+  assert.match(document.querySelector('[aria-label="淨資產"]').textContent,/NT\$ 100/)
+  await click(button('編輯這天'))
   assert.equal(field('歷史日期').disabled,true)
   await setInput(field(label),'0')
-  await click(button('取得歷史估值'))
-  await click(button('套用歷史數量'))
+  await click(button('儲存這天'))
   assert.equal(current.history.quantityDays[0].entries[0].quantity,0)
   await click(button('復原上次歷史修改'))
   assert.equal(current.history.quantityDays[0].entries[0].quantity,100)
   globalThis.confirm=()=>false
-  await click(button('移除 2025-10-04'))
+  await click(button('移除這天補登'))
   assert.equal(current.history.quantityDays.length,1)
   globalThis.confirm=()=>true
-  await click(button('移除 2025-10-04'))
+  await click(button('移除這天補登'))
   assert.equal(current.history.quantityDays.length,0)
-  assert.ok(![...document.querySelectorAll('section.daily tbody tr')].some(r=>r.textContent.includes('2025/10/04')))
   await click(button('復原上次歷史修改'))
   assert.equal(current.history.quantityDays.length,1)
+  await click(button('回到目前'))
+  assert.match(document.querySelector('.hero-figure').textContent,/900/)
+  await setInput(document.querySelector('input[type="range"]'),'0')
+  assert.match(document.querySelector('[aria-label="快照總資產"]').textContent,/100/)
 })
 test('historical editor validates quantities, duplicates and future dates; late quotes cannot apply cancelled edits', async () => {
   let current
   const base=historicalFixture()
   base.accounts[0].positions=[{id:'history-stock',type:'holding',symbol:'TEST',currency:'USD',quantity:1,price:999}]
-  function Harness(){const [data,setData]=useState(base);useEffect(()=>{current=data},[data]);return createElement(HistoryView,{data,dirty:true,busy:false,onChange:setData,onSave:()=>{},onOpenAccount:()=>{}})}
+  function Harness(){const [data,setData]=useState(base);useEffect(()=>{current=data},[data]);return createElement(Overview,{data,dirty:true,busy:false,onCommitHistory:setData,onSave:()=>{},onOpenAccount:()=>{}})}
   await render(Harness)
-  await click(button('＋ 補登歷史數量'))
+  await click(button('補登日期'))
   await setInput(field('歷史日期'),'2999-01-01')
-  await click(button('取得歷史估值'))
+  await click(button('儲存這天'))
   assert.match(document.querySelector('[role="alert"]').textContent,/未來/)
   await setInput(field('歷史日期'),'2025-10-04')
   await setInput(field('合成歷史帳戶 · TEST · USD 當日數量'),'-1')
-  await click(button('取得歷史估值'))
+  await click(button('儲存這天'))
   assert.match(document.querySelector('[role="alert"]').textContent,/非負/)
   await setInput(field('合成歷史帳戶 · TEST · USD 當日數量'),'2')
   const pending=[]
   globalThis.fetch=()=>new Promise(resolve=>pending.push(resolve))
-  await click(button('取得歷史估值'))
+  await click(button('儲存這天'))
   assert.ok(button('取得歷史行情中…'))
   await click(button('取消歷史編輯'))
   await act(async()=>{pending.forEach(resolve=>resolve(Response.json({symbol:'TEST',currency:'USD',asTraded:true,points:[]})))})
@@ -581,37 +594,36 @@ test('historical editor validates quantities, duplicates and future dates; late 
 test('missing historical prices preserve quantity and show incomplete total instead of zero',async()=>{
  const data=historicalFixture();data.accounts[0].positions=[{id:'history-stock',type:'holding',symbol:'TEST',currency:'USD',quantity:1,price:999}]
  let changed
- await render(HistoryView,{data,dirty:true,busy:false,onChange:next=>{changed=next},onSave:()=>{},onOpenAccount:()=>{}})
+ await render(Overview,{data,dirty:true,busy:false,onCommitHistory:next=>{changed=next},onSave:()=>{},onOpenAccount:()=>{}})
  globalThis.fetch=async()=>new Response('',{status:404})
- await click(button('＋ 補登歷史數量'))
+ await click(button('補登日期'))
  await setInput(field('歷史日期'),'2025-10-04')
  await setInput(field('合成歷史帳戶 · TEST · USD 當日數量'),'2')
- await click(button('取得歷史估值'))
- assert.match(document.querySelector('[role="status"]').textContent,/資料不完整/)
- assert.match(document.body.textContent,/缺少歷史匯率/)
- await click(button('套用歷史數量'))
+ await click(button('儲存這天'))
  assert.equal(changed.history.quantityDays[0].entries[0].quantity,2)
  assert.equal(changed.history.quantityDays[0].entries[0].price,undefined)
  assert.equal(changed.accounts[0].positions[0].quantity,1)
 })
-test('quantity edits during Drive save remain dirty while committed history metadata survives',async()=>{
+test('legacy history URL opens homepage and history save writes Drive in one action',async()=>{
  window.history.replaceState(null,'','/history')
  const data=historicalFixture(),drive=setupDrive(data)
  await render(App)
+ assert.equal(window.location.pathname,'/')
  assert.equal(drive.writes,1)
- await click(button('＋ 補登歷史數量'))
+ await drive.finish()
+ await click(button('補登日期'))
  await setInput(field('歷史日期'),'2025-10-04')
  await setInput(field('合成歷史帳戶 · TWD · TWD 當日數量'),'100')
- await click(button('取得歷史估值'))
- await click(button('套用歷史數量'))
- await drive.finish()
- assert.ok(button('儲存變更'))
- assert.match(document.querySelector('[aria-label="歷史持倉數量"]').textContent,/2025-10-04/)
- await click(button('儲存變更'))
+ await click(button('儲存這天'))
  assert.equal(drive.writes,2)
+ assert.equal(document.querySelector('dialog'),null)
  assert.equal(drive.uploaded.version,3)
  assert.equal(drive.uploaded.history.quantityDays[0].entries[0].quantity,100)
  assert.equal(drive.uploaded.accounts[0].positions[0].quantity,900)
+ await drive.finish(500)
+ assert.ok(button('儲存變更'))
+ assert.match(document.querySelector('[aria-label="快照總資產"]').textContent,/100/)
+ await click(button('儲存變更'))
  await drive.finish()
  assert.ok(document.querySelector('.synced'))
 })
@@ -625,8 +637,8 @@ test('same-day manual quantities survive login without an automatic Drive write'
  const drive=setupDrive(data)
  await render(App)
  assert.equal(drive.writes,0)
- assert.match(document.querySelector('section.daily tbody tr').textContent,/NT\$ 0/)
- assert.match(document.querySelector('section.daily tbody tr').textContent,/手動/)
+ await selectSnapshot(localDate(now))
+ assert.match(document.querySelector('[aria-label="快照總資產"]').textContent,/NT\$ 0/)
 })
 test('trend chart leaves an actual gap for unknown history and clears out-of-range hover after deletion',async()=>{
  const oldObserver=globalThis.ResizeObserver
@@ -649,16 +661,14 @@ test('trend chart leaves an actual gap for unknown history and clears out-of-ran
 test('unquoted holdings keep quantity without a historical manual price field',async()=>{
  const data=historicalFixture();data.accounts[0].positions=[{id:'fund',type:'holding',symbol:'基金與退休金',currency:'TWD',quantity:3,price:10,priceManual:true}]
  let changed,requests=0
- await render(HistoryView,{data,dirty:true,busy:false,onChange:next=>{changed=next},onSave:()=>{},onOpenAccount:()=>{}})
+ await render(Overview,{data,dirty:true,busy:false,onCommitHistory:next=>{changed=next},onSave:()=>{},onOpenAccount:()=>{}})
  globalThis.fetch=async()=>{requests++;return new Response('',{status:404})}
- await click(button('＋ 補登歷史數量'))
+ await click(button('補登日期'))
  await setInput(field('歷史日期'),'2025-10-04')
  await setInput(field('合成歷史帳戶 · 基金與退休金 · TWD 當日數量'),'2')
  assert.equal(field('合成歷史帳戶 · 基金與退休金 · TWD 當日單價'),undefined)
- await click(button('取得歷史估值'))
+ await click(button('儲存這天'))
  assert.equal(requests,0)
- assert.match(document.querySelector('[role="status"]').textContent,/資料不完整/)
- await click(button('套用歷史數量'))
  assert.equal(changed.history.quantityDays[0].entries[0].price,undefined)
   assert.equal(changed.accounts[0].positions[0].price,10)
 })
@@ -669,10 +679,10 @@ test('viewing and refreshing historical valuations queries market data without e
  data.history.quantityDays=[{date:'2025-10-04',updatedAt:'2025-10-06T12:00:00Z',entries:[{accountId:'history-account',account:'合成歷史帳戶',category:'股票',country:'TW',type:'holding',symbol:'TEST',currency:'TWD',quantity:2,price:{source:'manual',symbol:'TEST',date:'2025-10-04',value:999}}]}]
  let price=10,requests=0,changes=0,missing=false
  globalThis.fetch=async()=>{requests++;return missing?new Response('',{status:404}):Response.json({symbol:'TEST',currency:'TWD',asTraded:true,splits:[],points:[{date:'2025-10-03',close:price}]})}
- await render(HistoryView,{data,dirty:false,busy:false,onChange:()=>changes++,onSave:()=>{},onOpenAccount:()=>{}})
- const row=()=>[...document.querySelectorAll('section.daily tbody tr')].find(r=>r.textContent.includes('2025/10/04'))
+ await render(Overview,{data,dirty:false,busy:false,onCommitHistory:()=>changes++,onSave:()=>{},onOpenAccount:()=>{}})
+ await selectSnapshot('2025-10-04')
+ const row=()=>document.querySelector('[aria-label="快照總資產"]')
  assert.match(row().textContent,/NT\$ 20/)
- assert.match(document.querySelector('[aria-label="歷史持倉數量"]').textContent,/2025-10-03/)
  price=20
  await click(button('重新查詢歷史行情'))
  assert.match(row().textContent,/NT\$ 40/)
@@ -682,7 +692,7 @@ test('viewing and refreshing historical valuations queries market data without e
  assert.equal(requests,3);assert.equal(changes,0)
  assert.equal(data.history.quantityDays[0].entries[0].price.value,999)
  assert.equal(data.accounts[0].positions[0].price,999)
- await click(button('編輯數量 2025-10-04'))
+ await click(button('編輯這天'))
  assert.equal(field('合成歷史帳戶 · TEST · TWD 當日單價'),undefined)
  await click(button('取消歷史編輯'))
 })

@@ -18,7 +18,6 @@ import { localDate, pendingChanges, pendingLiabilityChanges, recordSave, revertC
 import { applyQuotes, fetchHoldingQuotes } from './quotes'
 import { fetchRates } from './rates'
 import { Accounts, type AccountsView } from './views/Accounts'
-import { HistoryView } from './views/History'
 import { Liabilities } from './views/Liabilities'
 import { Overview } from './views/Overview'
 import { Rates } from './views/Rates'
@@ -63,7 +62,9 @@ export default function App() {
   // The notice pages are open to everyone; the app's own state stays mounted behind them.
   const page = usePage()
   // Every page of the signed-in app has its own URL, so back and forward move between them.
-  const route = parseRoute(usePath())
+  const path = usePath()
+  const route = parseRoute(path)
+  useEffect(() => { if (path === '/history') navigate('/', { replace: true }) }, [path])
   const tab = route.tab
 
   // Warn before closing the tab with unsaved edits.
@@ -235,11 +236,10 @@ export default function App() {
       if (previous) void revokeAccessToken(previous).catch(() => {})
     })
 
-  const save = async () => {
-    if (!data || savingRef.current) return
+  const persist = async (submitted: WealthData) => {
+    if (savingRef.current) return
     savingRef.current = true
     setSaving(true)
-    const submitted = data
     const edits = editVersion.current
     const session = sessionVersion.current
     try {
@@ -262,6 +262,8 @@ export default function App() {
       setReviewing(false)
     }
   }
+
+  const save = () => data ? persist(data) : Promise.resolve()
 
   const requestSave = () => {
     if (data && (pendingChanges(saved.current, data).length || pendingLiabilityChanges(saved.current, data).length)) setReviewing(true)
@@ -405,6 +407,8 @@ export default function App() {
         {data && tab === 'overview' && (
           <Overview
             data={data}
+            busy={busy}
+            onCommitHistory={(next) => { update(next); void persist(next) }}
             onGoLiabilities={() => go({ tab: 'liabilities' })}
             onGoRates={() => go({ tab: 'rates' })}
             onNewAccount={() => goAccounts({ page: 'new' })}
@@ -427,16 +431,6 @@ export default function App() {
           />
         )}
         {data && tab === 'liabilities' && <Liabilities data={data} onChange={update} />}
-        {data && tab === 'history' && (
-          <HistoryView
-            data={data}
-            dirty={dirty}
-            busy={busy}
-            onSave={requestSave}
-            onChange={update}
-            onOpenAccount={(id) => goAccounts({ page: 'detail', id })}
-          />
-        )}
         {data && tab === 'rates' && <Rates data={data} onChange={update} onRefresh={async () => void (await refreshRates(data))} error={ratesError} />}
       </main>
       <SiteFooter />

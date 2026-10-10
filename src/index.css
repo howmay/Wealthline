@@ -2356,3 +2356,14 @@ section.daily .scroll { max-width: 100%; overflow-x: auto; }
   .quantity-editor { padding: 12px; }
 }
 .quantity-editor { scroll-margin-top: 120px; }
+
+/* History stays in context, with reachable actions even for long account lists. */
+.snapshot-timeline .panel-head { flex-wrap: wrap; gap: 1rem; }
+.timeline-controls { display: flex; align-items: center; gap: 1.5rem; }
+.timeline-controls input[type="range"] { flex: 1; min-width: 0; accent-color: var(--s1); }
+.timeline-controls .field { min-width: 12rem; }
+.snapshot-accounts { list-style: none; padding: 0; margin: 0; }
+.snapshot-accounts li { display: flex; justify-content: space-between; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid var(--border); }
+dialog.quantity-editor { margin: auto; max-height: 85dvh; overflow-y: auto; }
+.quantity-editor .editor-actions { position: sticky; bottom: 0; padding: 1rem 0; background: var(--surface); }
+@media (max-width: 600px) { .timeline-controls { flex-direction: column; align-items: stretch; gap: .5rem; } }
