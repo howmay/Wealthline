@@ -1,7 +1,7 @@
 // Site-wide components shared by the signed-out pages and the app: links, the logo and the footer.
 
 import { useId, useState, type AnchorHTMLAttributes, type MouseEvent } from 'react'
-import { AUTHOR, AUTHOR_URL, LICENSE_ZH_URL, OPERATOR, OPERATOR_URL, PAGES, PRIVACY_UPDATED, REPO_URL, navigate, type PageKey } from '../site'
+import { AUTHOR, AUTHOR_URL, LICENSE_ZH_URL, OPERATOR, OPERATOR_URL, PAGES, PRIVACY_UPDATED, REPO_URL, SUPPORT_URL, navigate, type PageKey } from '../site'
 
 // An in-app link: a real <a href> (so it can be opened in a new tab) that navigates without a reload.
 // `replace` swaps the current history entry instead of adding one.
@@ -61,6 +61,9 @@ export function SiteFooter() {
               {PAGES[k].title} {PAGES[k].en}
             </Link>
           ))}
+          <a href={SUPPORT_URL} className="gh" target="_blank" rel="noopener noreferrer" aria-label="支持 Wealthline（Ko-fi，開啟新分頁）">
+            <span aria-hidden="true">☕</span> 支持 Wealthline
+          </a>
           <a href={LICENSE_ZH_URL}>授權條款</a>
           <a href={REPO_URL} className="gh">
             <GitHubMark size={14} /> 原始碼

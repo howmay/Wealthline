@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react'
 import type { UserProfile } from '../google/auth'
 import { DATA_FILE_NAME, FOLDER_NAME } from '../google/drive'
-import { LICENSE_ZH_URL, PAGES, REPO_URL } from '../site'
+import { LICENSE_ZH_URL, PAGES, REPO_URL, SUPPORT_URL } from '../site'
 import { UploadButton } from './LocalData'
 import { GitHubMark, Link, Logo, SiteFooter } from './Site'
 
@@ -187,6 +187,17 @@ export function Landing({ returning, hasLocal, busy, message, onSignIn, onResume
               授權說明
             </a>
           </div>
+        </section>
+        <section className="landing-section open-source" aria-labelledby="support-title">
+          <div>
+            <h2 id="support-title">讓好用的工具持續成長</h2>
+            <p className="muted">
+              如果 Wealthline 對你有幫助，歡迎請我喝杯咖啡，支持持續維護與伺服器費用。贊助完全自願，所有功能仍可免費使用。
+            </p>
+          </div>
+          <a className="button" href={SUPPORT_URL} target="_blank" rel="noopener noreferrer" aria-label="支持 Wealthline（Ko-fi，開啟新分頁）">
+            <span aria-hidden="true">☕</span> 支持 Wealthline
+          </a>
         </section>
       </main>
 
