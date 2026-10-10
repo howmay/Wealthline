@@ -1,6 +1,7 @@
 // Cloudflare Worker entry: answers /api/quote and /api/history, and leaves everything else to the static
 // assets in dist/ (configured in wrangler.jsonc), applying security headers to both.
-import { handleApiRequest, isApiPath } from '../server/yahoo.ts'
+import { cachedApiResponse, type EdgeCache } from '../server/edgeCache.ts'
+import { isApiPath } from '../server/yahoo.ts'
 
 // The public pages listed in dist/sitemap.xml (written by scripts/prerender.mjs from src/site.ts).
 // Every other HTML response is the signed-in app's fallback page, which search engines should skip.
@@ -16,10 +17,12 @@ interface Env {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url)
+    // The Cache API exists only on Workers (not in the Node tests or the Vite dev server).
+    const edge = (globalThis as { caches?: { default?: EdgeCache } }).caches?.default
     const result = request.method === 'GET' && isApiPath(url.pathname)
-      ? await handleApiRequest(url)
+      ? await cachedApiResponse(url, edge, (p) => ctx?.waitUntil(p))
       : await env.ASSETS.fetch(request)
     const response = new Response(result.body, result)
     // run_worker_first bypasses public/_headers, so keep HTML revalidated here (see that file).

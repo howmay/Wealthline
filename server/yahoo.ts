@@ -9,7 +9,7 @@ export interface Quote {
   name: string
 }
 
-const SYMBOL = /^[A-Za-z0-9.\-=^]{1,24}$/
+export const SYMBOL = /^[A-Za-z0-9.\-=^]{1,24}$/
 
 export async function yahooQuote(symbol: string): Promise<Quote | null> {
   if (!SYMBOL.test(symbol)) return null
@@ -37,7 +37,7 @@ export interface PriceHistory {
   splits: { date: string; ratio: number }[]
 }
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/
+export const DATE = /^\d{4}-\d{2}-\d{2}$/
 const MAX_YEARS = 10
 
 // Yahoo closes are split-adjusted. Restore nominal historical per-share closes
