@@ -43,7 +43,7 @@ const render = async (component, props = {}) => {
   if (!root) root = createRoot(document.getElementById('root'))
   await act(async () => { root.render(createElement(component, props)) })
 }
-const button = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent === text)
+const button = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent === text || b.getAttribute('aria-label') === text)
 const click = async (element) => { assert.ok(element); await act(async () => element.click()) }
 const confirmCompletion = async () => {
  const label=[...document.querySelectorAll('.quantity-editor label')].find(e=>e.textContent.includes('確認當日補齊範圍'))
@@ -1335,4 +1335,32 @@ test('history source details include projected period holdings and daily detail 
  assert.match(sources.textContent,/NT\$ 10/)
  assert.equal(document.activeElement,sources)
  assert.ok(button('編輯來源數量'))
+})
+
+test('timeline previous and next controls move through snapshots and stop at either boundary',async()=>{
+ const data=historicalFixture()
+ data.history.snapshots=[{date:'2026-09-01',at:'2026-09-01T12:00:00Z',total:100,accounts:[],categories:{}}]
+ await render(Overview,{data})
+ assert.ok(button('上一筆快照'))
+ assert.equal(button('下一筆快照').disabled,true)
+ await click(button('上一筆快照'))
+ assert.equal(button('上一筆快照').disabled,true)
+ assert.match(document.querySelector('[aria-label="快照總資產"]').textContent,/NT\$ 100/)
+ assert.equal(field('選擇時間節點').value,'2026-09-01')
+ await click(button('下一筆快照'))
+ assert.equal(field('選擇時間節點').value,'current')
+ assert.match(document.querySelector('.hero-figure').textContent,/900/)
+})
+
+test('daily record icons keep accessible names and editing restores focus to its date row',async()=>{
+ const data=historicalFixture(),date='2026-09-01'
+ data.history.quantityDays=[{date,updatedAt:date+'T12:00:00Z',entries:[{accountId:'history-account',account:'合成歷史帳戶',category:'股票',country:'TW',type:'cash',symbol:'',currency:'TWD',quantity:100}]}]
+ await render(HistoryView,{data,dirty:false,busy:false,onChange:()=>assert.fail('opening or cancel must not save'),onSave:()=>{},onOpenAccount:()=>{}})
+ const actions=[...document.querySelectorAll('section.daily .daily-action-group button')]
+ assert.ok(actions.length)
+ for(const action of actions){assert.equal(action.textContent.trim(),'');assert.ok(action.getAttribute('aria-label'));assert.ok(action.title);assert.equal(action.querySelector('svg').getAttribute('aria-hidden'),'true')}
+ await click(button(`查看明細 ${date}`));assert.equal(field('明細日期').value,date)
+ const edit=button(`編輯數量 ${date}`)
+ await click(edit);assert.equal(field('合成歷史帳戶 · TWD · TWD 當日數量').value,'100')
+ await click(button('取消歷史編輯'));assert.equal(document.activeElement,edit)
 })

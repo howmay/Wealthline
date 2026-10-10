@@ -1,3 +1,4 @@
+import { ActionIcon } from './ActionIcon'
 import { removalMessage } from '../historyCompletion'
 import { useCalendarNow } from '../useCalendarNow'
 import { useRef, useState, type ReactNode } from 'react'
@@ -130,21 +131,21 @@ export function HistoryView({ initialDate, data, dirty, busy, onSave, onChange, 
                   <th className="num">總負債</th>
                   <th className="num">淨資產</th>
                   <th className="num">帳戶數</th>
-                  <th />
+                  <th className="daily-actions-heading">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {[...points].reverse().slice(0,visibleDays).map((s) => (
                   <tr key={s.date}>
-                    <td data-label="日期"><span className="daily-cell-value">{s.date.replace(/-/g, '/')}<span className="muted small">{s.periodDerived ? ' · 期間推算' : s.manual ? (data.history.quantityDays?.find(d=>d.date===s.date)?.inventory ? ' · 完整回補' : ' · 手動') : s.date === today.date ? ' · 目前' : ' · 原始快照'}</span></span></td>
+                    <td data-label="日期"><span className="daily-cell-value daily-date"><time dateTime={s.date}>{s.date.replace(/-/g, '/')}</time><span className="daily-source muted small">{s.periodDerived ? '期間推算' : s.manual ? (data.history.quantityDays?.find(d=>d.date===s.date)?.inventory ? '完整回補' : '手動') : s.date === today.date ? '目前' : '原始快照'}</span></span></td>
                     <td className="num" data-label="總資產"><span className="daily-cell-value">{s.total === null ? '資料不完整' : `NT$ ${fmt(s.total, 0)}`}</span></td>
                     <td className="num" data-label="總負債"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.liabilityAssumed ? '未記錄（以 0 計）' : s.liabilityTotal === undefined ? '未記錄' : s.liabilityTotal === null ? '無法換算' : `NT$ ${fmt(s.liabilityTotal, 0)}`}</span></td>
                     <td className="num" data-label="淨資產"><span className="daily-cell-value">{s.liabilityEstimated && '預估 · '}{s.netWorth === undefined ? '未記錄' : s.netWorth === null ? '無法換算' : `NT$ ${fmt(s.netWorth, 0)}`}</span></td>
                     <td className="num" data-label="帳戶數"><span className="daily-cell-value">{s.accounts.length}</span></td>
-                    <td className="num daily-actions">
-                      <button onClick={() => { setSourceDate(s.date); sourcePanel.current?.scrollIntoView?.({ block: 'start' }); sourcePanel.current?.focus() }}>查看明細 {s.date}</button>
-                      <button data-history-entry={`day:${s.date}`} disabled={busy || !!quantityRequest} onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date),focusKey:`day:${s.date}`})}>{data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} {s.date}</button>
-                      {data.history.quantityDays?.some(d=>d.date===s.date) && <button className="danger" disabled={busy || !!quantityRequest} onClick={()=>{
+                    <td className="num daily-actions"><div className="daily-action-group">
+                      <button className="daily-action" aria-label={`查看明細 ${s.date}`} title="查看明細" onClick={() => { setSourceDate(s.date); sourcePanel.current?.scrollIntoView?.({ block: 'start' }); sourcePanel.current?.focus() }}><ActionIcon name="view" /></button>
+                      <button className="daily-action" aria-label={`${data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} ${s.date}`} title={data.history.quantityDays?.some(d=>d.date===s.date) ? '編輯數量' : '補登數量'} data-history-entry={`day:${s.date}`} disabled={busy || !!quantityRequest} onClick={()=>setQuantityRequest({date:s.date,expected:data.history.quantityDays?.find(d=>d.date===s.date),focusKey:`day:${s.date}`})}><ActionIcon name={data.history.quantityDays?.some(d=>d.date===s.date) ? 'edit' : 'add'} /></button>
+                      {data.history.quantityDays?.some(d=>d.date===s.date) && <button className="daily-action danger" aria-label={`移除補登 ${s.date}`} title="移除補登，恢復原始資料" disabled={busy || !!quantityRequest} onClick={()=>{
                         if(confirm(removalMessage(data,s.date))) {
                           onChange({...data,history:{...data.history,quantityDays:data.history.quantityDays?.filter(d=>d.date!==s.date)}})
                           requestAnimationFrame(()=>{
@@ -152,15 +153,15 @@ export function HistoryView({ initialDate, data, dirty, busy, onSave, onChange, 
                             target?.focus()
                           })
                         }
-                      }}>移除補登 {s.date}</button>}
-                      {s.periodDerived && <button disabled={busy || !!quantityRequest} onClick={()=>{
+                      }}><ActionIcon name="undo" /></button>}
+                      {s.periodDerived && <button className="daily-action" aria-label="管理持有期間" title="管理持有期間" disabled={busy || !!quantityRequest} onClick={()=>{
                         const section=document.querySelector<HTMLElement>('[aria-label="歷史持倉數量"]')
                         section?.querySelectorAll<HTMLDetailsElement>('[data-period-management]').forEach(d=>{d.open=true})
                         section?.scrollIntoView?.({block:'start'})
                         section?.querySelector<HTMLElement>('[data-period-management] summary')?.focus()
-                      }}>管理持有期間</button>}
+                      }}><ActionIcon name="calendar" /></button>}
                       {!s.manual && !s.periodDerived && saved.some(x=>x.date===s.date) && <button disabled={busy}
-                        className="icon"
+                        className="daily-action danger"
                         aria-label={`刪除 ${s.date} 的紀錄`}
                         title="刪除這天的原始快照"
                         onClick={() => {
@@ -168,9 +169,9 @@ export function HistoryView({ initialDate, data, dirty, busy, onSave, onChange, 
                           onChange({ ...data, history: { ...data.history, snapshots: saved.filter((x) => x.date !== s.date) } })
                         }}
                       >
-                        ×
+                        <ActionIcon name="delete" />
                       </button>}
-                    </td>
+                    </div></td>
                   </tr>
                 ))}
               </tbody>

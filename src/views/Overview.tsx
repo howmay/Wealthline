@@ -1,5 +1,6 @@
 import { useCalendarNow } from '../useCalendarNow'
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
+import { ActionIcon } from './ActionIcon'
 import type { HistoricalPoint } from '../quantityHistory'
 import { snapshotOf, totalPoints } from '../history'
 import { seriesFor, MODES, type Mode } from './historySeries'
@@ -81,7 +82,15 @@ export function Overview({ data, onGoHistory, onGoRates, onGoLiabilities, onNewA
         <div className="segmented" role="group" aria-label="顯示方式">{(Object.keys(MODES) as Mode[]).map(m => <button key={m} aria-pressed={m === mode} className={m === mode ? 'on' : ''} onClick={() => setMode(m)}>{MODES[m]}</button>)}</div>
         <TrendChart dates={chartPoints.map(p => p.date)} series={seriesFor(mode, chartPoints, accountNames)} area={mode === 'total'} />
         <div className="timeline-controls">
-          <input type="range" aria-label="資產快照時間線" aria-valuetext={current ? '目前資產' : point.date} min={0} max={points.length - 1} step={1} value={index} onChange={e => setSelected(keys[Number(e.target.value)])} />
+          <div className="timeline-navigation">
+            <button className="timeline-arrow" aria-label="上一筆快照" title="上一筆快照" disabled={index === 0} onClick={() => setSelected(keys[index - 1])}><ActionIcon name="previous" /></button>
+            <div className="timeline-range">
+              <div className="timeline-selection"><span>{current ? '目前' : point.periodDerived ? '期間推算' : point.manual ? '補登快照' : '原始快照'}</span><strong>{current ? '最新餘額' : point.date.replaceAll('-', '.')}</strong></div>
+              <input type="range" aria-label="資產快照時間線" aria-valuetext={current ? '目前資產' : point.date} min={0} max={points.length - 1} step={1} value={index} disabled={points.length < 2} style={{ '--timeline-progress': `${points.length > 1 ? index / (points.length - 1) * 100 : 100}%` } as CSSProperties} onChange={e => setSelected(keys[Number(e.target.value)])} />
+              <div className="timeline-endpoints" aria-hidden="true"><span>{points[0].date.replaceAll('-', '/')}</span><span>{points.length} 個節點</span><span>目前</span></div>
+            </div>
+            <button className="timeline-arrow" aria-label="下一筆快照" title="下一筆快照" disabled={index === points.length - 1} onClick={() => setSelected(keys[index + 1])}><ActionIcon name="next" /></button>
+          </div>
           <label className="field"><span>選擇時間節點</span><select value={keys[index]} onChange={e => setSelected(e.target.value)}>{points.map((p, i) => <option key={keys[i]} value={keys[i]}>{keys[i] === 'current' ? '目前資產' : `${p.date}${p.periodDerived ? ' · 期間推算' : p.manual ? ' · 補登' : ''}`}</option>)}</select></label>
         </div>
         <p className="muted small">拖動滑桿或選擇紀錄，查看當時的餘額與配置。原始快照保留原值；期間推算補上缺少快照的日期，單日補登優先。</p>

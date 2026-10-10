@@ -2349,7 +2349,19 @@ details.daily .hint {
 .quantity-row[hidden] { display: none; }
 .quantity-editor .row, .quantity-day .row { flex-wrap: wrap; }
 .quantity-editor input, .quantity-editor select { max-width: 100%; min-width: 0; }
-section.daily table { min-width: 700px; }
+section.daily table { min-width: 820px; }
+section.daily th, section.daily td { padding-left: 12px; padding-right: 12px; }
+section.daily td { vertical-align: middle; padding-top: 14px; padding-bottom: 14px; }
+section.daily td.num .daily-cell-value { display: block; white-space: nowrap; }
+.daily-date { display: grid; gap: 5px; white-space: nowrap; }
+.daily-date time { font-weight: 600; font-variant-numeric: tabular-nums; }
+.daily-source { font-size: .75rem; }
+.daily-actions-heading { width: 156px; text-align: right !important; }
+.daily-action-group { display: grid; grid-template-columns: repeat(3, 44px); justify-content: end; gap: 6px; width: 144px; margin-left: auto; }
+button.daily-action { display: inline-flex; flex: 0 0 44px; width: 44px; height: 44px; align-items: center; justify-content: center; padding: 0; border-radius: 10px; color: var(--muted); background: transparent; }
+button.daily-action:hover:not(:disabled) { color: var(--accent); background: var(--accent-wash); border-color: var(--accent); }
+button.daily-action.danger:hover:not(:disabled) { color: var(--critical); border-color: var(--critical); background: var(--surface-2); }
+button.daily-action:focus-visible, button.timeline-arrow:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 section.daily .scroll { max-width: 100%; overflow-x: auto; }
 @media (max-width: 640px) {
   .quantity-day .panel-head, section[aria-label="歷史持倉數量"] > .panel-head { align-items: flex-start; flex-direction: column; }
@@ -2397,7 +2409,9 @@ section.daily .scroll { max-width: 100%; overflow-x: auto; }
   section.daily td { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); gap: 10px; padding: 8px 0; border: 0; white-space: normal; }
   section.daily td::before { content: attr(data-label); text-align: left; color: var(--muted); font-size: .85rem; }
   .daily-cell-value { min-width: 0; overflow-wrap: anywhere; }
-  section.daily td.daily-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  section.daily td.daily-actions { display: block; margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+  section.daily td.num .daily-cell-value { white-space: normal; }
+  section.daily .daily-action-group { width: auto; justify-content: end; }
   section.daily td.daily-actions::before { display: none; }
   section.daily button { min-height: 44px; max-width: 100%; white-space: normal; }
   .tabs button { min-height: 44px; }
@@ -2412,7 +2426,7 @@ section.daily .scroll { max-width: 100%; overflow-x: auto; }
 
 
 /* History: distinct overview, source notes and quantity workspace. */
-.history-page { display: grid; gap: 24px; min-width: 0; }
+.history-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; min-width: 0; }
 .history-page > .panel, .history-page > .stats, .history-page > .page-head { margin: 0; }
 .history-heading { align-items: center; }
 .history-heading p { margin-top: 8px; }
@@ -2455,11 +2469,30 @@ section.daily .scroll { max-width: 100%; overflow-x: auto; }
 
 .history-management { border: 0; margin: 0; padding: 0; min-width: 0; }
 .snapshot-timeline .panel-head { flex-wrap: wrap; gap: 1rem; }
-.timeline-controls { display: flex; align-items: center; gap: 1.5rem; }
-.timeline-controls input[type="range"] { flex: 1; min-width: 0; accent-color: var(--s1); }
-.timeline-controls .field { min-width: 12rem; }
+.timeline-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 2rem; margin-top: 1rem; padding-top: 1.25rem; border-top: 1px solid var(--hairline); }
+.timeline-navigation { display: flex; align-items: center; flex: 1 1 18rem; min-width: 0; gap: 12px; }
+button.timeline-arrow { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; padding: 0; border-radius: 50%; background: transparent; }
+.timeline-range { flex: 1; min-width: 0; }
+.timeline-selection { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: .8rem; }
+.timeline-selection span { color: var(--muted); }
+.timeline-selection strong { font-variant-numeric: tabular-nums; font-weight: 600; }
+.timeline-controls input[type="range"] { display: block; width: 100%; height: 36px; margin: 0; padding: 0; border: 0; border-radius: 0; appearance: none; -webkit-appearance: none; background: transparent; cursor: pointer; }
+.timeline-controls input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(to right, var(--accent) var(--timeline-progress), var(--border) var(--timeline-progress)); }
+.timeline-controls input[type="range"]::-moz-range-track { height: 4px; border-radius: 4px; background: linear-gradient(to right, var(--accent) var(--timeline-progress), var(--border) var(--timeline-progress)); }
+.timeline-controls input[type="range"]::-webkit-slider-thumb { width: 16px; height: 16px; margin-top: -6px; appearance: none; -webkit-appearance: none; border: 3px solid var(--surface); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.timeline-controls input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border: 3px solid var(--surface); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.timeline-controls input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+.timeline-endpoints { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: var(--muted); font-size: .7rem; font-variant-numeric: tabular-nums; }
+.timeline-controls .field { flex: 0 1 13rem; min-width: 0; }
+.timeline-controls select { width: 100%; }
 .snapshot-accounts { list-style: none; padding: 0; margin: 0; }
 .snapshot-accounts li { display: flex; justify-content: space-between; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid var(--border); }
 dialog.quantity-editor { margin: auto; max-height: 85dvh; overflow-y: auto; }
 dialog.quantity-editor .quantity-actions { position: sticky; bottom: 0; padding: 1rem 0; background: var(--surface); }
-@media (max-width: 600px) { .timeline-controls { flex-direction: column; align-items: stretch; gap: .5rem; } }
+@media (max-width: 600px) {
+  .timeline-controls { flex-direction: column; align-items: stretch; gap: 1rem; }
+  .timeline-controls .field { flex: auto; }
+  button.timeline-arrow { flex-basis: 44px; width: 44px; height: 44px; }
+  .timeline-navigation { flex: auto; gap: 8px; }
+  .timeline-selection { flex-wrap: wrap; font-size: .75rem; }
+}
