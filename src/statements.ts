@@ -32,6 +32,29 @@ export function hsbcMerchantRegions(items:unknown[]) {
   })
 }
 
+export function hsbcTransactionBounds(tsv:string, transactionTops:number[]):{top:number;bottom:number}|undefined {
+  const rows=new Map<string,{text:string;top:number;bottom:number}>()
+  for(const line of tsv.split('\n').slice(1)) {
+    const columns=line.split('\t')
+    if(columns.length < 12 || columns[0] !== '5') continue
+    const top=Number(columns[7]),height=Number(columns[9])
+    if(!Number.isFinite(top) || !Number.isFinite(height) || height <= 0) continue
+    const key=columns.slice(1,5).join('-')
+    const row=rows.get(key) ?? {text:'',top,bottom:top+height}
+    row.text+=columns.slice(11).join('').normalize('NFKC').replace(/\s/g,'')
+    row.top=Math.min(row.top,top);row.bottom=Math.max(row.bottom,top+height)
+    rows.set(key,row)
+  }
+  const sorted=[...rows.values()].sort((a,b)=>a.top-b.top)
+  const anchors=sorted.filter(r=>/前期餘額|前期余额/.test(r.text))
+  const starts=anchors.length ? anchors : sorted.filter(r=>/交易明細|消費明細|消費日(?:期)?.*入帳日/.test(r.text))
+  const start=starts.find(r=>transactionTops.some(top=>top > r.bottom))
+  if(!start) return undefined
+  const firstTransactionTop=Math.min(...transactionTops.filter(top=>top > start.bottom))
+  const end=sorted.find(r=>r.top > firstTransactionTop && /本期應繳|本期应缴|本期合計|本期消費總額|繳款資訊|注意事項/.test(r.text))
+  return {top:start.bottom,bottom:end?.top ?? Infinity}
+}
+
 export function ocrMerchantLine(line:string, description:string, confidence:number):string {
   const merchant=description.normalize('NFKC').replace(/\s+/g,' ').trim()
   const dates=line.match(/^(\d{1,2}[/.-]\d{1,2}\s+\d{1,2}[/.-]\d{1,2})\s+/)?.[1]
@@ -41,7 +64,7 @@ export function ocrMerchantLine(line:string, description:string, confidence:numb
 }
 
 const datePattern = /^(?:(\d{3,4})[/.-])?(\d{1,2})[/.-](\d{1,2})(?:\s+|$)/
-const nonSpending = /繳款|繳費|轉帳扣款|自動扣繳|上期|前期|應繳|最低應繳|總額|小計|合計|PAYMENT|BALANCE|TOTAL/i
+const nonSpending = /繳款|繳費|轉帳扣款|自動扣繳|匯豐銀行自動扣款|滙豐銀行自動扣款|上期|前期|應繳|最低應繳|總額|小計|合計|PAYMENT|BALANCE|TOTAL/i
 // One worker tries each candidate; passwords never enter persisted import data.
 export function statementPasswordHandler(passwordText:string) {
   const passwords = [...new Set(passwordText.split(',').map(p=>p.trim()).filter(Boolean))]
@@ -85,7 +108,7 @@ export function statementMetadata(lines:string[], title = '', fileName = ''): {b
 export function assertCreditCardFile(name:string) {
   if(/證券|证券|綜合月對帳單|综合月对账单/.test(name)) throw new Error('證券對帳單不支援：請選擇信用卡帳單')
 }
-export function parseStatement(lines:string[], month:string, currency:string, fileName = ''): {rows:StatementRow[];skipped:string[];review:number[];sourceIndexes:number[]} {
+export function parseStatement(lines:string[], month:string, currency:string, fileName = '', transactionIndexes?:number[]): {rows:StatementRow[];skipped:string[];review:number[];sourceIndexes:number[]} {
   assertCreditCardFile(fileName)
   const text = lines.join(' ').replace(/\s/g,'')
   if(/綜合月對帳單|综合月对账单/.test(text) || (/成交日期/.test(text) && /買賣別|證券帳號/.test(text))) throw new Error('證券對帳單不支援：請選擇信用卡帳單')
@@ -94,11 +117,13 @@ export function parseStatement(lines:string[], month:string, currency:string, fi
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('請填寫有效的帳單月份')
   if(!/^[A-Z]{3}$/.test(currency)) throw new Error('請填寫三碼幣別')
   const rows:StatementRow[] = [], skipped:string[] = [], review:number[] = [], sourceIndexes:number[] = []
+  const allowed=transactionIndexes ? new Set(transactionIndexes) : undefined
   for (const [sourceIndex,original] of lines.entries()) {
+    if(allowed && !allowed.has(sourceIndex)) continue
     let line = original.normalize('NFKC').trim()
     const match = line.match(datePattern)
     if (!match) { if (/\d/.test(line)) skipped.push(original); continue }
-    if(nonSpending.test(line)) {skipped.push(original);continue}
+    if(nonSpending.test(line) || (bank === 'hsbc' && /[匯滙]豐銀行自動扣款/.test(line.replace(/\s/g,'')))) {skipped.push(original);continue}
     const m = Number(match[2]), d = Number(match[3])
     let year = match[1] ? Number(match[1]) : Number(month.slice(0,4))
     if(match[1]?.length === 3) year += 1911

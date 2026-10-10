@@ -225,3 +225,50 @@ test('HSBC source rows stay stable when OCR excludes repayments or merchants cha
   assert.equal(expenses.mergeExpenses(after,after).added,0)
   await assert.rejects(()=>expenses.prepareExpenses(next.rows,'HSBC','a',[1,1]),/來源列/)
 })
+
+
+test('HSBC auto-debit repayment is excluded without dropping merchant subscriptions or refunds',()=>{
+  const result=statements.parseStatement(['04/01 04/02 匯豐銀行自動扣款 -2000','04/03 04/04 SYNTHETIC SUBSCRIPTION 640','04/04 04/05 合成退款 -100'],'2026-04','TWD','HSBC')
+  assert.deepEqual(result.rows.map(r=>r.amount),[640,-100])
+})
+test('HSBC layout bounds start below prior balance and end before payment summary',()=>{
+  const tsv='level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n'+[
+    '5\t1\t1\t1\t1\t1\t20\t100\t60\t10\t90\t前期',
+    '5\t1\t1\t1\t1\t2\t80\t100\t60\t10\t90\t餘額',
+    '5\t1\t1\t1\t2\t1\t20\t120\t60\t10\t90\t本期應繳',
+    '5\t1\t2\t1\t1\t1\t20\t300\t60\t10\t90\t本期應繳'].join('\n')
+  assert.deepEqual(statements.hsbcTransactionBounds(tsv,[80,180,220,330]),{top:110,bottom:300})
+  assert.equal(statements.hsbcTransactionBounds('',[180]),undefined)
+  const lines=['04/01 04/02 999','04/03 04/04 SYNTHETIC SHOP 210','04/05 04/06 888']
+  const parsed=statements.parseStatement(lines,'2026-04','TWD','HSBC',[1])
+  assert.deepEqual(parsed.rows.map(r=>r.amount),[210])
+  assert.deepEqual(parsed.sourceIndexes,[1])
+  assert.deepEqual(parsed.skipped,[])
+})
+
+
+test('synthetic HSBC PDF preserves readable scope headings and excludes date-shaped rows outside the table',async()=>{
+  const extracted=await pdfLines('synthetic-hsbc-2026-04-image-merchants.pdf')
+  const start=extracted.findIndex(l=>l.includes('前期餘額'))
+  const end=extracted.findIndex(l=>l.includes('本期應繳'))
+  assert.ok(start>0 && end>start)
+  const indices=extracted.flatMap((_,i)=>i>start && i<end?[i]:[])
+  const parsed=statements.parseStatement(extracted,'2026-04','TWD','HSBC',indices)
+  assert.deepEqual(parsed.rows.map(r=>r.amount),[210,900,640,-2000])
+  assert.equal(extracted.filter(l=>l.endsWith('999')).length,2)
+  assert.ok(parsed.rows.every(r=>r.amount!==999))
+})
+
+
+test('multi-page HSBC fixture has a bankless continuation page with a readable transaction heading',async()=>{
+  const {getDocument}=await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const task=getDocument({data:new Uint8Array(await readFile(new URL('./fixtures/synthetic-hsbc-2026-04-multipage.pdf',import.meta.url))),verbosity:0})
+  try {
+    const pdf=await task.promise
+    assert.equal(pdf.numPages,2)
+    const second=statements.textLines((await (await pdf.getPage(2)).getTextContent()).items)
+    assert.ok(second.some(l=>l.includes('消費日期') && l.includes('入帳日期')))
+    assert.ok(!second.some(l=>/HSBC|匯豐/.test(l)))
+    assert.equal(statements.parseStatement(second,'2026-04','TWD','HSBC').rows.length,4)
+  } finally {await task.destroy()}
+})

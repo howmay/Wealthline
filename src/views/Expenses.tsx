@@ -107,7 +107,7 @@ function StatementImport({existing,busy,onCancel,onImport}: {existing:Expense[];
           const statementCard = card.trim() || info.bank || ''
           if(!statementMonth) throw new Error('無法辨識帳單月份，請填寫備用月份後重試')
           if(!statementCard.trim()) throw new Error('無法辨識銀行，請填寫備用銀行／卡片名稱後重試')
-          const parsed = parseStatement(pdf.lines,statementMonth,currency,info.bank || file.name)
+          const parsed = parseStatement(pdf.lines,statementMonth,currency,info.bank || file.name,pdf.transactionIndexes)
           if(!parsed.rows.length) throw new Error('沒有辨識到交易。此帳單的排版暫不支援，尚未匯入任何資料。')
           const rows = await prepareExpenses(parsed.rows,statementCard,fileHash,info.bank === '匯豐' ? parsed.sourceIndexes : undefined)
           if(abort.signal.aborted) return

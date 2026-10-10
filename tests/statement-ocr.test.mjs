@@ -47,3 +47,16 @@ test('initialization failures are sanitized and worker is terminated',async()=>{
   await assert.rejects(createStatementOcr(new AbortController().signal),e=>/OCR/.test(e.message)&&!e.message.includes('private'))
   assert.ok(instances[0].terminated)
 })
+
+
+test('page layout recognition requests TSV and restores single-line mode for merchant crops',async()=>{
+  const {calls}=fakeWorker(success)
+  const ocr=await createStatementOcr(new AbortController().signal)
+  await ocr.recognize(new Uint8Array([1]),true)
+  assert.equal(calls.at(-2).payload.params.tessedit_pageseg_mode,'3')
+  assert.equal(calls.at(-1).payload.output.tsv,true)
+  await ocr.recognize(new Uint8Array([2]))
+  assert.equal(calls.at(-2).payload.params.tessedit_pageseg_mode,'7')
+  assert.equal(calls.at(-1).payload.output.tsv,false)
+  ocr.close()
+})
